@@ -21,7 +21,7 @@ From a fourth review, all approved by the owner. Mostly contradictions fixed and
 
 | Area | v5 change | Why |
 | --- | --- | --- |
-| **Copies across folders** | The same file on the hard drive and in iCloud (same filename + exact size, or matching fingerprints) is **one item with several files**, grouped automatically (§11.3). Moves use the same rule (§9.3). | The owner keeps copies in several places; under v4 every copy would have landed in Needs review. |
+| **Copies across folders** | The same file on the hard drive and in iCloud (matching full hashes, or same filename + exact size when hashes can't be compared, and no hash disagreeing) is **one item with several files**, grouped automatically (§11.3). Moves use the same rule (§9.3). | The owner keeps copies in several places; under v4 every copy would have landed in Needs review. |
 | **Format groups** | Only a *known* language / abridgment / edition conflict blocks the same-folder rule; unknown never does. HD versions group with their standard version. Filename-only grouping starts in M1. | v4's "unknown language is different" made scenario 17 impossible (MOBI never reports a language). |
 | **Hashing** | Full hash computed for every present local file in the deep pass, cached, on its own time limit (§9.3, §20). | v4 asked for the full hash of a file that was already missing. |
 | **Series table** | `series` gets its own row and id (§7). | Publication status, order, gaps and one-per-series need a stable series, not a name string. |
@@ -146,7 +146,7 @@ Owner answers that shape the product (from the plan reviews):
   create a free account at the start of M3 for the check — **tell them when** (§21).
 - **Milestone 0 probe:** the owner will run it if needed. It must work without any AI involved.
 - **Copies:** the same filename with the exact same size in two places is the same file, grouped
-  without asking (§11.3).
+  without asking — unless their hashes disagree (§11.3).
 - **Tell the owner when they need to do something** (§21 lists every owner action).
 
 ## 5. How to work on this codebase
@@ -374,7 +374,8 @@ parser improves.
 - **Moves** (a missing file, and a new file elsewhere) use the same evidence as copies, compared on
   whatever both sides have — placeholders were never read, so they have no hashes:
   - **Transfer automatically** when the full filename (with extension, ignoring case) and exact size
-    match and no hash disagrees; or, for a renamed file, when size and **full** hash match.
+    match and no hash (partial or full) disagrees; or, for a renamed file, when size and **full**
+    hash match.
   - **Send to Needs review (tier 1)** when only size + partial hash match under a different name, or
     when a hash disagrees. Tier 1 offers "confirm all like this" with a preview, for reorganised
     folders.
@@ -402,9 +403,12 @@ any failure to read attributes as **unknown**.
   test `0x00400000` (RecallOnDataAccess), `0x00040000` (RecallOnOpen) and `0x00001000` (Offline).
 - **One guard in front of every content reader** (metadata, hashing, thumbnails, PDF rendering).
   Placeholder or unknown → no read.
-- **Re-check just before reading**, not only at scan time. Starting PowerShell costs about a second,
-  so never start one per file: keep **one long-lived helper process** that takes paths on stdin and
-  returns attributes, and re-check each directory in one batch just before its files are processed.
+- **Re-check each file immediately before each content read**, not only at scan time — before the
+  metadata read, the thumbnail and the full hash alike, since the hash may run much later. Starting
+  PowerShell costs about a second, so never start one per check: keep **one long-lived helper
+  process** that takes a path on stdin and returns its attributes in milliseconds. Batch reads (a
+  folder at a time) are for the light pass's discovery only and never authorise a content read.
+  The remaining gap between check and read is milliseconds; accept it, and note it in the README.
 - **Open on a placeholder asks first:** "This file is in iCloud and will download when opened. Open
   anyway?"
 - **Needs checking on the owner's machine** with a real online-only file, including what happens when
@@ -501,11 +505,16 @@ stays provisional and Needs review shows both.
 Rules, in order. All of them chain: if `book.epub` and `book.pdf` sit together on the hard drive
 and copies of both sit in iCloud, all four files end up on one item.
 
-1. **Copies → grouped automatically.** Two files in different folders with the **same filename
-   (extension included, ignoring case) and exact same size**, or matching fingerprints when both
-   have been read, are the same file: one item, several files, no review. Placeholders can only be
-   compared by name and size, because they're never read. `book.epub` and `book.pdf` are never
-   copies of each other — the format rule handles them.
+1. **Copies → grouped automatically.** Two files in different folders are the same file — one item,
+   several files, no review — when either:
+   - their **full hashes match** (whatever their names), or
+   - they have the **same filename (extension included, ignoring case) and exact same size**, and
+     their full hashes can't be compared because one or both haven't been hashed (placeholders are
+     never read, so this is the iCloud case).
+
+   **Any hash that disagrees — partial or full — blocks grouping**, whatever the names and sizes say;
+   such files go to rule 3 as a suggestion. A partial-hash match alone never groups. `book.epub` and
+   `book.pdf` are never copies of each other — the format rule handles them.
 2. **Format group → grouped automatically.** Same folder + same base name (after removing quality
    tags) + different format or quality → one item, several files. This is how Humble and most stores
    deliver one book (EPUB + PDF + MOBI, sometimes an HD version); sending every set to review would
@@ -527,8 +536,10 @@ Editions:
 - **A revised edition** (a tech book's 2nd vs 3rd edition) is a separate item. If the owner has the
   newer one, "Still relevant?" suggests Never for the older.
 - **Grouping by name starts in M1** (rules 1–2 on name and size only). When the M2 deep pass finds a
-  known conflict inside a group, it splits the group automatically if the item has no owner data
-  yet; otherwise it lists it in Needs review, tier 1, and it stays grouped until the owner splits it.
+  known conflict inside a group — a language, abridgment or edition conflict, or **copies whose
+  hashes disagree** — it splits the group automatically if the item has no owner data yet;
+  otherwise it lists it in Needs review, tier 1, and it stays grouped until the owner splits it.
+  The same check runs whenever a placeholder copy is later downloaded and hashed.
 
 **Primary file** (what Open uses and whose length counts): a present file before a placeholder
 before a missing one; then EPUB for prose, the HD version for comics, then other formats.
@@ -921,8 +932,9 @@ Never and reference items are left out of backlog totals but stay in the Library
 9. An old fundamentals tech book isn't treated as obsolete.
 10. Cancelling, access errors and unplugging mid-scan never mark unlisted files missing.
 11. A partial-hash collision or a similar filename never transfers history silently.
-12. Placeholder and unknown files never reach a content reader (asserted with fakes; real behaviour
-    checked on Windows).
+12. Placeholder and unknown files never reach a content reader — including a file that becomes
+    online-only after its folder was listed, or between its metadata read and its later full hash
+    (asserted with fakes; real behaviour checked on Windows).
 13. A merge shows conflicting user data, and undo restores the exact prior state — including after
     several later merges of other items.
 14. Backup → empty app → restore recovers everything without drives; a later scan reconnects files
@@ -947,6 +959,9 @@ Never and reference items are left out of backlog totals but stay in the Library
 26. `book.epub` in one folder and `book.pdf` in another are suggested as one item, never grouped
     silently; an HD and a standard CBZ of the same issue in one folder group automatically, with the
     HD file as primary.
+27. Two files with the same name and size whose hashes disagree are never grouped as copies; if they
+    were grouped by name in M1, the deep pass splits them (or, if the item has owner data, sends it
+    to Needs review tier 1).
 
 ### 17.2 Recommendation quality sessions (with the owner)
 
@@ -1027,11 +1042,11 @@ add them to `fixtures/private/` and its held-out examples.
 - EPUB / CBZ / CBR / PDF readers; thumbnails, word and page counts; PDF type with "uncertain".
 - Worker pool with limits; the single content-read guard with re-check; placeholder → present
   transitions.
-- Partial/full hashing, moves (§9.3), copies by fingerprint, the edition/language conflict check
-  on groups made in M1, cross-folder suggestions.
+- Partial/full hashing, moves (§9.3), copies by full hash, the conflict check (edition, language,
+  disagreeing hashes) on groups made in M1, cross-folder suggestions.
 - Deep-pass cancel and resume, per-folder scan reminder, Library health.
 
-**Done when:** scenarios 11, 12, 15, 17, 24, 25 and 26 pass; a confirmed move keeps progress, an
+**Done when:** scenarios 11, 12, 15, 17, 24, 25, 26 and 27 pass; a confirmed move keeps progress, an
 ambiguous one goes to review; resuming skips completed stages; benchmark numbers recorded.
 
 ### M3 — First real recommendations
@@ -1085,7 +1100,7 @@ precision; no unowned gap is ever recommended.
   **"If it won't start"** (wrong Node version, port in use, failed migration and which snapshot to
   restore).
 
-**Done when:** all 26 scenarios pass; **the owner's second quality session (§17.2)** meets its target
+**Done when:** all 27 scenarios pass; **the owner's second quality session (§17.2)** meets its target
 or its misses are understood and scheduled; a stranger can install and use it from the README; every
 Windows behaviour is either confirmed on the owner's machine or documented as unconfirmed.
 
@@ -1138,7 +1153,7 @@ use. Keep them in one config module, each with its reason in a comment.
 | Match: accept / review / unidentified | ≥ 0.90 / 0.60–0.90 / < 0.60 | Cautious start, because wrong matches hurt more than unidentified ones; tune on fixtures. |
 | Fingerprint | size + SHA-256 of first and last 64 KB (partial); full SHA-256 of every present local file, computed once in the deep pass and reused while size and modified time hold | The partial hash is cheap; the full hash must already exist for a file that later goes missing, or a move can't be confirmed. |
 | Full-hash time limit | None per file, but cancellable, resumable and run last at low priority | Hashing a large file on a slow external drive legitimately takes longer than the 60 s parse limit. |
-| Copy match | Same filename (extension included, ignoring case) + exact byte size, or matching fingerprints | Owner-approved: an identical name and size is the same file. Placeholders can't be hashed. |
+| Copy match | Full hashes match; or, when full hashes can't be compared, same filename (extension included, ignoring case) + exact byte size. Any disagreeing hash blocks it. | Owner-approved: an identical name and size is the same file when nothing contradicts it. Placeholders can't be hashed. |
 | Rating shrinkage | Prior weight = **median vote count for that source in this library**; prior mean = that source's mean in this library | Adapts to each source's audience size instead of guessing a constant. |
 | "Highly rated" | At or above the **70th percentile** of that source's shrunk scores in this library; with fewer than 30 rated items from that source, ≥ 80 / 100 instead | Star averages cluster near 4 / 5, so a fixed cut-off passes most books from one source and few from another. The fallback covers small libraries. |
 | Hidden gems | "Highly rated" (above), votes in the bottom 25% for that source, and at least 5 votes | Too few votes is noise, not a gem. |
