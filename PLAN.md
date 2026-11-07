@@ -1,8 +1,8 @@
-# whatBooksNext — Project Plan (v4)
+# whatBooksNext — Project Plan (v5)
 
 The handoff document for the AI agent starting this project in a new, empty repository. It is
-standalone: it replaces every earlier version (the original plan, the revised plan and v3), and you
-don't need any of them.
+standalone: it replaces every earlier version (the original plan, the revised plan, v3 and v4), and
+you don't need any of them.
 
 Read it all before writing code. It says what to build, in what order, and why — including decisions
 the owner has already made, so they don't get reopened.
@@ -14,6 +14,22 @@ tunable number lives in **§20 Starting values**, labelled as an assumption with
 ---
 
 ## 1. What changed
+
+### From v4 to v5
+
+From a fourth review, all approved by the owner. Mostly contradictions fixed and gaps closed.
+
+| Area | v5 change | Why |
+| --- | --- | --- |
+| **Copies across folders** | The same file on the hard drive and in iCloud (same filename + exact size, or matching fingerprints) is **one item with several files**, grouped automatically (§11.3). Moves use the same rule (§9.3). | The owner keeps copies in several places; under v4 every copy would have landed in Needs review. |
+| **Format groups** | Only a *known* language / abridgment / edition conflict blocks the same-folder rule; unknown never does. HD versions group with their standard version. Filename-only grouping starts in M1. | v4's "unknown language is different" made scenario 17 impossible (MOBI never reports a language). |
+| **Hashing** | Full hash computed for every present local file in the deep pass, cached, on its own time limit (§9.3, §20). | v4 asked for the full hash of a file that was already missing. |
+| **Series table** | `series` gets its own row and id (§7). | Publication status, order, gaps and one-per-series need a stable series, not a name string. |
+| **Highly rated** | Relative to each source's scores in this library (§12.2, §20). | One fixed threshold across sources contradicted "don't pool sources". |
+| **Public repo** | Real filenames, probe reports and quality-session notes stay out of git (§5). Licence: PolyForm Strict 1.0.0. | The repo is public; the owner's library and taste are private. |
+| **Zero-key is the main path** | The owner has no Hardcover account and most users won't either. The owner will make one at the start of M3 **when asked** (§21). Hardcover leaves the M0 probe. | Keeps M0 a pure Windows check. |
+| **Smaller rules** | iCloud attribute bits, re-check mechanism, worker memory, `stale` flag, "measured" length, reference in Still relevant?, undo order, restore = replace, dev-server and upload rules for local security, CI on Windows, default port, Read next size, Still relevant? order, session scope. | Each closed an ambiguity the review found. |
+| **Owner actions** | Listed in one place (§21) so the agent prompts for them. | The owner asked to be told when something is needed. |
 
 ### From v3 to v4
 
@@ -67,10 +83,9 @@ store's app (Kindle, Kobo, GlobalComix) are added by search or CSV so the rankin
 are always owned (or otherwise accessible) books. Buying or subscribing to fill a missing
 installment is the owner's choice; the app never ranks by it and has no shopping features.
 
-It is the sibling of **whatGamesNext** (`github.com/InvaderFry/whatGamesNext`), which does the same
-job for games. If you can read that repo, skim its `README.md` and `ROADMAP.md` for tone and habits.
-Copy patterns, not code — this is a new repo with no shared package. The games app was a starting
-point, not a template every name must match.
+It is a loose sibling of **whatGamesNext** (`github.com/InvaderFry/whatGamesNext`), which does the
+same job for games. That repo is background only — you don't need to read it, and nothing here
+depends on it. This project is its own thing; the habits worth keeping are written down in §5.
 
 ## 3. The owner
 
@@ -79,7 +94,9 @@ point, not a template every name must match.
 - **A few thousand files**: fiction, nonfiction, self-help, tech books, Western comics, manga,
   reference books. Many from Humble Bundle, so filenames are often run-together lowercase slugs.
 - **Storage:** an external drive that isn't always connected, and **iCloud Drive for Windows**
-  (some files downloaded, some online-only).
+  (some files downloaded, some online-only). **The same files often exist in both places**, and
+  sometimes in more. Often a book comes as an EPUB and a PDF with the same name; rarely there's also
+  an HD version.
 - **A handful of store-locked titles** in Kindle, Kobo and GlobalComix.
 - **No reading history to import** — but Goodreads and StoryGraph import must exist for other users.
 - **Updates progress on the PC** now and then. Phone access can wait for the Cloud release.
@@ -105,6 +122,8 @@ point, not a template every name must match.
 | **Same stack as whatGamesNext** | Express, better-sqlite3, React, Vite, TypeScript, npm workspaces. |
 | **Audience for v1** | The owner and other people comfortable installing Node and running one command. A double-click installer is on the roadmap. |
 | **Windows first** | Windows is supported and tested. Mac and Linux should mostly work through fallbacks but are untested in v1; proper support is on the roadmap. |
+| **Public repo, "look, don't reuse"** | The repo is public. Licence: **PolyForm Strict License 1.0.0**, copyright "InvaderFry" — people may read the code and run it for themselves, not change or redistribute it. `LICENSE` added in M1. The owner's library stays out of git (§5). |
+| **Restore replaces** | Restoring a backup replaces all app data, after a snapshot and a preview. No merging into existing data in v1 (§16). |
 
 Owner answers that shape the product (from the plan reviews):
 
@@ -122,12 +141,17 @@ Owner answers that shape the product (from the plan reviews):
 - **Recommendation check:** the owner will do a ~20-minute session judging real picks after M3 and
   again at M6 (§17.2).
 - **Hardcover:** shown as **Recommended** (optional, skippable) in setup — but only after it's been
-  verified to work for this use (§12.1).
+  verified to work for this use (§12.1). The owner has **no account today**, and most new users
+  won't either, so **the zero-key experience is the main path**, not a fallback. The owner will
+  create a free account at the start of M3 for the check — **tell them when** (§21).
 - **Milestone 0 probe:** the owner will run it if needed. It must work without any AI involved.
+- **Copies:** the same filename with the exact same size in two places is the same file, grouped
+  without asking (§11.3).
+- **Tell the owner when they need to do something** (§21 lists every owner action).
 
 ## 5. How to work on this codebase
 
-Carried over from whatGamesNext, where each was learned the hard way.
+Habits learned the hard way on whatGamesNext.
 
 - **Keep the architecture plain.** No ORM, no state library, no CSS framework, no router; URL state is
   a small helper. Add a dependency only when it clearly earns itself, and say why in the commit.
@@ -146,7 +170,22 @@ Carried over from whatGamesNext, where each was learned the hard way.
   use, accessible names, light/dark, and reduced motion.
 - **Measure claims.** "Faster" needs a benchmark and a number, with the dataset and machine stated.
   Synthetic benchmarks don't prove real-drive performance.
-- **CI** runs `npm test`, `npm run typecheck`, `npm run lint`, `npm run format:check` on every push.
+- **CI** runs `npm test`, `npm run typecheck`, `npm run lint`, `npm run format:check` on every push,
+  on **both Ubuntu and Windows** (at least `npm test` on Windows) — Windows is the only supported
+  platform, and paths and native modules break there first.
+
+### Keep the owner's library out of the public repo
+
+The repo is public. Nothing that reveals the owner's library or taste is committed:
+
+- **Real filenames** live in `fixtures/private/` (gitignored). Committed fixtures use **invented**
+  names that copy the real patterns. CI measures accuracy on the invented set; `npm run
+  report:matches` also runs on the private set when it's present, on the owner's machine or yours.
+- **The M0 probe report** is shared in chat, never committed. Milestone notes keep a summary without
+  titles (counts, attribute patterns, filename shapes).
+- **Quality-session notes** (§17.2) go in `docs/private/` (gitignored). Only a title-free summary of
+  findings is committed.
+- Screenshots, benchmarks and bug reports use the demo library, never the owner's.
 
 ### What you can't test in your sandbox
 
@@ -176,19 +215,27 @@ whatBooksNext/
     routes/
   web/
   fixtures/    generated EPUB/CBZ/PDF files, recorded API responses, filename cases
+    private/   (gitignored) the owner's real filenames
+  docs/private/ (gitignored) quality-session notes
+  tools/probe/ whatbooks-probe.bat (M0)
   data/        (gitignored) database, covers/, snapshots/
   start-whatBooksNext.bat
+  LICENSE      PolyForm Strict 1.0.0
 ```
 
-- **Node:** the range better-sqlite3 ships native builds for — check whatGamesNext's `package.json`
-  and the current release.
+- **Node:** the current LTS line that better-sqlite3 ships prebuilt binaries for on Windows —
+  **verify** against its latest release, and pin it in `engines`.
+- **Port:** default **4818** (unlikely to clash with common dev tools), overridable
+  with `PORT`. The start script checks it's free.
 - **Heavy work off the main thread.** Archive and PDF parsing, word counting, hashing and thumbnails
   run in a small `worker_threads` pool so the UI stays responsive during a scan.
 - **Bound every file's processing** — time, uncompressed archive size, compression ratio, image
   dimensions (§20). A corrupt or malicious file is recorded in Library health and skipped; it never
   stalls the scan.
-- **Cap the pool and each worker's memory** (`worker_threads` `resourceLimits`, §20), so a few huge
-  PDFs at once can't exhaust the PC.
+- **Cap the pool and each worker's memory** (§20), so a few huge PDFs at once can't exhaust the PC.
+  `worker_threads` `resourceLimits` only caps the JavaScript heap — not image buffers, sharp/libvips,
+  canvas or WASM memory. So also turn off sharp's cache and limit its concurrency, enforce the
+  per-file limits *before* decoding, and process one large file per worker at a time.
 - **Archives are read in memory or as streams, never extracted to disk**, and entry names are never
   used as file paths.
 
@@ -215,7 +262,11 @@ send requests to `127.0.0.1`, including the route that opens files. So:
   blocks DNS-rebinding attacks.
 - **State-changing requests** (POST/PUT/PATCH/DELETE) must send `Content-Type: application/json`,
   which forces a browser preflight. Reject them if an `Origin` header is present and isn't the app's
-  own. Send no CORS headers, ever.
+  own. Send no CORS headers, ever. GET requests never change anything.
+- **File uploads** (backup restore, CSV import) are read in the browser and sent **as JSON**, never
+  as `multipart/form-data` — a multipart POST skips the preflight these rules rely on.
+- **In development only**, the allowed `Host`/`Origin` list also includes the Vite dev server's
+  port, because its proxy forwards the browser's headers. Production allows only the app's own port.
 - Open and Show in folder are POST-only and take ids, never paths (§14).
 - **Text from files and outside sources is untrusted.** Show descriptions as plain text, or clean
   them with a maintained HTML sanitizer that keeps only a small allowlist (paragraphs, line breaks,
@@ -247,8 +298,9 @@ A sketch — refine as you build, but keep these distinctions.
 | --- | --- |
 | `folders` | Display path, **volume identity**, path relative to the volume, last-known drive letter, storage kind (`local` / `external` / `cloud`), last seen, **last complete scan**. |
 | `directory_scans` | For each directory, when it was last **completely** listed. Drives the missing-file rule (§9.3). |
-| `files` | Folder, relative path, size, created and modified times, format, partial and (when computed) full hash, **availability** (`present` / `placeholder` / `unknown` / `missing`), processing stage + version, last seen. **Edition details:** language, abridged flag, edition note, and the file's own word count / page count. |
-| `items` | The thing you'd recommend: a book, collected edition, manga volume, or comic series run. UUID, kind, reference flag, title, creators, series + position, publication year, identifiers, and the ranking fields (rating, rating count, length, effort), each with **the source that supplied it**. |
+| `files` | Folder, relative path, size, created and modified times, format, partial and (when computed) full hash, **availability** (`present` / `placeholder` / `unknown` / `missing`), a separate **`stale`** flag (its directory wasn't completely listed in the latest scan, §9.3), processing stage + version, last seen. **Edition details:** language, abridged flag, edition number, quality tag (e.g. HD), edition note, and the file's own word count / page count. |
+| `series` | A series with its own UUID: name, kind, **publication status** (finished / ongoing / unknown), number of installments when a source states it, source ids, which source supplied the order, `updated_at`. One series can hold collected editions *and* an issue run of the same story, so one-per-series treats them together. |
+| `items` | The thing you'd recommend: a book, collected edition, manga volume, or comic series run. UUID, kind, reference flag, title, creators, **series id** + position, publication year, identifiers, and the ranking fields (rating, rating count, length, effort), each with **the source that supplied it**. |
 | `item_files` | Which files belong to an item, and which one is primary. |
 | `issues` | For a series run: issue **label** (string — "1", "1.5", "Annual 1", "0") and a separate **sort key**, per-issue read state and date, files. |
 | `collection_coverage` | For a collected edition: the series run it collects and issue ranges, with state `suggested` or `confirmed`. |
@@ -291,8 +343,8 @@ A sketch — refine as you build, but keep these distinctions.
 ### 9.1 Formats
 
 - **Deep-scanned:** `.epub`, `.pdf`, `.cbz`, `.cbr`.
-- **Light-scanned only:** `.mobi`, `.azw3`, `.cb7` — listed, parsed by filename, and *suggested* for
-  grouping with a sibling file.
+- **Light-scanned only:** `.mobi`, `.azw3`, `.cb7` — listed, parsed by filename, and grouped with
+  same-named sibling files by the normal rules (§11.3). Their unknown language never blocks that.
 - Anything else is ignored; the scan summary reports counts by type.
 
 ### 9.2 Two passes
@@ -301,7 +353,8 @@ A sketch — refine as you build, but keep these distinctions.
    (§9.5) **without reading file contents**. The filename parser (§11.1) runs here, so even
    online-only files get a useful guess.
 2. **Deep pass** — only files confirmed `present`. Reads metadata (§10), counts words and pages,
-   makes a thumbnail, computes the partial hash.
+   makes a thumbnail, computes the partial hash, and — last, at low priority, on its own time limit
+   (§20) — the **full hash**. Both hashes are reused while size and modified time are unchanged.
 
 Each file records which processing stages have run and at which version. A stage is skipped only if
 it completed at the current version. **A file that changes from `placeholder` to `present` gets a
@@ -314,14 +367,20 @@ parser improves.
   as empty.
 - A file becomes `missing` **only if its own directory was completely listed in this scan and the
   file wasn't there.** A reachable root isn't enough: a drive unplugged halfway, an access error or a
-  cancelled scan leaves the unlisted directories' files exactly as they were (marked stale), never
+  cancelled scan leaves the unlisted directories' files exactly as they were (flagged `stale`), never
   missing.
-- Missing files **keep all user data**, and become `present` again if they return.
-- **Moves are matched cautiously.** A new file whose size and partial hash match a missing one is a
-  *candidate* move. Transfer history automatically only when the full hash also matches (computable
-  when both are local) or the old file's stored evidence is otherwise conclusive; otherwise send it to
-  Needs review. A similar name alone never moves history.
-- **Two present copies are duplicates, not a move.** Suggest them in Needs review.
+- Missing files **keep all user data**, and become `present` again if they return. If an item still
+  has other copies (§11.3), losing one copy changes nothing else.
+- **Moves** (a missing file, and a new file elsewhere) use the same evidence as copies, compared on
+  whatever both sides have — placeholders were never read, so they have no hashes:
+  - **Transfer automatically** when the full filename (with extension, ignoring case) and exact size
+    match and no hash disagrees; or, for a renamed file, when size and **full** hash match.
+  - **Send to Needs review (tier 1)** when only size + partial hash match under a different name, or
+    when a hash disagrees. Tier 1 offers "confirm all like this" with a preview, for reorganised
+    folders.
+  - A similar name alone never moves history.
+- **Two present copies are one item with two files** (§11.3), not a move and not a duplicate to
+  review.
 - Overlapping folders, symlinks and Windows junctions are listed once, with loop protection.
 
 ### 9.4 Drive letters change
@@ -338,9 +397,14 @@ for a folder in one batch through the Windows adapter (e.g. PowerShell `Get-Chil
 with `Attributes`). Treat `RecallOnDataAccess`, `RecallOnOpen` or `Offline` as **placeholder**, and
 any failure to read attributes as **unknown**.
 
+- **Test the bits, not the names.** .NET's `FileAttributes` enum has no names for the recall
+  attributes, so PowerShell prints such files' attributes as a bare number. Cast to an integer and
+  test `0x00400000` (RecallOnDataAccess), `0x00040000` (RecallOnOpen) and `0x00001000` (Offline).
 - **One guard in front of every content reader** (metadata, hashing, thumbnails, PDF rendering).
   Placeholder or unknown → no read.
-- **Re-check just before reading**, not only at scan time.
+- **Re-check just before reading**, not only at scan time. Starting PowerShell costs about a second,
+  so never start one per file: keep **one long-lived helper process** that takes paths on stdin and
+  returns attributes, and re-check each directory in one batch just before its files are processed.
 - **Open on a placeholder asks first:** "This file is in iCloud and will download when opened. Open
   anyway?"
 - **Needs checking on the owner's machine** with a real online-only file, including what happens when
@@ -349,7 +413,8 @@ any failure to read attributes as **unknown**.
 
 ### 9.6 Cancel and resume
 
-Scans and lookups can be cancelled; they stop after the current file. Progress is saved per file and
+Scans (light and deep) and lookups can be cancelled; they stop after the current file. Cancelling
+the light pass exists from M1. Progress is saved per file and
 stage (scan) and per item (lookups), so the next run skips completed work and retries failures. A
 worker that exceeds its time limit is stopped and the file recorded as failed. Show counts, and an
 estimate only once there's enough progress for it to mean something.
@@ -384,7 +449,9 @@ folder.
 
 ### 11.1 Filename parser
 
-- Strip the extension, bracketed release/scanner tags and `(Digital)`. Pull out volume (`vol1`,
+- Strip the extension, bracketed release/scanner tags and `(Digital)`. Recognise **quality tags**
+  (`HD`, `_hd`, `(HQ)`, `hi-res`, `highres`) — record them on the file and ignore them when comparing
+  names, so an HD version groups with its standard version. Pull out volume (`vol1`,
   `v01`, `Vol. 1`), issue (`001`, `#1`), year (`(2012)`) and `Author - Title` / `Title - Author`
   patterns (ambiguous — keep both candidates).
 - **Run-together names:** keep the raw form *and* try a word-frequency split
@@ -405,8 +472,10 @@ Fixture table to grow (add the owner's samples after M1):
 | `Saga 001 (2012) (Digital) (Zone-Empire).cbz` | series "Saga", issue 1, year 2012 |
 | `Berserk v01 (2003).cbz` | series "Berserk", volume 1, year 2003 |
 | `Clean Code - Robert C. Martin.pdf` | title "Clean Code", author "Robert C. Martin" |
+| `saga_vol1_hd.cbz` | series "saga", volume 1, quality HD |
 
-Keep some examples **held out** from tuning, so the match report measures real accuracy.
+Keep some examples **held out** from tuning, so the match report measures real accuracy. Further real
+filenames from the owner go in `fixtures/private/`, never in this committed table (§5).
 
 ### 11.2 Matching and confidence
 
@@ -429,43 +498,72 @@ stays provisional and Needs review shows both.
 
 ### 11.3 Grouping
 
-- **Same folder + same base name + different formats → grouped automatically**: one item, several
-  files, an available EPUB as primary. This is how Humble and most stores deliver one book in several
-  formats; sending every trio to review would bury the queue.
-- Elsewhere (different folders or names), files are grouped automatically only when a corroborated
-  identifier matches on both. Otherwise it's a suggestion in Needs review.
-- **Files that differ in language, abridgment or edition number are never merged automatically**,
-  even under the format-trio rule. They become separate items unless the owner merges them. Each file
-  keeps its own length, and the item uses its primary file's length.
-  - **Unknown language** counts as different from a known one (suggest, don't merge). Two unknowns
-    don't block grouping.
-  - **A revised edition** (a tech book's 2nd vs 3rd edition) is a separate item. If the owner has the
-    newer one, "Still relevant?" suggests Never for the older.
+Rules, in order. All of them chain: if `book.epub` and `book.pdf` sit together on the hard drive
+and copies of both sit in iCloud, all four files end up on one item.
+
+1. **Copies → grouped automatically.** Two files in different folders with the **same filename
+   (extension included, ignoring case) and exact same size**, or matching fingerprints when both
+   have been read, are the same file: one item, several files, no review. Placeholders can only be
+   compared by name and size, because they're never read. `book.epub` and `book.pdf` are never
+   copies of each other — the format rule handles them.
+2. **Format group → grouped automatically.** Same folder + same base name (after removing quality
+   tags) + different format or quality → one item, several files. This is how Humble and most stores
+   deliver one book (EPUB + PDF + MOBI, sometimes an HD version); sending every set to review would
+   bury the queue. **Only a known conflict blocks it:** two different *known* languages, different
+   abridged flags, or different edition numbers. Unknown never blocks here — MOBI files and many
+   PDFs never report a language.
+3. **Same base name, different folders, different format or size** (an EPUB here, only a PDF there;
+   or a re-issued file with a new size) → a **suggestion** in Needs review, tier 4, with "confirm all
+   like this".
+4. **Anything else** groups automatically only when a corroborated identifier matches on both.
+   Otherwise it's a suggestion.
+
+Editions:
+
+- **Files that differ in language, abridgment or edition number are never merged automatically.**
+  They become separate items unless the owner merges them. Each file keeps its own length, and the
+  item uses its primary file's length. Outside a format group, an unknown language next to a known
+  one is a suggestion, not a merge.
+- **A revised edition** (a tech book's 2nd vs 3rd edition) is a separate item. If the owner has the
+  newer one, "Still relevant?" suggests Never for the older.
+- **Grouping by name starts in M1** (rules 1–2 on name and size only). When the M2 deep pass finds a
+  known conflict inside a group, it splits the group automatically if the item has no owner data
+  yet; otherwise it lists it in Needs review, tier 1, and it stays grouped until the owner splits it.
+
+**Primary file** (what Open uses and whose length counts): a present file before a placeholder
+before a missing one; then EPUB for prose, the HD version for comics, then other formats.
+
 - A file and a store copy of the same work → one item, two locations.
 
 ### 11.4 Needs review
 
-Lists provisional and unidentified items, guessed kinds, uncertain PDF types, duplicate candidates,
-and candidate moves. Each row shows the raw filename, embedded metadata, the chosen candidate and
-any conflicting fields. Actions:
+Lists provisional and unidentified items, guessed kinds, uncertain PDF types, cross-folder grouping
+suggestions (§11.3 rule 3), and candidate moves. Each row shows the raw filename, embedded
+metadata, the chosen candidate and any conflicting fields. Actions:
 
 - **Search and pick**, **Confirm**, **Not this one** (recorded in `candidates_rejected` — never
   re-accepted), **Leave unidentified**, **Fix kind / reference / PDF type**.
 - **Merge** and **Split** with a preview **of conflicts only** — e.g. "one is *Halfway*, the other
   *Finished*: keep which?"; for a split, which files, issues and user data go where. Completed
   reading is never credited twice.
-- **Undo** steps back through the last 20 merges/splits (`operations` table). Undo is offered only if
-  the affected items haven't been edited since (progress, rating, note, triage…). If they have, it
-  offers a **Split** with preview instead, so the owner decides where the later edits go — nothing is
-  silently lost. Other edits have no undo history.
+- **Undo** works on any of the last 20 merges/splits (`operations` table), not only the newest. Undo
+  is offered only if the affected items haven't changed since — edited (progress, rating, note,
+  triage…) or touched by a later merge/split. If they have, it offers a **Split** with preview
+  instead, so the owner decides where the later changes go — nothing is silently lost. Other edits
+  have no undo history.
 - **Defer** (hide until a date) and **Dismiss** (accept as is) for anything low-value.
 
 **Order and load.** The queue is tiered, with a count per tier, and works top-down:
 
-1. **Could damage history:** candidate moves, merge conflicts.
+1. **Could damage history:** candidate moves, merge conflicts, groups where the deep pass found a
+   conflict.
 2. **Conflicting identity:** tied candidates, provisional matches with conflicting fields.
 3. **Unidentified items that matter now:** shortlisted, in progress, or appearing in recommendations.
-4. **Everything else:** guessed kinds, uncertain PDF types, optional improvements.
+4. **Everything else:** guessed kinds, uncertain PDF types, cross-folder grouping suggestions,
+   optional improvements.
+
+Rows of the same type offer **"confirm all like this"** with a preview, so a reorganised folder or a
+batch of re-issued files is one decision, not hundreds.
 
 Review never blocks recommendations. Tier 4 is collapsed by default.
 
@@ -493,7 +591,7 @@ its adapter.**
 
 | Source | Used for | Access (last known — verify) |
 | --- | --- | --- |
-| **Open Library** | Book search, ISBN, subjects, covers, first publication year | No key. Descriptive User-Agent; about 1 request/second. |
+| **Open Library** | Book search, ISBN, subjects, covers, first publication year | No key. Descriptive User-Agent; about 1 request/second. Cover lookups by ISBN/OLID had a much tighter limit (about 100 per 5 minutes per IP) — **verify**, and prefer covers from the files themselves. |
 | **AniList** | Manga: score, tags, genres, volumes, publication status, reading direction | No key. GraphQL. Per-minute limit (90 nominal, lowered to 30 at times) — obey the response headers. |
 | **Google Books** | Fallback search, ISBN, categories, page counts | Works without a key at low volume. |
 | **Hardcover** | Book ratings + counts, series, genres | Free token from the user's account. GraphQL, labelled beta — expect changes. |
@@ -505,10 +603,14 @@ its adapter.**
 **Hardcover is shown as "Recommended" in first-run setup** — optional and skippable — because
 keyless book ratings are thin. Before showing it that way, **verify** that the token works, that the
 API returns what we need (ratings, rating counts, series order), that its rate limits suit a few
-thousand books, and that its terms allow this personal use. Do this in M0 if the owner already has an
-account, otherwise at the start of M3. If it isn't usable, say so plainly and drop the
-"Recommended" label. Diagnostics shows every source's status ("Hardcover: connected", "ComicVine:
-no key").
+thousand books, and that its terms allow this personal use. Do this **in M3**: the owner has no
+account yet and will create a free one at the start of M3 — **ask them to** (§21). Never ask for the
+token in chat. You check the docs and terms yourself; build the adapter against them, then have the
+owner enter the token in Settings on their PC and run Diagnostics' **Test Hardcover** check (a few
+real lookups from their library, with what came back and the rate-limit headers), and share its
+copied report. If it isn't usable, say so plainly and drop the "Recommended" label. Most users won't
+have an account, so every screen must read well without it. Diagnostics shows every source's status
+("Hardcover: connected", "ComicVine: no key").
 
 **Data coverage by kind.** Stats and Needs review show how much of each kind has a rating, a length
 and series information (e.g. "Novels: 62% rated · Comics: 3% rated"), so the owner can see where
@@ -518,9 +620,13 @@ keys.
 ### 12.2 Ratings
 
 - Store each source's raw score, vote count and scope (book / volume / series).
-- Normalise to 0–100, then shrink toward **that source's own average** in proportion to how few votes
-  there are (Bayesian average; constants in §20). Don't pool sources into one average — a 4.0 on one
-  site doesn't mean the same as 80 on another.
+- Normalise to 0–100 linearly (`score ÷ scale maximum × 100`, so 4.0 of 5 → 80; AniList is already
+  0–100), then shrink toward **that source's own average** in proportion to how few votes there are
+  (Bayesian average; constants in §20). Don't pool sources into one average — a 4.0 on one site
+  doesn't mean the same as 80 on another.
+- **"Highly rated" is relative to the source** (§20): a high percentile of that source's shrunk
+  scores in this library, because star averages cluster near 4 and a fixed cut-off would pass most
+  books from one source and few from another.
 - **Your rating and the community rating are shown separately.** Your rating, when present, is what
   the ranking uses.
 - Community rating preference: Hardcover → AniList → Google Books → Open Library, where the scope
@@ -533,10 +639,11 @@ keys.
   **No word count:** pages × assumed words per page, marked rough. **No page count:** unknown.
 - Store a **range** (low–high), the basis ("from 84,000 words"), and the unit (whole book / volume /
   issue). Never apply a series' length to one installment.
-- **What counts as a fit** for "Finish within" and One-sitting reads: the length is **measured** (a
-  word or page count from the file itself) **and** the high end of its range is within the budget.
-  Lengths from a source's page count × assumed words per page are always **rough** and only appear
-  under "might fit".
+- **What counts as a fit** for "Finish within" and One-sitting reads: the length is **measured**
+  **and** the high end of its range is within the budget. Measured means a **word count** from the
+  file for prose, or a **page count** from the file for comics and manga. Any length built from
+  pages × assumed words per page — from a source or from a PDF with no text layer — is always
+  **rough** and only appears under "might fit".
 - The ±20% range is an **assumed spread**, not a measured confidence. Never present it as one.
 - **Remaining time** for an in-progress book comes from its progress bucket and is always labelled
   rough.
@@ -557,8 +664,8 @@ difficulty, so treat the result as rough. Owner overrides win.
 - **Gaps** distinguish: not owned, read elsewhere, covered by a confirmed collection, possibly
   covered (suggested collection — "Gap may be covered by *Saga Vol. 1*. Confirm?"), file
   unavailable, and order unknown.
-- **Publication status** (finished / ongoing / unknown) is separate from what you own: owning every
-  released volume doesn't mean the story is complete.
+- **Publication status** (finished / ongoing / unknown) is stored on the series (§7) and is separate
+  from what you own: owning every released volume doesn't mean the story is complete.
 
 **Collections and issues share reading state:**
 
@@ -579,7 +686,8 @@ difficulty, so treat the result as rough. Owner overrides win.
 Applied before scoring and before one-per-series selection. **Excluded:** Never, hidden, DNF (until
 restored), history-only, and finished items (including collections read "via issues", §12.5). A
 series with unread owned installments stays eligible.
-Reference items appear only in Skim and topic-interest results.
+Reference items appear only in Skim, topic-interest results and **Still relevant?** (which reviews
+tech books whether or not they're reference).
 
 **Availability labels:** "On external drive (not connected)", "In iCloud (not downloaded)", "In
 Kindle". These items **stay eligible**. The **Ready to read** filter keeps only items with a present
@@ -680,7 +788,7 @@ positive reason.
 | --- | --- |
 | Already read | Marks it read (date unknown unless given). |
 | Wrong book | Sends it to Needs review, tier 2. |
-| Not in the mood | Hides it for this session (like Surprise me's Not today). |
+| Not in the mood | Hides it for this session (like Surprise me's Not today). A **session** lasts until the browser tab is closed (kept in `sessionStorage`); nothing is saved as dislike. |
 | Not interested | Offers **Never**. |
 | Other | Free text. |
 
@@ -696,14 +804,14 @@ rerolls.
 
 | Mode | Rule |
 | --- | --- |
-| **Read next** | The blend (§13.7) with the time control. Shows a manageable set, not the whole library. |
+| **Read next** | The blend (§13.7) with the time control. Shows a manageable set (§20), with "Show more", not the whole library. |
 | **Continue reading** | In-progress items. **Shortlisted ones first, in shortlist order** (the owner's explicit choice beats the app's inference), then **Nearly done**, Halfway, Into it, Sampled; within each, most recently touched first. |
 | **Next in series** | The next eligible owned installment of each series you've started; an unfinished earlier one first. Gaps warn, never block. |
 | **One-sitting reads** | Whole works or single installments that **confidently** fit the Finish-within budget (default 2 h). Rating helps but isn't required. Labelled installment vs standalone. |
 | **Waiting on your shelf** | Highly rated, not started, not reference, waiting longest. Uses the acquired date (§13.7), labelled with where it came from. Ties broken by rating. |
 | **Hidden gems** | Positive community rating with few votes *for that source* (§20). Missing data is not obscurity. |
 | **Classics you missed** | Highly rated, not started, first published 25+ years ago. The description states the rule. |
-| **Still relevant?** | A **review list** for tech books: topic interests, version-specific titles ("React 16"), age, and reference use. Actions: Want / Mark as reference / Never / Decide later. Old fundamentals aren't treated as stale. |
+| **Still relevant?** | A **review list** for tech books not yet decided here. Order: version-specific titles ("React 16") first, then books outside your topic interests, then oldest first. Shows the signals (version, age, topic match, reference use) as context; it never decides for you. Actions: Want / Mark as reference / Never / Decide later. Old fundamentals aren't treated as stale. |
 | **Mood** | Escape (fiction, comics, manga) / Learn (nonfiction, tech, self-help) / Skim (short items and reference). Re-weights rather than filters. |
 | **Surprise me** | A random pick from the top 50 of Read next, weighted toward the top but not dominated by it (§20). Reroll, no immediate repeats, and **Not today** (for this session only — not dislike). |
 
@@ -751,7 +859,7 @@ honest empty state. Never loosen eligibility just to fill the screen.
 | **Triage** | §13.5. |
 | **Shortlist** | §13.9. |
 | **Needs review** | §11.4 tiers and actions, match quality header (§11.5), data coverage by kind (§12.1), Library health. |
-| **Library health** | Unreadable or corrupt files, scanned PDFs with no text, duplicate candidates, ignored formats — errors kept apart from merely incomplete metadata. |
+| **Library health** | Unreadable or corrupt files, scanned PDFs with no text, copy counts across folders (informational), ignored formats — errors kept apart from merely incomplete metadata. |
 | **Stats** | Data coverage by kind (rated / length known / series known), backlog count and estimated hours by kind (with **how much of the backlog has a known length**), finishes per year, this year vs last, read rate by kind and by folder (denominators stated), DNF reasons, Never totals, your ratings, taste signals, match summary, takeaways. |
 | **Settings** | Folders (last seen, last complete scan, Scan now, Reconnect), stores and imports, API keys, reading speeds and time presets, topic interests, Tune, backups, Diagnostics. |
 | **Diagnostics** | Plain-language checks any user can run: each folder's drive found (and as which letter), iCloud online-only files detected correctly (counts by state), Open works on a chosen file, each source's status and last error, database version and last snapshot, Node version. **Copy report** gives plain text with no API keys; filenames are included only if the user ticks a box. This page grows out of the Milestone 0 probe. |
@@ -763,15 +871,18 @@ Never and reference items are left out of backlog totals but stay in the Library
 
 ## 16. Backup and restore — from M1
 
-- **JSON backup** of everything except book files, covers and secrets: items, files, issues,
+- **JSON backup** of everything except book files, covers and secrets: series, items, files, issues,
   coverage, locations, user data, aliases, cached field sources, settings. Versioned; extended as
   each milestone adds tables.
-- **Restore into an empty app without rescanning or connecting any drive** — store-only,
-  history-only and unavailable-file items come back with their original ids.
+- **Restore replaces all app data** — it never merges into what's there. It works without
+  rescanning or connecting any drive: store-only, history-only and unavailable-file items come back
+  with their original ids. Before applying, preview what will be replaced (counts, and anything
+  changed since the backup was made).
 - Later scans **reconnect files cautiously** (same rules as moves, §9.3). Anything unresolved stays
   unresolved; nothing is lost. Fuzzy titles never reattach progress.
-- Validate the file before applying, preview conflicts with existing data, apply in one transaction
-  after a pre-restore snapshot. **Test that a corrupt restore rolls back.**
+- Validate the file before applying, apply in one transaction after a pre-restore snapshot (kept
+  apart from the pre-migration snapshots, so neither pushes the other out). **Test that a corrupt
+  restore rolls back.**
 - **Full local snapshot** = database snapshot + cached covers. **CSV export** is for spreadsheets,
   not a complete backup.
 - The export states that API keys and book files are not included.
@@ -785,7 +896,8 @@ Never and reference items are left out of backlog totals but stay in the Library
   third-party file only after checking that specific file's licence.
 - Provider fixtures come from **recorded real responses**; fictional demo works may use clearly
   labelled synthetic data. Never invent ids, ratings or claims about real works.
-- The demo must include: one book in several formats, two editions that must stay separate (a
+- The demo must include: one book in several formats (including an HD comic next to its standard
+  version), the same files in two folders (one copy online-only), two editions that must stay separate (a
   translation), a comic run with a gap and a collection covering it (one suggested, one confirmed),
   manga volumes, text / comic / scanned / uncertain PDFs, placeholder / unknown / missing files,
   ambiguous matches, store titles, history items, and enough rated/finished/DNF history for taste
@@ -812,7 +924,7 @@ Never and reference items are left out of backlog totals but stay in the Library
 12. Placeholder and unknown files never reach a content reader (asserted with fakes; real behaviour
     checked on Windows).
 13. A merge shows conflicting user data, and undo restores the exact prior state — including after
-    several later merges.
+    several later merges of other items.
 14. Backup → empty app → restore recovers everything without drives; a later scan reconnects files
     without changing item ids.
 15. Two languages of the same book are never merged automatically.
@@ -829,6 +941,12 @@ Never and reference items are left out of backlog totals but stay in the Library
     time fit, triage, momentum and taste.
 23. A book description containing HTML and a `<script>` tag displays safely as text.
 24. A tech book's 2nd and 3rd editions are never merged.
+25. The same EPUB and PDF on the external drive and in iCloud (online-only) become one item with four
+    files and nothing in Needs review; Open uses a downloaded copy; unplugging the drive leaves the
+    item labelled "In iCloud (not downloaded)" with its progress intact.
+26. `book.epub` in one folder and `book.pdf` in another are suggested as one item, never grouped
+    silently; an HD and a standard CBZ of the same issue in one folder group automatically, with the
+    HD file as primary.
 
 ### 17.2 Recommendation quality sessions (with the owner)
 
@@ -841,8 +959,9 @@ hundred items):
 2. For each, record whether **the top 5 include something the owner would actually start this
    week**, what had to be corrected first, and why the rest were rejected (the `pick_feedback` log
    captures most of this).
-3. Write the results to `docs/quality-sessions.md`, then decide what to fix: matching, data
-   coverage, weights or modes.
+3. Write the full results to `docs/private/quality-sessions.md` (gitignored — it names the owner's
+   books), and a **title-free summary** of findings to `docs/quality-summary.md` (committed). Then
+   decide what to fix: matching, data coverage, weights or modes.
 
 **Target** (the owner's judgement, not a metric): in at least 4 of 5 situations, the top 5 hold
 something they'd start this week. A miss is a finding to act on, not a test failure to argue with.
@@ -863,16 +982,20 @@ inside). It needs no AI to run and its report is plain English, so anyone can us
 - Asks the owner to name 2–3 files they know are online-only in iCloud. Reads **only their
   attributes**, then confirms they are still online-only afterwards — evidence that reading
   attributes doesn't trigger a download.
+- Reports raw attribute **numbers** as well as decoded flags (§9.5), so the bit tests can be checked
+  against real files.
+- Reports how many filenames appear in more than one folder with the same size (copies, §11.3), and
+  how many share a base name with a different extension or a quality tag.
 - Optionally lists a random sample of up to 300 filenames (names only). The owner can edit them
   before sharing.
-- Optionally takes a Hardcover token, makes one test query, and reports what came back. The token is
-  never saved.
 - **Never opens file contents, never writes anywhere except its own report file**, which goes next to
-  the script, never into a library folder.
+  the script, never into a library folder. Runs PowerShell with `-NoProfile -ExecutionPolicy Bypass`
+  for this script only, and says so at the top of the `.bat`.
+- Lives in `tools/probe/`. The owner shares the report in chat; it's never committed (§5).
 
 **Done when:** the owner has run it and shared the report; the platform fakes and filename fixtures
-are updated to match it; and the plan's Windows assumptions (§9.4, §9.5) are confirmed or corrected
-in the milestone notes.
+(private ones in `fixtures/private/`) are updated to match it; and the plan's Windows assumptions
+(§9.4, §9.5, §11.3 copies) are confirmed or corrected in the milestone notes.
 
 ### M1 — Library and tracking
 
@@ -880,9 +1003,13 @@ in the milestone notes.
   `start-whatBooksNext.bat` (checks the Node version and that the port is free, and says what to do
   if not).
 - Migrations with consistent snapshots (§6.2).
-- Folders, Windows adapters with fakes (volumes, attributes, launching), **light pass** with the
-  directory-coverage missing rule and placeholder detection.
-- Filename parser with fixtures.
+- `LICENSE` (PolyForm Strict 1.0.0) and the `.gitignore` entries for `data/`, `fixtures/private/`
+  and `docs/private/` (§5).
+- Folders, Windows adapters with fakes (volumes, attributes via the long-lived helper, launching),
+  **light pass** with the directory-coverage missing rule, placeholder detection and cancel.
+- Filename parser with fixtures, including quality tags.
+- Grouping by name and size: copies and format groups (§11.3 rules 1–2), so items are right before
+  the owner adds progress to them.
 - Library and item detail; manual title/kind corrections.
 - Progress, DNF reasons, dates with precision, rating, note; shortlist; Open / Show in folder.
 - JSON backup and restore without rescanning, with the backup-coverage test (§16). Demo mode.
@@ -892,23 +1019,26 @@ in the milestone notes.
 back up → restore into an empty app with no folders connected, all intact. An unreachable folder is
 skipped, not emptied. Scenarios 10, 14 (light-pass level) and 21 pass.
 
-**After M1:** if the M0 sample was thin, ask the owner for more real filenames; add them to fixtures
-and held-out examples.
+**After M1:** ask the owner for more real filenames — especially HD versions and EPUB/PDF pairs — and
+add them to `fixtures/private/` and its held-out examples.
 
 ### M2 — Deep scan and file identity
 
 - EPUB / CBZ / CBR / PDF readers; thumbnails, word and page counts; PDF type with "uncertain".
 - Worker pool with limits; the single content-read guard with re-check; placeholder → present
   transitions.
-- Partial/full hashing, cautious move handling, duplicates, format grouping with the edition rule.
-- Cancel/resume, per-folder scan reminder, Library health.
+- Partial/full hashing, moves (§9.3), copies by fingerprint, the edition/language conflict check
+  on groups made in M1, cross-folder suggestions.
+- Deep-pass cancel and resume, per-folder scan reminder, Library health.
 
-**Done when:** scenarios 11, 12, 15, 17 and 24 pass; a confirmed move keeps progress, an ambiguous
-one goes to review; resuming skips completed stages; benchmark numbers recorded.
+**Done when:** scenarios 11, 12, 15, 17, 24, 25 and 26 pass; a confirmed move keeps progress, an
+ambiguous one goes to review; resuming skips completed stages; benchmark numbers recorded.
 
 ### M3 — First real recommendations
 
 - Source adapter interface, `source_cache`, rate limits, circuit breakers.
+- **First, ask the owner to create a free Hardcover account** (§21). Build the adapter, then have the
+  owner enter the token in Settings and run Diagnostics' Test Hardcover check (§12.1).
 - **Open Library and AniList** (keyless baseline), and **Hardcover** once verified (§12.1), shown as
   Recommended in setup.
 - Matching and confidence (including ties); tiered Needs review with search/pick/confirm/reject,
@@ -955,7 +1085,7 @@ precision; no unowned gap is ever recommended.
   **"If it won't start"** (wrong Node version, port in use, failed migration and which snapshot to
   restore).
 
-**Done when:** all 24 scenarios pass; **the owner's second quality session (§17.2)** meets its target
+**Done when:** all 26 scenarios pass; **the owner's second quality session (§17.2)** meets its target
 or its misses are understood and scheduled; a stranger can install and use it from the README; every
 Windows behaviour is either confirmed on the owner's machine or documented as unconfirmed.
 
@@ -1006,35 +1136,59 @@ use. Keep them in one config module, each with its reason in a comment.
 | "An evening" / "a weekend" | 3 h / 10 h | Assumption; shown in the UI and editable. |
 | One-sitting budget | 2 h | A typical uninterrupted reading session. |
 | Match: accept / review / unidentified | ≥ 0.90 / 0.60–0.90 / < 0.60 | Cautious start, because wrong matches hurt more than unidentified ones; tune on fixtures. |
-| Fingerprint | size + SHA-256 of first and last 64 KB; full SHA-256 for local files when deciding a move | Cheap enough for thousands of files; the full hash settles real ambiguity. |
+| Fingerprint | size + SHA-256 of first and last 64 KB (partial); full SHA-256 of every present local file, computed once in the deep pass and reused while size and modified time hold | The partial hash is cheap; the full hash must already exist for a file that later goes missing, or a move can't be confirmed. |
+| Full-hash time limit | None per file, but cancellable, resumable and run last at low priority | Hashing a large file on a slow external drive legitimately takes longer than the 60 s parse limit. |
+| Copy match | Same filename (extension included, ignoring case) + exact byte size, or matching fingerprints | Owner-approved: an identical name and size is the same file. Placeholders can't be hashed. |
 | Rating shrinkage | Prior weight = **median vote count for that source in this library**; prior mean = that source's mean in this library | Adapts to each source's audience size instead of guessing a constant. |
-| "Highly rated" | ≥ 75 / 100 after shrinkage | Assumption: roughly "clearly liked". |
-| Hidden gems | ≥ 75 after shrinkage, votes in the bottom 25% for that source, and at least 5 votes | Too few votes is noise, not a gem. |
+| "Highly rated" | At or above the **70th percentile** of that source's shrunk scores in this library; with fewer than 30 rated items from that source, ≥ 80 / 100 instead | Star averages cluster near 4 / 5, so a fixed cut-off passes most books from one source and few from another. The fallback covers small libraries. |
+| Hidden gems | "Highly rated" (above), votes in the bottom 25% for that source, and at least 5 votes | Too few votes is noise, not a gem. |
+| Read next list size | 10 cards, "Show more" adds 10 | Enough choice without becoming the Library. |
 | Classics age | 25 years since first publication | A generation old; long enough for reputation to settle. |
 | Ranking weights | rating 0.35, time fit 0.20, taste 0.15, momentum 0.15, triage 0.10, recency 0.05 | Ratings lead; recency stays a nudge. Adjustable under Tune. |
 | Taste threshold | 10 explicit outcomes (rated, finished, or DNF "Not for me"), counted **after** the series cap, from at least 3 different authors or series | Fewer is mostly noise, and ten books by one author teach one thing, not ten. |
 | Match tie margin | 0.05 | Closer than this, the "winner" is a coin flip. |
 | Recency boost | Acquired within the last 60 days; a folder where over 50% of files share one day's file date is treated as a bulk copy (dates unknown) | New purchases get a look; a bulk copy isn't a purchase date. |
 | Surprise me | Random from the top 50 of Read next, probability ∝ score² | Favours good picks while still surprising. |
-| Worker pool | CPU cores − 1, at most 4 workers; each capped at 1 GB memory | Keeps the PC usable during a deep scan; large PDFs need headroom. |
+| Worker pool | CPU cores − 1, at most 4 workers; each with a 1 GB JavaScript heap cap, sharp cache off and concurrency 1 | Keeps the PC usable during a deep scan; large PDFs need headroom. The heap cap alone doesn't limit native memory (§6.1). |
 | Taste series cap | A series counts as at most 2 items of evidence | Stops one long series dominating. |
 | First triage session | 15 items | Enough to help, short enough to finish. |
 | Scan reminder / snooze | 30 days / 7 days | Monthly, as the owner asked. |
 | Still reading? / snooze | 90 days / 30 days | A quarter untouched usually means stalled. |
 | Undo stack | Last 20 merges/splits | Covers a cleanup session. |
 | Pre-migration snapshots kept | 5 | A few versions back, without filling the disk. |
-| Per-file limits | 60 s; uncompressed ≤ 4 GB; compression ratio ≤ 100:1; images ≤ 50 megapixels | Large comic archives are fine; zip bombs and runaway files aren't. |
+| Pre-restore snapshots kept | 3, separately | A restore must never push out the migration snapshots, or the other way round. |
+| Server port | 4818, overridable with `PORT` | Unlikely to clash with common dev tools. |
+| Per-file limits | 60 s (parsing, counting, thumbnails — not full hashing); uncompressed ≤ 4 GB; compression ratio ≤ 100:1; images ≤ 50 megapixels | Large comic archives are fine; zip bombs and runaway files aren't. |
 | Light-scan target | 5,000 files in under 30 s on a local SSD | A goal to measure against, not a claim. |
 
-## 21. Still to confirm (not blocking)
+## 21. Owner actions and things still to confirm
+
+### Owner actions — tell the owner when each is due
+
+The owner asked to be told whenever they need to do something. When one of these comes up, say so
+plainly at the start of your message, with what to do and roughly how long it takes.
+
+| When | What the owner does |
+| --- | --- |
+| **M0** (before any app code) | Run `tools/probe/whatbooks-probe.bat`, name 2–3 files known to be online-only in iCloud, and share the report in chat. |
+| **After M1** | Send more real filenames — especially HD versions and EPUB/PDF pairs. |
+| **Start of M3** | **Create a free Hardcover account** and generate an API token (about 5 minutes). Once the adapter is built, enter the token in the app's Settings (never in chat), run Diagnostics → Test Hardcover, and share the copied report. Decides whether Hardcover can be labelled Recommended. |
+| **End of M3** | First ~20-minute recommendation quality session (§17.2). |
+| **During M1–M6, as they come up** | Check the "needs checking on the owner's machine" items on the Windows PC. |
+| **End of M6** | Second quality session; try installing from the README as a stranger would. |
+
+### Still to confirm (not blocking)
 
 - The M0 probe report: real filenames (including any non-English titles), drive identity, iCloud
-  placeholder behaviour.
+  placeholder behaviour, how many copies exist across folders.
 - Later on the owner's Windows PC: drive letter changes, download transitions, Open / Show in folder.
+- **Other storage places.** The owner's copies are mainly on the external drive and in iCloud, maybe
+  elsewhere. OneDrive uses the same placeholder mechanism as iCloud and should work the same way;
+  Dropbox, a second external drive or a network drive each need checking when they come up.
 - Hardcover's suitability (§12.1) before it's labelled Recommended; other optional keys if the owner
   wants them (Metron, ComicVine).
 - The two owner quality sessions (§17.2).
 - Reading speeds and thresholds, once there's real use to calibrate against.
 - Each source's current access rules and export column names, when its adapter is built.
 
-No further product decisions are needed to start M1.
+No further product decisions are needed to start M0 and M1.
