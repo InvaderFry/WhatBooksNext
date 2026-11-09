@@ -1,4 +1,8 @@
-import { LOOKUP_STOP_AFTER_FAILED_ITEMS } from '../config.ts';
+import {
+  LOOKUP_STOP_AFTER_FAILED_ITEMS,
+  PICTURE_MIN_PAGES,
+  PICTURE_WORDS_PER_PAGE,
+} from '../config.ts';
 import type { DB } from '../db/database.ts';
 import type { EmbeddedMetadata } from '../scan/formats/types.ts';
 import type { Sources } from '../sources/index.ts';
@@ -282,6 +286,15 @@ export function applyIdentity(db: DB, itemId: string): void {
   refreshDerivedFacts(db, [itemId]);
 }
 
+export function mostlyPictures(words: number | null, pages: number | null): boolean {
+  return (
+    !!pages &&
+    pages >= PICTURE_MIN_PAGES &&
+    words !== null &&
+    words / pages < PICTURE_WORDS_PER_PAGE
+  );
+}
+
 /** Kind sources that come from the files themselves (identify/items.ts); these always win. */
 const FILE_KINDS = new Set(['format', 'pdf_type', 'comicinfo']);
 
@@ -294,9 +307,9 @@ export function refreshDerivedFacts(db: DB, itemIds: string[]): void {
   const item = db.prepare(
     'SELECT id, title, kind, kind_source, match_source, identity FROM items WHERE id = ?',
   );
-  const publisher = db.prepare(
-    `SELECT f.metadata FROM files f JOIN item_files x ON x.file_id = f.id
-     WHERE x.item_id = ? AND x.is_primary = 1`,
+  const primary = db.prepare(
+    `SELECT f.metadata, f.format, f.word_count, f.page_count FROM files f
+     JOIN item_files x ON x.file_id = f.id WHERE x.item_id = ? AND x.is_primary = 1`,
   );
   const update = db.prepare(
     `UPDATE items SET kind = @kind, kind_source = @kindSource, is_reference = @ref,
@@ -317,7 +330,15 @@ export function refreshDerivedFacts(db: DB, itemIds: string[]): void {
       | undefined;
     if (!i) continue;
     const used = usedMatches(db, id);
-    const md = parseJson<EmbeddedMetadata | null>(publisher.pluck().get(id) as string | null, null);
+    const p = primary.get(id) as
+      | {
+          metadata: string | null;
+          format: string;
+          word_count: number | null;
+          page_count: number | null;
+        }
+      | undefined;
+    const md = parseJson<EmbeddedMetadata | null>(p?.metadata ?? null, null);
     let kind = i.kind;
     let kindSource = i.kind_source;
     if (!kindSource || !FILE_KINDS.has(kindSource)) {
@@ -331,6 +352,12 @@ export function refreshDerivedFacts(db: DB, itemIds: string[]): void {
       });
       kind = k?.kind ?? null;
       kindSource = k ? `guess:${k.why}` : null;
+      // A long PDF that is mostly pictures (a few words a page: credits, captions, a cover) is a
+      // comic, whatever its subjects say ("Fiction" fits a graphic novel too). Manga stays manga.
+      if (p?.format === 'pdf' && kind !== 'manga' && mostlyPictures(p.word_count, p.page_count)) {
+        kind = 'comic';
+        kindSource = 'guess:mostly pictures';
+      }
     }
     const years = used
       .map((m) => m.record.firstPublishYear)

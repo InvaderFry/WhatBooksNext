@@ -1,5 +1,7 @@
 import {
   COMIC_SECONDS_PER_PAGE,
+  PICTURE_MIN_PAGES,
+  PICTURE_WORDS_PER_PAGE,
   ESTIMATE_SPREAD,
   MANGA_SECONDS_PER_PAGE,
   WORDS_PER_PAGE,
@@ -60,15 +62,23 @@ export function unitFor(
 }
 
 export function estimateDuration(i: LengthInput, unit: Duration['unit'] = 'book'): Duration | null {
-  const visual = i.kind === 'comic' || i.kind === 'manga';
+  // A few words a page is a picture book whatever its kind says: its words are captions and
+  // credits, not a reading length (a comic PDF once showed "~5 min from 741 words").
+  const sparse =
+    !!i.words &&
+    !!i.pages &&
+    i.pages >= PICTURE_MIN_PAGES &&
+    i.words / i.pages < PICTURE_WORDS_PER_PAGE;
+  const visual = i.kind === 'comic' || i.kind === 'manga' || sparse;
   let minutes: number;
   let basis: string;
   let measured: boolean;
   if (visual && i.pages && i.pages > 0) {
     const s = i.kind === 'manga' ? MANGA_SECONDS_PER_PAGE : COMIC_SECONDS_PER_PAGE;
     minutes = (i.pages * s) / 60;
-    basis = `from ${fmt(i.pages)} pages`;
-    measured = true;
+    basis = sparse ? `from ${fmt(i.pages)} pages, mostly pictures` : `from ${fmt(i.pages)} pages`;
+    // Pages are a comic's measure; for a book that's mostly pictures it's only a rough one.
+    measured = i.kind === 'comic' || i.kind === 'manga';
   } else if (!visual && i.words && i.words > 0) {
     minutes = i.words / wpm(i.kind);
     basis = `from ${fmt(i.words)} words`;

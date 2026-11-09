@@ -68,6 +68,8 @@ function situationFrom(req: Request) {
     budget: preset.minutes,
     mode,
     readyToRead: req.query.ready === '1',
+    show: (req.query.show === 'books' || req.query.show === 'comics' ? req.query.show : 'all') as
+      'all' | 'books' | 'comics',
     exclude,
     today: todayLocal(),
     recentDays: RECENT_DAYS,
@@ -96,7 +98,7 @@ export function registerReadingRoutes(app: Express, d: ReadingDeps): void {
       const r = readNext(data.items, s, { offset, limit: READ_NEXT_PAGE });
       return {
         ...r,
-        situation: { time: s.presetId, mode: s.mode, ready: s.readyToRead },
+        situation: { time: s.presetId, mode: s.mode, ready: s.readyToRead, show: s.show },
         presets: TIME_PRESETS,
         lookups: { pending: lookups.pending(), running: lookups.isRunning() },
         hardcover: sources.demo ? null : sources.hardcover.configured(),

@@ -40,6 +40,8 @@ export interface Situation {
   budget: number | null;
   mode: TimeMode;
   readyToRead: boolean;
+  /** Books only, comics and manga only, or both (the owner asked for this after M3). */
+  show?: 'all' | 'books' | 'comics';
   /** "Not in the mood" for this session (§13.8): ids hidden until the tab closes. */
   exclude: Set<string>;
   /** Today, YYYY-MM-DD (injectable for tests). */
@@ -347,6 +349,11 @@ export function readNext(
         // Reference items appear only in Skim, topic interests and Still relevant? (§13.1).
         !i.isReference &&
         !s.exclude.has(i.id) &&
+        (s.show === 'comics'
+          ? i.kind === 'comic' || i.kind === 'manga'
+          : s.show === 'books'
+            ? i.kind !== 'comic' && i.kind !== 'manga'
+            : true) &&
         (!s.readyToRead || i.availability.readyToRead),
     ),
   );

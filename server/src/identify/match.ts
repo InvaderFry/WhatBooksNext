@@ -15,7 +15,7 @@ import { normalizeForCompare, titleCompareKey } from './filename.ts';
  */
 
 /** Bump when the scoring changes: the next lookup re-scores from the cache (no new requests). */
-export const MATCH_VERSION = 3;
+export const MATCH_VERSION = 4;
 
 export interface MatchFacts {
   title: string;
@@ -61,6 +61,11 @@ export function searchTitle(f: MatchFacts): string {
 
 export function buildQuery(f: MatchFacts): SourceQuery {
   const q: SourceQuery = { title: searchTitle(f) };
+  // Book sources list each volume of a comic or manga as its own book ("Series, Vol. 24"), so
+  // the volume goes into their search. AniList searches by series name (q.series).
+  const n = ourNumber(f);
+  if (n && f.seriesHint && (f.kind === 'manga' || f.kind === 'comic'))
+    q.title = `${f.seriesHint} ${n}`;
   // A "Title: Subtitle" from a filename searches better on the main title.
   if (f.titleSource === 'filename' && q.title.includes(':'))
     q.title = q.title.split(':')[0]!.trim();
@@ -95,6 +100,32 @@ export function similarity(a: string, b: string): number {
 }
 
 /**
+ * Volume numbers (§11.2). "Series 24", "Series, Vol. 24", "Series #24" and "Series Book 24" all
+ * name volume 24. Two different numbers are two different books, however alike the titles.
+ */
+const NUMBER_MARK = /(?:^|[\s,:(])(?:vol(?:ume)?\.?|book|no\.?|#)\s*(\d+(?:\.\d+)?)\b/i;
+const TRAILING_NUMBER = /\s(\d{1,3}(?:\.\d+)?)\s*$/;
+
+export function numberIn(title: string): string | null {
+  const m = NUMBER_MARK.exec(title) ?? TRAILING_NUMBER.exec(title);
+  return m ? String(parseFloat(m[1]!)) : null;
+}
+
+function ourNumber(f: MatchFacts): string | null {
+  const v = f.volume ?? f.issue;
+  if (v && /^\d+(\.\d+)?$/.test(v)) return String(parseFloat(v));
+  return numberIn(f.title.replace(EDITION_SUFFIX, ''));
+}
+
+/** The title without its volume marker and number, for comparing the series part. */
+function withoutNumber(t: string): string {
+  return t
+    .replace(/[\s,:(]*(?:vol(?:ume)?\.?|book|no\.?|#)\s*\d+(?:\.\d+)?\)?/gi, ' ')
+    .replace(TRAILING_NUMBER, ' ')
+    .trim();
+}
+
+/**
  * A title that matches only once a subtitle is dropped, on either side ("Title" against
  * "Title: Subtitle"), scores at most this. It may be the same book with its subtitle, or another
  * book in a series that shares the main title — so on its own it can only ever be "unconfirmed".
@@ -118,6 +149,18 @@ function titleScore(f: MatchFacts, r: SourceRecord): number {
   for (const a of mineFull)
     for (const b of theirFull) best = Math.max(best, a === b ? 1 : similarity(a, b));
   if (best === 1) return 1;
+  // Numbered volumes: compare the series part; scoreCandidate checks the numbers themselves.
+  const mine0 = new Set(mine.map((t) => titleCompareKey(withoutNumber(t))).filter(Boolean));
+  const their0 = new Set(theirs.map((t) => titleCompareKey(withoutNumber(t))).filter(Boolean));
+  if ([...mine0].some((k) => their0.has(k))) {
+    const a = ourNumber(f);
+    const b = numberIn(fullTitleOf(r));
+    // A volume against a record with no number is only the series' name: never certain,
+    // except on AniList, whose records are whole series by design (scope "series").
+    if (a && b) return 1;
+    if (a && !b) return r.source === 'anilist' ? 1 : MAIN_TITLE_ONLY;
+    if (!a && b) return MAIN_TITLE_ONLY;
+  }
   const mineMain = new Set(mine.map((t) => titleCompareKey(mainOf(t))).filter(Boolean));
   const theirMain = new Set(theirs.map((t) => titleCompareKey(mainOf(t))).filter(Boolean));
   const mainHit =
@@ -171,6 +214,13 @@ export function scoreCandidate(f: MatchFacts, r: SourceRecord): ScoredCandidate 
   else if (author === 'conflicts') score = 0.5 * title;
   else score = 0.85 * title;
 
+  const ours = ourNumber(f);
+  const theirs = numberIn(fullTitleOf(r));
+  if (ours && theirs && ours !== theirs && title >= 0.75) {
+    score = Math.min(score, 0.3);
+    notes.push(`Volume ${theirs}, not ${ours}.`);
+  }
+
   if (isbn === 'strong') {
     // An EPUB's own ISBN is strong evidence, but only with a title that isn't plainly different.
     score = title >= 0.5 ? Math.max(score, 0.97) : Math.max(score, 0.7);
@@ -219,10 +269,16 @@ export function sameWork(a: SourceRecord, b: SourceRecord): boolean {
       ),
     );
   const sa = surnames(a);
-  return [...surnames(b)].some((x) => x !== '' && sa.has(x));
+  if ([...surnames(b)].some((x) => x !== '' && sa.has(x))) return true;
+  // The same full title, and one record has no author at all: one book entered twice.
+  return fa === fb && (a.authors.length === 0 || b.authors.length === 0);
 }
 
 /** The title with its subtitle, unless the title already includes it. */
+export function fullTitleOf(r: SourceRecord): string {
+  return fullTitle(r);
+}
+
 function fullTitle(r: SourceRecord): string {
   if (!r.subtitle) return r.title;
   return normalizeForCompare(r.title).includes(normalizeForCompare(r.subtitle))

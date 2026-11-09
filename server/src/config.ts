@@ -276,3 +276,12 @@ export const TRIAGE_SESSION = 15;
 
 /** "Defer" in Needs review hides a row for this long unless the owner picks a date. */
 export const REVIEW_DEFER_DAYS = 30;
+
+/**
+ * A PDF with at least PICTURE_MIN_PAGES pages and fewer than PICTURE_WORDS_PER_PAGE words a page
+ * is mostly pictures: its length comes from its pages, and its kind is guessed as comic. Prose
+ * runs to 250–400 words a page; a comic's text layer (credits, captions) stays far below 50.
+ * From the owner's first quality check: a comic PDF read as "~5 min from 741 words".
+ */
+export const PICTURE_MIN_PAGES = 20;
+export const PICTURE_WORDS_PER_PAGE = 50;

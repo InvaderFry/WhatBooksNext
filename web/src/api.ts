@@ -403,7 +403,12 @@ export interface ReadNext {
   mightFit: Card[];
   total: number;
   coverage: { eligible: number; rated: number; lengthKnown: number };
-  situation: { time: string; mode: 'read_for' | 'finish_within'; ready: boolean };
+  situation: {
+    time: string;
+    mode: 'read_for' | 'finish_within';
+    ready: boolean;
+    show: 'all' | 'books' | 'comics';
+  };
   presets: TimePreset[];
   lookups: { pending: number; running: boolean };
   hardcover: boolean | null;

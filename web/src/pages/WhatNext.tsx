@@ -38,6 +38,7 @@ export function WhatNext({ params, onChanged }: { params: Params; onChanged: () 
   const time = params.time ?? 'any';
   const mode = params.mode === 'finish_within' ? 'finish_within' : 'read_for';
   const ready = params.ready === '1';
+  const show = params.show === 'books' || params.show === 'comics' ? params.show : 'all';
   const [data, setData] = useState<ReadNext | null>(null);
   const [extra, setExtra] = useState<Card[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -50,10 +51,11 @@ export function WhatNext({ params, onChanged }: { params: Params; onChanged: () 
         time,
         mode,
         ready: ready ? '1' : '',
+        show: show === 'all' ? '' : show,
         exclude: hidden.join(','),
         offset: String(offset),
       }).toString()}`,
-    [time, mode, ready, hidden],
+    [time, mode, ready, show, hidden],
   );
 
   const load = useCallback(async () => {
@@ -101,6 +103,27 @@ export function WhatNext({ params, onChanged }: { params: Params; onChanged: () 
                 onChange={() => updateParams({ time: p.id })}
               />
               {p.label}
+            </label>
+          ))}
+        </fieldset>
+        <fieldset className="segmented">
+          <legend>What kind?</legend>
+          {(
+            [
+              ['all', 'Both'],
+              ['books', 'Books'],
+              ['comics', 'Comics and manga'],
+            ] as const
+          ).map(([id, label]) => (
+            <label key={id} className={show === id ? 'on' : ''}>
+              <input
+                type="radio"
+                name="show"
+                value={id}
+                checked={show === id}
+                onChange={() => updateParams({ show: id === 'all' ? '' : id })}
+              />
+              {label}
             </label>
           ))}
         </fieldset>
@@ -196,7 +219,7 @@ export function WhatNext({ params, onChanged }: { params: Params; onChanged: () 
             <PickCard
               key={c.id}
               card={c}
-              situation={{ time, mode, ready }}
+              situation={{ time, mode, ready, show }}
               onDone={(msg, hide) => {
                 setAnnounce(msg);
                 if (hide) {
@@ -226,7 +249,7 @@ export function WhatNext({ params, onChanged }: { params: Params; onChanged: () 
               <PickCard
                 key={c.id}
                 card={c}
-                situation={{ time, mode, ready }}
+                situation={{ time, mode, ready, show }}
                 onDone={(msg) => {
                   setAnnounce(msg);
                   void load();

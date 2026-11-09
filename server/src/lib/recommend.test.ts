@@ -87,6 +87,14 @@ describe('durations (§12.3)', () => {
     expect(d).toMatchObject({ measured: true, unit: 'issue', low: 6, high: 10 });
   });
 
+  it('measures a PDF that is mostly pictures by its pages, not its few words', () => {
+    // A comic PDF with a thin text layer: 741 words over 150 pages is not a 3-minute read.
+    const d = estimateDuration({ kind: 'fiction', words: 741, pages: 150, pdfType: 'uncertain' })!;
+    expect(d.basis).toBe('from 150 pages, mostly pictures');
+    expect(d.measured).toBe(false);
+    expect(d.low).toBeGreaterThan(30);
+  });
+
   it('says unknown rather than guessing when there is nothing to go on', () => {
     expect(estimateDuration({ kind: 'fiction', words: null, pages: null })).toBeNull();
   });
@@ -249,6 +257,22 @@ describe('Read next', () => {
     expect(c.limitations).toEqual(
       expect.arrayContaining(['unconfirmed match', 'rating is for the whole series']),
     );
+  });
+
+  it('shows books only, comics and manga only, or both', () => {
+    const all = [
+      item({ title: 'Novel', kind: 'fiction' }),
+      item({ title: 'Comic', kind: 'comic' }),
+      item({ title: 'Manga', kind: 'manga' }),
+      item({ title: 'Unknown', kind: null }),
+    ];
+    const titles = (show: Situation['show']) =>
+      readNext(all, situation({ show }), page)
+        .cards.map((c) => c.title)
+        .sort();
+    expect(titles('books')).toEqual(['Novel', 'Unknown']);
+    expect(titles('comics')).toEqual(['Comic', 'Manga']);
+    expect(titles('all')).toHaveLength(4);
   });
 
   it('hides a book the owner isn’t in the mood for, for this session only', () => {

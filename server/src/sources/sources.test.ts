@@ -305,6 +305,30 @@ describe('matching (§11.2)', () => {
     expect(r.ranked).toHaveLength(2);
   });
 
+  it('never matches a different volume of the same series', () => {
+    const base = { ...tm[0]!, isbns: [], rating: undefined, authors: ['Rin Okabe'] };
+    const records = [
+      { ...base, sourceId: 'v32', title: 'Harbor Giants, Vol. 32' },
+      { ...base, sourceId: 'v24', title: 'Harbor Giants, Vol. 24' },
+    ];
+    const r = decide(
+      facts({ title: 'Harbor Giants 24', titleSource: 'filename', authors: ['Rin Okabe'] }),
+      records,
+    );
+    expect(r.decision).toBe('accepted');
+    expect(r.best!.record.sourceId).toBe('v24');
+    expect(r.ranked.find((c) => c.record.sourceId === 'v32')!.score).toBeLessThan(0.6);
+  });
+
+  it('treats the same title entered twice, once without an author, as one book', () => {
+    const base = { ...tm[0]!, isbns: [], rating: undefined };
+    const r = decide(facts({ title: 'A Field Guide to Lanterns', titleSource: 'filename' }), [
+      { ...base, sourceId: 'a', title: 'A Field Guide to Lanterns', authors: ['Mo Reyes'] },
+      { ...base, sourceId: 'b', title: 'A Field Guide to Lanterns', authors: [] },
+    ]);
+    expect(r.decision).not.toBe('tie');
+  });
+
   it('never accepts a candidate the owner rejected', () => {
     const r = decide(
       facts({ title: 'The Time Machine', authors: ['H. G. Wells'] }),

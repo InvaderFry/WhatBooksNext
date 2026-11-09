@@ -147,13 +147,27 @@ describe('lookups', () => {
   it('drops candidates from sources that no longer apply when the next run starts', async () => {
     await addAndScan({ 'thetimemachine.epub': timeMachine() });
     const id = itemIdOf('thetimemachine.epub');
-    // The owner says it's a comic: book sources don't apply any more.
-    await api.patch(`/api/items/${id}`, { kindOverride: 'comic' });
+    // Candidates from Hardcover, left over from when a token was saved; the token is gone now.
+    const rec = JSON.stringify({
+      source: 'hardcover',
+      sourceId: '9',
+      title: 'The Time Machine',
+      authors: ['H. G. Wells'],
+      isbns: [],
+      subjects: [],
+      rating: { value: 4.9, scale: 5, count: 9999, scope: 'book' },
+    });
+    db.prepare(
+      `INSERT INTO item_matches VALUES (?, 'hardcover', '9', 1, 1, '{}', ?, '2026-01-01')`,
+    ).run(id, rec);
+    db.prepare(
+      `INSERT INTO lookup_state VALUES (?, 'hardcover', 4, '{}', '2026-01-01', 'matched', NULL)`,
+    ).run(id);
     await api.post('/api/lookups', {});
     await made.lookups.wait();
     const online = (await api.get(`/api/items/${id}/online`)).body;
-    expect(online.identity).toBe('unidentified');
-    expect(online.candidates).toHaveLength(0);
+    expect(online.community.source).toBe('openlibrary');
+    expect(online.candidates.every((c: { source: string }) => c.source !== 'hardcover')).toBe(true);
   });
 
   it('leaves a book unidentified, with neutral scores, when nothing matches', async () => {
