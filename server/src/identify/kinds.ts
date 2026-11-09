@@ -78,7 +78,7 @@ export function kindFromEvidence(e: KindEvidence): { kind: string; why: string }
 
 /** Title words that suggest a reference book (§8): "Cookbook", "Handbook", "Reference", "Rulebook". */
 const REFERENCE_WORDS =
-  /(cookbook|handbook|\breference\b|rulebook|\bdictionary\b|\bencyclop(a)?edia\b|\bfield guide\b|\bpocket guide\b|\bcheat ?sheets?\b)/i;
+  /(cookbook|handbook|\breference\b|rulebook|\bdictionary\b|\bencyclop(a)?edia\b|\bcheat ?sheets?\b)/i;
 
 export function looksLikeReference(title: string): boolean {
   return REFERENCE_WORDS.test(title);

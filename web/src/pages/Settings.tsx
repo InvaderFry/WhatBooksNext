@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useId, useState } from 'react';
 import { api, daysAgo, formatDate, type Folder, type ScanStatus } from '../api.ts';
 import { Notice } from '../components.tsx';
+import { OnlineSettings } from './OnlineSettings.tsx';
 
 export function Settings({
   dataVersion,
@@ -73,6 +74,7 @@ export function Settings({
         {scan && scan.status !== 'running' && <LastScan scan={scan} />}
       </section>
 
+      <OnlineSettings />
       <BackupSection onRestored={onLibraryChanged} />
     </div>
   );

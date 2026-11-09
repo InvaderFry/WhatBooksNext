@@ -19,6 +19,7 @@ import {
 } from '../api.ts';
 import { AvailabilityLabels, Cover, creatorsText, Notice } from '../components.tsx';
 import { hrefFor, onLinkClick } from '../url.ts';
+import { OnlineCard } from './OnlineCard.tsx';
 
 type Patch = Partial<{
   progress: Progress;
@@ -35,6 +36,8 @@ type Patch = Partial<{
   kindOverride: string | null;
   referenceOverride: boolean | null;
   icloudOverride: 'in' | 'not_in' | null;
+  triage: 'want' | 'maybe' | 'never' | null;
+  effortOverride: 'light' | 'medium' | 'heavy' | null;
 }>;
 
 export function ItemPage({ id }: { id: string }) {
@@ -96,7 +99,7 @@ export function ItemPage({ id }: { id: string }) {
           } else onLinkClick({ view: 'library' })(e);
         }}
       >
-        ← Library
+        ← Back
       </a>
       <div className="item-head">
         <Cover fileId={item.coverFileId} kind={item.kind} size="large" />
@@ -217,9 +220,7 @@ export function ItemPage({ id }: { id: string }) {
               onChange={(e) => void save({ kindOverride: e.target.value || null })}
             >
               <option value="">
-                {item.kind && !u.kindOverride
-                  ? `${KIND_LABELS[item.kind]} (guessed from the files)`
-                  : 'Unknown'}
+                {item.kind && !u.kindOverride ? `${KIND_LABELS[item.kind]} (guessed)` : 'Unknown'}
               </option>
               {Object.entries(KIND_LABELS).map(([k, v]) => (
                 <option key={k} value={k}>
@@ -250,6 +251,38 @@ export function ItemPage({ id }: { id: string }) {
               <option value="not_in">No, not in iCloud</option>
             </select>
           </div>
+          <div className="field inline">
+            <label htmlFor="triage">Triage</label>
+            <select
+              id="triage"
+              value={u.triage ?? ''}
+              onChange={(e) =>
+                void save({ triage: (e.target.value || null) as 'want' | 'maybe' | 'never' | null })
+              }
+            >
+              <option value="">Not decided</option>
+              <option value="want">Want</option>
+              <option value="maybe">Maybe</option>
+              <option value="never">Never (not recommended)</option>
+            </select>
+          </div>
+          <div className="field inline">
+            <label htmlFor="effort">Effort</label>
+            <select
+              id="effort"
+              value={u.effortOverride ?? ''}
+              onChange={(e) =>
+                void save({
+                  effortOverride: (e.target.value || null) as 'light' | 'medium' | 'heavy' | null,
+                })
+              }
+            >
+              <option value="">Guess from its kind</option>
+              <option value="light">Light</option>
+              <option value="medium">Medium</option>
+              <option value="heavy">Heavy</option>
+            </select>
+          </div>
           <label className="check">
             <input
               type="checkbox"
@@ -265,6 +298,8 @@ export function ItemPage({ id }: { id: string }) {
           )}
         </section>
       </div>
+
+      <OnlineCard itemId={item.id} onChanged={() => void load()} />
 
       <FromTheFile file={item.files.find((f) => f.isPrimary) ?? item.files[0]} />
 

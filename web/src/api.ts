@@ -34,6 +34,7 @@ export const api = {
   get: <T>(url: string) => call<T>('GET', url),
   post: <T>(url: string, body?: unknown) => call<T>('POST', url, body),
   patch: <T>(url: string, body: unknown) => call<T>('PATCH', url, body),
+  put: <T>(url: string, body: unknown) => call<T>('PUT', url, body),
   delete: <T>(url: string) => call<T>('DELETE', url),
 };
 
@@ -63,6 +64,8 @@ export interface UserData {
   kindOverride: Kind | null;
   referenceOverride: boolean | null;
   icloudOverride: 'in' | 'not_in' | null;
+  triage: 'want' | 'maybe' | 'never' | null;
+  effortOverride: 'light' | 'medium' | 'heavy' | null;
 }
 
 export interface ItemSummary {
@@ -151,12 +154,29 @@ export interface ReviewFile {
 
 export interface ReviewRow {
   id: string;
-  kind: 'move' | 'group_conflict' | 'copy_conflict' | 'cross_folder' | 'pdf_type';
+  kind:
+    | 'move'
+    | 'group_conflict'
+    | 'copy_conflict'
+    | 'cross_folder'
+    | 'pdf_type'
+    | 'tie'
+    | 'wrong_match'
+    | 'unidentified'
+    | 'provisional';
   tier: number;
   why: string;
   items: { id: string; title: string; hasHistory: boolean }[];
   files: ReviewFile[];
   actions: ('accept' | 'decline' | 'split')[];
+  candidates?: Candidate[];
+}
+
+export interface ReviewList {
+  tiers: Record<number, number>;
+  rows: ReviewRow[];
+  notListed: { provisional: number; unidentified: number };
+  hidden: number;
 }
 
 export interface HealthFile {
@@ -260,6 +280,7 @@ export interface AppState {
   scanRunning: boolean;
   reviewOpen: number;
   healthProblems: number;
+  lookupsRunning: boolean;
 }
 
 export type Progress =
@@ -350,3 +371,189 @@ export const PROBLEM_LABELS: Record<string, string> = {
   too_large: 'Too large to read',
   encrypted: 'Password-protected',
 };
+
+// ---- Milestone 3: lookups and recommendations ------------------------------------------------
+
+export interface Card {
+  id: string;
+  title: string;
+  kind: Kind | null;
+  creators: { name: string; role?: string }[];
+  coverFileId: string | null;
+  formats: string[];
+  availability: Availability;
+  progress: Progress;
+  shortlisted: boolean;
+  scope: string;
+  lengthBasis: string | null;
+  fit: 'fits' | 'might_fit' | 'too_long' | 'unknown' | 'any';
+  reasons: string[];
+  limitations: string[];
+  score: number;
+}
+
+export interface TimePreset {
+  id: string;
+  label: string;
+  minutes: number | null;
+}
+
+export interface ReadNext {
+  cards: Card[];
+  mightFit: Card[];
+  total: number;
+  coverage: { eligible: number; rated: number; lengthKnown: number };
+  situation: { time: string; mode: 'read_for' | 'finish_within'; ready: boolean };
+  presets: TimePreset[];
+  lookups: { pending: number; running: boolean };
+  hardcover: boolean | null;
+}
+
+export interface SourceStatus {
+  source: string;
+  label: string;
+  configured: boolean;
+  state: 'ok' | 'paused';
+  consecutiveFailures: number;
+  pausedUntil: string | null;
+  lastError: string | null;
+  lastErrorAt: string | null;
+  lastSuccessAt: string | null;
+  requests: number;
+  rateLimit: Record<string, string>;
+  note: string;
+}
+
+export interface LookupStatus {
+  runId: string;
+  status: 'running' | 'completed' | 'cancelled' | 'failed';
+  startedAt: string;
+  finishedAt: string | null;
+  total: number;
+  done: number;
+  outcomes: Record<string, number>;
+  errors: string[];
+  estimateSeconds: number | null;
+  error: string | null;
+}
+
+export interface Lookups {
+  status: LookupStatus | null;
+  pending: number;
+  sources: SourceStatus[];
+  afterScan: boolean;
+}
+
+export interface Candidate {
+  source: string;
+  sourceLabel: string;
+  sourceId: string;
+  title: string;
+  subtitle: string | null;
+  authors: string[];
+  year: number | null;
+  score: number;
+  notes: string[];
+  url: string | null;
+  rating: string | null;
+}
+
+export interface Duration {
+  low: number;
+  high: number;
+  basis: string;
+  measured: boolean;
+  unit: 'book' | 'volume' | 'issue';
+}
+
+export interface ItemOnline {
+  identity: 'accepted' | 'provisional' | 'tie' | 'unidentified';
+  matchConfirmed: boolean;
+  override: string | null;
+  lookups: {
+    source: string;
+    sourceLabel: string;
+    outcome: string;
+    looked_up_at: string;
+    error: string | null;
+  }[];
+  sources: { source: string; sourceLabel: string; decision: string; chosen: Candidate | null }[];
+  candidates: Candidate[];
+  community: {
+    source: string;
+    raw: number;
+    scale: number;
+    votes: number | null;
+    scope: 'book' | 'volume' | 'series';
+    score: number;
+    highlyRated: boolean;
+  } | null;
+  duration: Duration | null;
+  effort: 'light' | 'medium' | 'heavy' | 'unknown';
+  firstPublishYear: number | null;
+  acquired: {
+    date: string | null;
+    basis: 'entered' | 'file_date' | 'first_seen' | 'unknown';
+  } | null;
+  eligibleBecause: string | null;
+  card: Card | null;
+  description: string | null;
+  subjects: string[];
+  lookupAvailable: boolean;
+}
+
+export interface TriageList {
+  remaining: number;
+  triaged: number;
+  items: (Card & {
+    kindIsGuess: boolean;
+    description: string | null;
+    firstPublishYear: number | null;
+  })[];
+}
+
+export interface MatchReport {
+  byBand: {
+    accepted: number;
+    provisional: number;
+    tie: number;
+    unidentified: number;
+    notLookedUp: number;
+  };
+  byFormat: Record<string, { items: number; identified: number }>;
+  byKind: Record<string, { items: number; identified: number }>;
+  labelled: {
+    confirmed: number;
+    rejected: number;
+    wrongHighConfidence: number;
+    precision: number | null;
+  };
+  coverage: {
+    kind: string;
+    items: number;
+    rated: number;
+    lengthKnown: number;
+    seriesKnown: number;
+  }[];
+}
+
+export const EFFORT_LABELS: Record<string, string> = {
+  light: 'Light',
+  medium: 'Medium',
+  heavy: 'Heavy',
+  unknown: 'Unknown',
+};
+
+/** "~15–25 min", "~4–5 h" — the same rounding as the server's cards. */
+export function formatRange(d: { low: number; high: number }): string {
+  const step = (n: number) => Math.max(5, Math.round(n / 5) * 5);
+  if (d.high < 60) {
+    const a = step(d.low);
+    const b = step(d.high);
+    return a === b ? `~${a} min` : `~${a}–${b} min`;
+  }
+  const r = (x: number) => (x < 10 ? Math.round(x * 2) / 2 : Math.round(x));
+  const a = r(d.low / 60);
+  const b = Math.max(r(d.high / 60), a);
+  return a === b ? `~${a} h` : `~${a}–${b} h`;
+}

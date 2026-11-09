@@ -73,7 +73,7 @@ export class Sources {
         label: SOURCE_LABELS.hardcover,
         configured: this.hardcover.configured(),
         note: this.hardcover.configured()
-          ? `Connected with your token. ${this.hardcover.usageToday()} of today’s 5,000 requests used by this app.`
+          ? `Token saved. ${this.hardcover.usageToday()} of today’s 5,000 requests used by this app.`
           : 'No token. Optional: adds book ratings with vote counts, series order and genres.',
       },
     ];

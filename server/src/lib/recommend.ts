@@ -297,7 +297,9 @@ export function buildCard(i: RankItem, all: RankItem[], s: Situation): Card {
   if (i.identity === 'unidentified' && i.kind !== 'comic')
     limits.push('not identified online: details from the file only');
   if (i.community?.scope === 'series') limits.push('rating is for the whole series');
-  if (i.availability.label) limits.push(i.availability.label.toLowerCase());
+  // "On external drive…" → "on external drive…", keeping names such as iCloud as they are.
+  if (i.availability.label)
+    limits.push(i.availability.label.charAt(0).toLowerCase() + i.availability.label.slice(1));
 
   return {
     id: i.id,

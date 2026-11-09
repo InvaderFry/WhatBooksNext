@@ -39,11 +39,32 @@ try {
   await waitForServer();
   const browser = await chromium.launch();
   const shots: [string, string, (p: import('playwright').Page) => Promise<void>][] = [
-    ['library', '/', async () => {}],
-    ['library-filtered', '/?ready=1&kind=comic', async () => {}],
+    ['next', '/', async () => {}],
+    ['next-finish-within', '/?time=30&mode=finish_within', async () => {}],
+    [
+      'next-not-this',
+      '/?time=120',
+      async (p) => {
+        await p.getByRole('button', { name: 'Not this, because…' }).first().click();
+      },
+    ],
+    ['triage', '/?view=triage', async () => {}],
+    ['library', '/?view=library', async () => {}],
+    ['library-filtered', '/?view=library&ready=1&kind=comic', async () => {}],
+    [
+      'item-tie',
+      '/?view=library&q=puddles',
+      async (p) => {
+        await p
+          .getByRole('link', { name: /Field Guide to Puddles/i })
+          .first()
+          .click();
+        await p.getByRole('heading', { name: 'Ratings and details' }).waitFor();
+      },
+    ],
     [
       'item',
-      '/',
+      '/?view=library',
       async (p) => {
         await p.getByRole('link', { name: /^Glass Harbor$/ }).click();
         await p.getByRole('heading', { level: 1 }).waitFor();
@@ -51,7 +72,7 @@ try {
     ],
     [
       'item-online-only',
-      '/',
+      '/?view=library',
       async (p) => {
         await p.getByRole('link', { name: 'Night Orchard' }).click();
         await p.getByRole('button', { name: 'Open nightorchard.epub' }).click();
@@ -69,7 +90,7 @@ try {
     ],
     [
       'item-comic-pdf',
-      '/',
+      '/?view=library',
       async (p) => {
         await p.getByRole('link', { name: /Shadow Service/ }).click();
         await p.getByRole('heading', { level: 1 }).waitFor();
@@ -79,7 +100,7 @@ try {
       'review',
       '/?view=review',
       async (p) => {
-        await p.locator('summary').click(); // tier 4 is collapsed by default
+        await p.locator('details.tier4 > summary').click(); // tier 4 is collapsed by default
       },
     ],
     ['health', '/?view=health', async () => {}],
