@@ -58,6 +58,7 @@ CREATE TABLE candidates_rejected (
   item_id TEXT NOT NULL REFERENCES items(id) ON DELETE CASCADE,
   source TEXT NOT NULL,
   source_id TEXT NOT NULL,
+  score REAL,                       -- the candidate's score when rejected (match quality report)
   created_at TEXT NOT NULL,
   PRIMARY KEY (item_id, source, source_id)
 );

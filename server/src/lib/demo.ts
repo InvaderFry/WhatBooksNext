@@ -15,6 +15,8 @@ import {
   textLines,
 } from '../testing/fixtures.ts';
 import { fillerFor } from '../testing/helpers.ts';
+import { LookupManager } from '../identify/lookups.ts';
+import { Sources } from '../sources/index.ts';
 import { applyUserPatch, shortlistAdd } from './progress.ts';
 
 /**
@@ -28,6 +30,10 @@ import { applyUserPatch, shortlistAdd } from './progress.ts';
  * translation split from its original, text / comic / scanned / uncertain PDFs, files that
  * can't be read, an archive that isn't a comic, a cross-folder suggestion, placeholder /
  * unknown / missing files, a disconnected drive, and some reading history.
+ *
+ * M3: lookups run against the demo source only (sources/demo.ts — invented works, labelled as
+ * such, never online), so the demo shows ratings, an unconfirmed match, a tie to settle and
+ * books left unidentified, and Read next has real reasons to give.
  */
 
 const ONLINE_ONLY = 0x20 | ATTR_RECALL_ON_DATA_ACCESS | ATTR_OFFLINE;
@@ -306,6 +312,13 @@ export async function buildDemoLibrary(
   });
   applyUserPatch(db, byFile('Widget Patterns - Ada Quill.pdf'), { kindOverride: 'tech' });
   applyUserPatch(db, byFile('thelanternkeepers_2ndedition.epub'), { icloudOverride: 'not_in' });
+  applyUserPatch(db, byFile('saltroadsongs.epub'), { triage: 'want' });
+  applyUserPatch(db, byFile('Widget Patterns - Ada Quill.pdf'), { triage: 'maybe' });
+
+  const lookups = new LookupManager(db, new Sources(db, { demo: true }));
+  lookups.start();
+  await lookups.wait();
+
   shortlistAdd(db, byFile('thelanternkeepers_3rdedition.epub'));
   shortlistAdd(db, byFile('Starfall Academy v01.cbz'));
   shortlistAdd(db, byFile('nightorchard.epub'));

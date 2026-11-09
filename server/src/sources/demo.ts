@@ -133,10 +133,13 @@ export const DEMO_RECORDS: SourceRecord[] = [
 export class DemoSource implements SourceAdapter {
   readonly name = 'demo' as const;
   async search(q: SourceQuery): Promise<SourceRecord[]> {
-    const key = titleCompareKey((q.series ?? q.title).split(':')[0]!);
+    // Like the real sources: books by title, manga by series name.
+    const keys = [q.title, q.series]
+      .filter((t): t is string => !!t)
+      .map((t) => titleCompareKey(t.split(':')[0]!));
     return DEMO_RECORDS.filter((r) => {
       const k = titleCompareKey(r.title);
-      return k === key || similarity(k, key) >= 0.6;
+      return keys.some((key) => k === key || similarity(k, key) >= 0.6);
     });
   }
 }

@@ -15,7 +15,7 @@ import { normalizeForCompare, titleCompareKey } from './filename.ts';
  */
 
 /** Bump when the scoring changes: the next lookup re-scores from the cache (no new requests). */
-export const MATCH_VERSION = 1;
+export const MATCH_VERSION = 2;
 
 export interface MatchFacts {
   title: string;
@@ -155,7 +155,10 @@ export function scoreCandidate(f: MatchFacts, r: SourceRecord): ScoredCandidate 
       : 'none';
 
   let score: number;
-  if (author === 'agrees') score = 0.75 * title + 0.25;
+  // An agreeing author only counts with a close title: the same author's other books are
+  // exactly what a title + author search returns, and they must never look like a match.
+  if (title < 0.75) score = 0.6 * title;
+  else if (author === 'agrees') score = 0.75 * title + 0.25;
   else if (author === 'conflicts') score = 0.5 * title;
   else score = 0.85 * title;
 

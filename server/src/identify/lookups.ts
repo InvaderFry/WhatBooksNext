@@ -77,7 +77,10 @@ export function matchFactsFor(db: DB, itemId: string): MatchFacts | null {
   return {
     title,
     titleSource: i.title_override || i.title_source === 'embedded' ? 'embedded' : 'filename',
-    rawTitle: i.title_override ? undefined : parse?.rawTitle,
+    // The filename's raw form only stands in for a title taken from the filename: when the
+    // file's own metadata names the book, a differing filename is no evidence (a translation
+    // saved under the original's name, for one).
+    rawTitle: i.title_override || i.title_source === 'embedded' ? undefined : parse?.rawTitle,
     authors: creators.map((c) => c.name),
     seriesHint: i.series_hint,
     volume: i.volume_label,

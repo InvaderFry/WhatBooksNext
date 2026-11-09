@@ -101,7 +101,11 @@ export function estimateDuration(i: LengthInput, unit: Duration['unit'] = 'book'
 /** "~15–25 min", "~4–5 h", "~12–18 h". */
 export function formatRange(d: Pick<Duration, 'low' | 'high'>): string {
   const h = (m: number) => m / 60;
-  if (d.high < 60) return `~${roundTo(d.low, 5)}–${roundTo(d.high, 5)} min`;
+  if (d.high < 60) {
+    const a = roundTo(d.low, 5);
+    const b = roundTo(d.high, 5);
+    return a === b ? `~${a} min` : `~${a}–${b} min`;
+  }
   const lo = h(d.low);
   const hi = h(d.high);
   const r = (x: number) => (x < 10 ? Math.round(x * 2) / 2 : Math.round(x));

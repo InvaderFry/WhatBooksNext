@@ -36,6 +36,8 @@ export interface UserPatch {
   kindOverride?: string | null;
   referenceOverride?: boolean | null;
   icloudOverride?: 'in' | 'not_in' | null;
+  triage?: 'want' | 'maybe' | 'never' | null;
+  effortOverride?: 'light' | 'medium' | 'heavy' | null;
 }
 
 const MAX_TEXT = 10_000;
@@ -92,6 +94,8 @@ export function validatePatch(body: unknown): UserPatch {
     'kindOverride',
     'referenceOverride',
     'icloudOverride',
+    'triage',
+    'effortOverride',
   ]);
   for (const k of Object.keys(b))
     if (!allowed.has(k)) throw new HttpError(400, `Unknown field "${k}".`);
@@ -129,6 +133,13 @@ export function validatePatch(body: unknown): UserPatch {
   }
   if ('icloudOverride' in b)
     p.icloudOverride = oneOf('icloudOverride', b.icloudOverride, ['in', 'not_in'] as const);
+  if ('triage' in b) p.triage = oneOf('triage', b.triage, ['want', 'maybe', 'never'] as const);
+  if ('effortOverride' in b)
+    p.effortOverride = oneOf('effortOverride', b.effortOverride, [
+      'light',
+      'medium',
+      'heavy',
+    ] as const);
   return p;
 }
 
@@ -148,6 +159,9 @@ interface Row {
   kind_override: string | null;
   reference_override: number | null;
   icloud_override: string | null;
+  triage: string | null;
+  triage_at: string | null;
+  effort_override: string | null;
 }
 
 export function ensureUserRow(db: DB, itemId: string): void {
@@ -217,6 +231,11 @@ export function applyUserPatch(db: DB, itemId: string, p: UserPatch, today = tod
   if (p.referenceOverride !== undefined)
     next.reference_override = p.referenceOverride === null ? null : p.referenceOverride ? 1 : 0;
   if (p.icloudOverride !== undefined) next.icloud_override = p.icloudOverride;
+  if (p.triage !== undefined && p.triage !== row.triage) {
+    next.triage = p.triage;
+    next.triage_at = p.triage === null ? null : now;
+  }
+  if (p.effortOverride !== undefined) next.effort_override = p.effortOverride;
 
   db.prepare(
     `UPDATE user_item SET progress = @progress, dnf_reason = @dnf_reason, started_on = @started_on,
@@ -224,7 +243,8 @@ export function applyUserPatch(db: DB, itemId: string, p: UserPatch, today = tod
        finished_precision = @finished_precision, progress_at = @progress_at, rating = @rating,
        note = @note, takeaway = @takeaway, hidden = @hidden, title_override = @title_override,
        kind_override = @kind_override, reference_override = @reference_override,
-       icloud_override = @icloud_override, updated_at = @updated_at
+       icloud_override = @icloud_override, triage = @triage, triage_at = @triage_at,
+       effort_override = @effort_override, updated_at = @updated_at
      WHERE item_id = @item_id`,
   ).run({ ...next, updated_at: now, item_id: itemId });
 }

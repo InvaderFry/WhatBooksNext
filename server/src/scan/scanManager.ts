@@ -1,6 +1,7 @@
 import type { DB } from '../db/database.ts';
 import { groupUnassignedFiles, type GroupingResult } from '../identify/grouping.ts';
 import { refreshAllPrimaries, refreshFactsOfItems } from '../identify/items.ts';
+import { refreshDerivedFacts } from '../identify/lookups.ts';
 import { reconcileIdentity, type ReconcileResult } from '../identify/reconcile.ts';
 import type { Platform } from '../platform/types.ts';
 import { HttpError, newId, nowIso } from '../util.ts';
@@ -29,6 +30,8 @@ export interface ScanOptions {
   runner?: TaskRunner;
   /** Where thumbnails go (data/covers); null for none. */
   coversDir?: string | null;
+  /** Called after every scan ends (e.g. to look up new items online, M3). */
+  onFinished?: (status: ScanStatus) => void;
 }
 
 /**
@@ -45,6 +48,7 @@ export class ScanManager {
   private runner: TaskRunner | null;
   private readonly ownsRunner: boolean;
   private readonly coversDir: string | null;
+  private readonly onFinished: ((s: ScanStatus) => void) | null;
 
   constructor(db: DB, platform: Platform, opts: ScanOptions = {}) {
     this.db = db;
@@ -52,6 +56,7 @@ export class ScanManager {
     this.runner = opts.runner ?? null;
     this.ownsRunner = !opts.runner;
     this.coversDir = opts.coversDir ?? null;
+    this.onFinished = opts.onFinished ?? null;
   }
 
   private getRunner(): TaskRunner {
@@ -189,6 +194,8 @@ export class ScanManager {
           .all() as string[])
           items.add(i);
         refreshFactsOfItems(this.db, [...items]);
+        // Facts that follow from titles and matches (kind guesses, the reference flag).
+        refreshDerivedFacts(this.db, [...items]);
         return r;
       })();
       const { touchedItems: _ignored, ...summary } = identity;
@@ -205,6 +212,11 @@ export class ScanManager {
         .run(status.status, status.finishedAt, JSON.stringify(status), status.runId);
       this.current = null;
       this.cancel = null;
+    }
+    try {
+      this.onFinished?.(status);
+    } catch (err) {
+      console.error('After-scan step failed:', err);
     }
   }
 }

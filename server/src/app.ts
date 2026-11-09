@@ -35,6 +35,11 @@ import {
 } from './scan/folders.ts';
 import { ScanManager } from './scan/scanManager.ts';
 import { requestGuard, securityHeaders } from './security.ts';
+import { LookupManager } from './identify/lookups.ts';
+import { getSetting, registerReadingRoutes } from './routes/reading.ts';
+import { route } from './routes/route.ts';
+import { Sources } from './sources/index.ts';
+import type { Fetcher } from './sources/types.ts';
 import { HttpError, nowIso, parseJson, todayLocal } from './util.ts';
 
 export interface AppContext {
@@ -50,6 +55,8 @@ export interface AppContext {
   demo?: boolean;
   /** Content-reading pool for the deep pass (tests pass a small one). */
   runner?: TaskRunner;
+  /** How online sources are reached (tests replay recorded responses). */
+  fetcher?: Fetcher;
 }
 
 /** Folder reachability, refreshed at most every few seconds (a check asks the platform). */
@@ -75,15 +82,6 @@ class Reachability {
   }
 }
 
-type Handler = (req: Request, res: Response) => Promise<unknown> | unknown;
-const route =
-  (fn: Handler) =>
-  (req: Request, res: Response, next: NextFunction): void => {
-    Promise.resolve(fn(req, res)).then((body) => {
-      if (!res.headersSent) res.json(body ?? { ok: true });
-    }, next);
-  };
-
 const str = (v: unknown): string | undefined => (typeof v === 'string' && v !== '' ? v : undefined);
 const bool = (v: unknown): boolean | undefined => (v === '1' || v === 'true' ? true : undefined);
 const int = (v: unknown): number | undefined =>
@@ -92,7 +90,18 @@ const int = (v: unknown): number | undefined =>
 export function createApp(ctx: AppContext) {
   const { db, platform } = ctx;
   const coversDir = ctx.dataDir ? path.join(ctx.dataDir, 'covers') : null;
-  const scans = new ScanManager(db, platform, { runner: ctx.runner, coversDir });
+  const sources = new Sources(db, { demo: ctx.demo, fetcher: ctx.fetcher });
+  const lookups = new LookupManager(db, sources);
+  const scans = new ScanManager(db, platform, {
+    runner: ctx.runner,
+    coversDir,
+    // After a scan, look up what's new — unless the owner turned that off (§12.1).
+    onFinished: (s) => {
+      if (s.status === 'failed' || lookups.isRunning()) return;
+      if (!getSetting<boolean>(db, 'lookupsAfterScan', true)) return;
+      if (lookups.pending() > 0) lookups.start();
+    },
+  });
   const reach = new Reachability(ctx);
   const app = express();
   app.disable('x-powered-by');
@@ -118,8 +127,18 @@ export function createApp(ctx: AppContext) {
       scanRunning: scans.isRunning(),
       reviewOpen: openReviewCount(db),
       healthProblems: healthProblemCount(db),
+      lookupsRunning: lookups.isRunning(),
     })),
   );
+
+  registerReadingRoutes(app, {
+    db,
+    sources,
+    lookups,
+    scans,
+    reach: () => reach.get(),
+    itemIdOr404,
+  });
 
   // ---- Scan reminder (§9.7) -------------------------------------------------------------------
   // A folder whose last complete scan is over 30 days old, unless the banner was dismissed in
@@ -627,7 +646,17 @@ export function createApp(ctx: AppContext) {
           problems: healthProblemCount(db),
           covers: db.prepare('SELECT COUNT(*) FROM files WHERE has_thumbnail = 1').pluck().get(),
         },
-        sources: 'No online sources yet (they arrive in Milestone 3).',
+        sources: sources.status().map((x) => ({
+          label: x.label,
+          configured: x.configured,
+          state: x.state,
+          lastError: x.lastError,
+          lastErrorAt: x.lastErrorAt,
+          lastSuccessAt: x.lastSuccessAt,
+          requests: x.requests,
+          note: x.note,
+        })),
+        lookups: { pending: lookups.pending(), running: lookups.isRunning() },
       };
     }),
   );
@@ -678,7 +707,9 @@ export function createApp(ctx: AppContext) {
   return {
     app,
     scans,
+    lookups,
     close: async () => {
+      await lookups.close();
       await scans.close();
       await platform.close();
     },
