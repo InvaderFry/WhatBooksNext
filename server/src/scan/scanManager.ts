@@ -33,7 +33,9 @@ export class ScanManager {
   status(): ScanStatus | null {
     if (this.current) return this.current;
     const last = this.db
-      .prepare("SELECT summary FROM scan_runs WHERE kind = 'light' ORDER BY started_at DESC LIMIT 1")
+      .prepare(
+        "SELECT summary FROM scan_runs WHERE kind = 'light' ORDER BY started_at DESC LIMIT 1",
+      )
       .pluck()
       .get() as string | undefined;
     return last ? (JSON.parse(last) as ScanStatus) : null;
@@ -59,7 +61,9 @@ export class ScanManager {
       error: null,
     };
     this.db
-      .prepare("INSERT INTO scan_runs (id, kind, status, started_at) VALUES (?, 'light', 'running', ?)")
+      .prepare(
+        "INSERT INTO scan_runs (id, kind, status, started_at) VALUES (?, 'light', 'running', ?)",
+      )
       .run(status.runId, status.startedAt);
     this.current = status;
     this.cancel = { cancelled: false };
@@ -86,7 +90,9 @@ export class ScanManager {
         status.currentFolderId = folder.id;
         const entry = { ...emptySummary(folder.id), displayPath: folder.display_path };
         status.folders.push(entry);
-        const s = await lightScanFolder(this.db, this.platform, folder, cancel, (p) => Object.assign(entry, p));
+        const s = await lightScanFolder(this.db, this.platform, folder, cancel, (p) =>
+          Object.assign(entry, p),
+        );
         Object.assign(entry, s);
       }
       status.grouping = this.db.transaction(() => {

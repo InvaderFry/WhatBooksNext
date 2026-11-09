@@ -14,9 +14,21 @@ import {
   type FolderReachability,
   type LibraryQuery,
 } from './lib/library.ts';
-import { applyUserPatch, shortlistAdd, shortlistMove, shortlistRemove, validatePatch } from './lib/progress.ts';
+import {
+  applyUserPatch,
+  shortlistAdd,
+  shortlistMove,
+  shortlistRemove,
+  validatePatch,
+} from './lib/progress.ts';
 import { availabilityFromAttributes, type Platform } from './platform/types.ts';
-import { addFolder, joinRel, reconnectFolder, resolveFolderRoot, type FolderRow } from './scan/folders.ts';
+import {
+  addFolder,
+  joinRel,
+  reconnectFolder,
+  resolveFolderRoot,
+  type FolderRow,
+} from './scan/folders.ts';
 import { ScanManager } from './scan/scanManager.ts';
 import { requestGuard, securityHeaders } from './security.ts';
 import { HttpError, nowIso, todayLocal } from './util.ts';
@@ -46,7 +58,8 @@ class Reachability {
     if (!force && Date.now() - this.checkedAt < 5000) return this.cache;
     const folders = this.ctx.db.prepare('SELECT * FROM folders').all() as FolderRow[];
     const next: FolderReachability = new Map();
-    for (const f of folders) next.set(f.id, (await resolveFolderRoot(this.ctx.db, this.ctx.platform, f)) !== null);
+    for (const f of folders)
+      next.set(f.id, (await resolveFolderRoot(this.ctx.db, this.ctx.platform, f)) !== null);
     this.cache = next;
     this.checkedAt = Date.now();
     return next;
@@ -60,17 +73,15 @@ type Handler = (req: Request, res: Response) => Promise<unknown> | unknown;
 const route =
   (fn: Handler) =>
   (req: Request, res: Response, next: NextFunction): void => {
-    Promise.resolve(fn(req, res)).then(
-      (body) => {
-        if (!res.headersSent) res.json(body ?? { ok: true });
-      },
-      next,
-    );
+    Promise.resolve(fn(req, res)).then((body) => {
+      if (!res.headersSent) res.json(body ?? { ok: true });
+    }, next);
   };
 
 const str = (v: unknown): string | undefined => (typeof v === 'string' && v !== '' ? v : undefined);
 const bool = (v: unknown): boolean | undefined => (v === '1' || v === 'true' ? true : undefined);
-const int = (v: unknown): number | undefined => (typeof v === 'string' && /^\d+$/.test(v) ? Number(v) : undefined);
+const int = (v: unknown): number | undefined =>
+  typeof v === 'string' && /^\d+$/.test(v) ? Number(v) : undefined;
 
 export function createApp(ctx: AppContext) {
   const { db, platform } = ctx;
@@ -106,7 +117,9 @@ export function createApp(ctx: AppContext) {
     '/api/folders',
     route(async () => {
       const r = await reach.get(true);
-      const folders = db.prepare('SELECT * FROM folders ORDER BY display_path').all() as FolderRow[];
+      const folders = db
+        .prepare('SELECT * FROM folders ORDER BY display_path')
+        .all() as FolderRow[];
       const counts = db
         .prepare(
           `SELECT folder_id, availability, COUNT(*) AS n, SUM(stale) AS stale FROM files GROUP BY folder_id, availability`,
@@ -123,9 +136,14 @@ export function createApp(ctx: AppContext) {
         reachable: r.get(f.id) ?? false,
         lastSeenAt: f.last_seen_at,
         lastCompleteScanAt: f.last_complete_scan_at,
-        scanOverdue: !f.last_complete_scan_at || Date.parse(f.last_complete_scan_at) < reminderBefore,
-        files: Object.fromEntries(counts.filter((c) => c.folder_id === f.id).map((c) => [c.availability, c.n])),
-        staleFiles: counts.filter((c) => c.folder_id === f.id).reduce((a, c) => a + (c.stale ?? 0), 0),
+        scanOverdue:
+          !f.last_complete_scan_at || Date.parse(f.last_complete_scan_at) < reminderBefore,
+        files: Object.fromEntries(
+          counts.filter((c) => c.folder_id === f.id).map((c) => [c.availability, c.n]),
+        ),
+        staleFiles: counts
+          .filter((c) => c.folder_id === f.id)
+          .reduce((a, c) => a + (c.stale ?? 0), 0),
       }));
     }),
   );
@@ -134,7 +152,10 @@ export function createApp(ctx: AppContext) {
     '/api/folders',
     route(async (req) => {
       if (scans.isRunning()) throw new HttpError(409, 'Wait for the scan to finish.');
-      const f = await addFolder(db, platform, { path: String(req.body?.path ?? ''), dataDir: ctx.dataDir ?? undefined });
+      const f = await addFolder(db, platform, {
+        path: String(req.body?.path ?? ''),
+        dataDir: ctx.dataDir ?? undefined,
+      });
       reach.invalidate();
       return { id: f.id };
     }),
@@ -143,11 +164,14 @@ export function createApp(ctx: AppContext) {
   app.patch(
     '/api/folders/:id',
     route((req) => {
-      const f = db.prepare('SELECT * FROM folders WHERE id = ?').get(req.params.id) as FolderRow | undefined;
+      const f = db.prepare('SELECT * FROM folders WHERE id = ?').get(req.params.id) as
+        FolderRow | undefined;
       if (!f) throw new HttpError(404, 'No such folder.');
       const body = req.body as Record<string, unknown>;
-      for (const k of Object.keys(body)) if (k !== 'alsoInICloud') throw new HttpError(400, `Unknown field "${k}".`);
-      if (typeof body.alsoInICloud !== 'boolean') throw new HttpError(400, 'alsoInICloud must be true or false.');
+      for (const k of Object.keys(body))
+        if (k !== 'alsoInICloud') throw new HttpError(400, `Unknown field "${k}".`);
+      if (typeof body.alsoInICloud !== 'boolean')
+        throw new HttpError(400, 'alsoInICloud must be true or false.');
       db.prepare('UPDATE folders SET also_in_icloud = ?, updated_at = ? WHERE id = ?').run(
         body.alsoInICloud ? 1 : 0,
         nowIso(),
@@ -174,11 +198,9 @@ export function createApp(ctx: AppContext) {
       const removed = db.transaction(() => {
         const r = db.prepare('DELETE FROM folders WHERE id = ?').run(req.params.id);
         if (r.changes === 0) throw new HttpError(404, 'No such folder.');
-        db.prepare('INSERT OR REPLACE INTO deletions (entity, entity_id, deleted_at) VALUES (?, ?, ?)').run(
-          'folder',
-          req.params.id,
-          nowIso(),
-        );
+        db.prepare(
+          'INSERT OR REPLACE INTO deletions (entity, entity_id, deleted_at) VALUES (?, ?, ?)',
+        ).run('folder', req.params.id, nowIso());
         // Items whose only files were here go too — unless the owner recorded anything on them.
         return removeOrphanItems(db);
       })();
@@ -188,7 +210,10 @@ export function createApp(ctx: AppContext) {
   );
 
   // ---- Scanning --------------------------------------------------------------------------------
-  app.get('/api/scan', route(() => ({ status: scans.status() })));
+  app.get(
+    '/api/scan',
+    route(() => ({ status: scans.status() })),
+  );
   app.post(
     '/api/scan',
     route((req) => {
@@ -197,7 +222,10 @@ export function createApp(ctx: AppContext) {
       return { status: scans.start(ids) };
     }),
   );
-  app.post('/api/scan/cancel', route(() => ({ cancelled: scans.requestCancel() })));
+  app.post(
+    '/api/scan/cancel',
+    route(() => ({ cancelled: scans.requestCancel() })),
+  );
 
   // ---- Library ---------------------------------------------------------------------------------
   app.get(
@@ -296,7 +324,8 @@ export function createApp(ctx: AppContext) {
     route((req) => {
       const id = itemIdOr404(String(req.body?.itemId ?? ''));
       const dir = req.body?.direction;
-      if (dir !== 'up' && dir !== 'down') throw new HttpError(400, 'direction must be "up" or "down".');
+      if (dir !== 'up' && dir !== 'down')
+        throw new HttpError(400, 'direction must be "up" or "down".');
       shortlistMove(db, id, dir);
       return { ok: true };
     }),
@@ -311,17 +340,27 @@ export function createApp(ctx: AppContext) {
 
   // ---- Open / Show in folder (POST only, ids only — never paths; §6.3, §14) --------------------
   const fileForAction = async (req: Request) => {
-    const f = db.prepare('SELECT folder_id, rel_path, availability FROM files WHERE id = ?').get(String(req.params.fileId)) as
-      | { folder_id: string; rel_path: string; availability: string }
-      | undefined;
+    const f = db
+      .prepare('SELECT folder_id, rel_path, availability FROM files WHERE id = ?')
+      .get(String(req.params.fileId)) as
+      { folder_id: string; rel_path: string; availability: string } | undefined;
     if (!f) throw new HttpError(404, 'No such file.');
     const folder = db.prepare('SELECT * FROM folders WHERE id = ?').get(f.folder_id) as FolderRow;
     const root = await resolveFolderRoot(db, platform, folder);
     if (!root) {
-      throw new HttpError(409, folder.storage_kind === 'external' ? 'The external drive is not connected.' : 'That folder is not reachable.');
+      throw new HttpError(
+        409,
+        folder.storage_kind === 'external'
+          ? 'The external drive is not connected.'
+          : 'That folder is not reachable.',
+      );
     }
     const abs = joinRel(root, f.rel_path);
-    if (!fs.existsSync(abs)) throw new HttpError(409, 'The file is no longer there. Scan the folder to update the library.');
+    if (!fs.existsSync(abs))
+      throw new HttpError(
+        409,
+        'The file is no longer there. Scan the folder to update the library.',
+      );
     return { abs, availability: f.availability };
   };
 
@@ -330,7 +369,9 @@ export function createApp(ctx: AppContext) {
     route(async (req) => {
       const { abs } = await fileForAction(req);
       // Re-check right now, not the scan's answer (§9.5).
-      const state = platform.supportsPlaceholders ? availabilityFromAttributes(await platform.checkAttributes(abs)) : 'present';
+      const state = platform.supportsPlaceholders
+        ? availabilityFromAttributes(await platform.checkAttributes(abs))
+        : 'present';
       if (state !== 'present' && req.body?.confirmDownload !== true) {
         throw new NeedsConfirmation(
           state === 'placeholder'
@@ -355,7 +396,10 @@ export function createApp(ctx: AppContext) {
   // ---- Backup and restore (§16) ----------------------------------------------------------------
   app.get('/api/backup', (_req, res) => {
     const backup = createBackup(db);
-    res.setHeader('Content-Disposition', `attachment; filename="whatbooksnext-backup-${todayLocal()}.json"`);
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="whatbooksnext-backup-${todayLocal()}.json"`,
+    );
     res.json(backup);
   });
 
@@ -368,7 +412,8 @@ export function createApp(ctx: AppContext) {
     '/api/restore',
     route(async (req) => {
       if (scans.isRunning()) throw new HttpError(409, 'Wait for the scan to finish.');
-      if (req.body?.confirm !== true) throw new HttpError(400, 'Restoring replaces all app data; confirm first.');
+      if (req.body?.confirm !== true)
+        throw new HttpError(400, 'Restoring replaces all app data; confirm first.');
       const backup = validateBackup(db, req.body?.backup);
       try {
         const r = await restoreBackup(db, backup, ctx.snapshotDir);
@@ -376,7 +421,10 @@ export function createApp(ctx: AppContext) {
         return { ok: true, snapshotPath: r.snapshotPath };
       } catch (err) {
         if (err instanceof HttpError) throw err;
-        throw new HttpError(400, `The backup couldn't be applied, so nothing was changed. (${(err as Error).message})`);
+        throw new HttpError(
+          400,
+          `The backup couldn't be applied, so nothing was changed. (${(err as Error).message})`,
+        );
       }
     }),
   );
@@ -387,14 +435,20 @@ export function createApp(ctx: AppContext) {
     route(async (req) => {
       const includeNames = bool(req.query.names) ?? false;
       const r = await reach.get(true);
-      const folders = db.prepare('SELECT * FROM folders ORDER BY display_path').all() as FolderRow[];
+      const folders = db
+        .prepare('SELECT * FROM folders ORDER BY display_path')
+        .all() as FolderRow[];
       const counts = db
-        .prepare('SELECT folder_id, availability, COUNT(*) AS n FROM files GROUP BY folder_id, availability')
+        .prepare(
+          'SELECT folder_id, availability, COUNT(*) AS n FROM files GROUP BY folder_id, availability',
+        )
         .all() as { folder_id: string; availability: string; n: number }[];
       const snapshots = ctx.snapshotDir ? listSnapshots(ctx.snapshotDir) : [];
       const folderChecks = await Promise.all(
         folders.map(async (f, i) => {
-          const c = Object.fromEntries(counts.filter((x) => x.folder_id === f.id).map((x) => [x.availability, x.n]));
+          const c = Object.fromEntries(
+            counts.filter((x) => x.folder_id === f.id).map((x) => [x.availability, x.n]),
+          );
           // Where the volume is mounted now: just the drive letter unless names were asked for.
           let foundAt: string | null = null;
           if (f.volume_id) {
@@ -416,8 +470,15 @@ export function createApp(ctx: AppContext) {
         }),
       );
       return {
-        app: { schemaVersion: schemaVersion(db), node: process.version, platform: `${process.platform} (${platform.name} adapter)`, demo: Boolean(ctx.demo) },
-        lastSnapshot: snapshots[0] ? { kind: snapshots[0].kind, createdAt: snapshots[0].createdAt } : null,
+        app: {
+          schemaVersion: schemaVersion(db),
+          node: process.version,
+          platform: `${process.platform} (${platform.name} adapter)`,
+          demo: Boolean(ctx.demo),
+        },
+        lastSnapshot: snapshots[0]
+          ? { kind: snapshots[0].kind, createdAt: snapshots[0].createdAt }
+          : null,
         placeholderDetection: platform.supportsPlaceholders
           ? 'On: files with RecallOnDataAccess, RecallOnOpen or Offline set count as online-only.'
           : 'Not available on this platform: files count as present.',
@@ -446,16 +507,28 @@ export function createApp(ctx: AppContext) {
       res.status(err.status).json({ error: err.message });
       return;
     }
-    if (err && typeof err === 'object' && 'type' in err && (err as { type: string }).type === 'entity.parse.failed') {
+    if (
+      err &&
+      typeof err === 'object' &&
+      'type' in err &&
+      (err as { type: string }).type === 'entity.parse.failed'
+    ) {
       res.status(400).json({ error: 'The request was not valid JSON.' });
       return;
     }
-    if (err && typeof err === 'object' && 'type' in err && (err as { type: string }).type === 'entity.too.large') {
+    if (
+      err &&
+      typeof err === 'object' &&
+      'type' in err &&
+      (err as { type: string }).type === 'entity.too.large'
+    ) {
       res.status(413).json({ error: 'That file is too large.' });
       return;
     }
     console.error(err);
-    res.status(500).json({ error: 'Something went wrong. Details are in the window running the app.' });
+    res
+      .status(500)
+      .json({ error: 'Something went wrong. Details are in the window running the app.' });
   });
 
   return { app, scans, close: () => platform.close() };

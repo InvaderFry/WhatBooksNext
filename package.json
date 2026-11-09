@@ -21,7 +21,8 @@
     "typecheck": "tsc -p server && tsc -p web",
     "lint": "eslint .",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "screenshots": "node scripts/screenshots.ts"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.0",

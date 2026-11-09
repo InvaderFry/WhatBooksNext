@@ -25,7 +25,12 @@ function hashesDisagree(a: FileFacts, b: FileFacts): boolean {
 export function knownConflict(a: FileFacts, b: FileFacts): boolean {
   if (a.language && b.language && a.language !== b.language) return true;
   if (a.abridged !== null && b.abridged !== null && a.abridged !== b.abridged) return true;
-  if (a.edition_number !== null && b.edition_number !== null && a.edition_number !== b.edition_number) return true;
+  if (
+    a.edition_number !== null &&
+    b.edition_number !== null &&
+    a.edition_number !== b.edition_number
+  )
+    return true;
   return false;
 }
 
@@ -76,7 +81,9 @@ export interface GroupingResult {
 
 export function groupUnassignedFiles(db: DB): GroupingResult {
   const unassigned = db
-    .prepare('SELECT f.* FROM files f WHERE NOT EXISTS (SELECT 1 FROM item_files x WHERE x.file_id = f.id)')
+    .prepare(
+      'SELECT f.* FROM files f WHERE NOT EXISTS (SELECT 1 FROM item_files x WHERE x.file_id = f.id)',
+    )
     .all() as FileFacts[];
   const result: GroupingResult = { itemsCreated: 0, filesAttached: 0, ambiguous: 0 };
   if (unassigned.length === 0) return result;
@@ -99,12 +106,16 @@ export function groupUnassignedFiles(db: DB): GroupingResult {
   };
 
   for (const f of unassigned) {
-    for (const other of byNameSize.all(f.name, f.size) as (FileFacts & { item_id: string | null })[]) {
+    for (const other of byNameSize.all(f.name, f.size) as (FileFacts & {
+      item_id: string | null;
+    })[]) {
       if (!areCopies(f, other)) continue;
       if (other.item_id) link(f.id, other.item_id);
       else uf.union(f.id, other.id);
     }
-    for (const other of siblings.all(f.folder_id, f.rel_dir, f.compare_key) as (FileFacts & { item_id: string | null })[]) {
+    for (const other of siblings.all(f.folder_id, f.rel_dir, f.compare_key) as (FileFacts & {
+      item_id: string | null;
+    })[]) {
       if (!sameFormatGroup(f, other)) continue;
       if (other.item_id) link(f.id, other.item_id);
       else uf.union(f.id, other.id);

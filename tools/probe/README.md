@@ -31,7 +31,7 @@ It **never**:
   library folders;
 - reads the contents of an online-only file, so it can't trigger an iCloud download.
   (Listing a cloud folder the PC hasn't listed before can make iCloud fetch that folder's
-  *list of names*. That's normal, and no file contents are downloaded.);
+  _list of names_. That's normal, and no file contents are downloaded.);
 - follows junctions or symbolic links, so a folder that loops back on itself can't trap it;
 - sends anything anywhere.
 

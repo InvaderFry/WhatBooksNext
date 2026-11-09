@@ -10,5 +10,7 @@
     "lib": ["es2023"],
     "types": ["node"]
   },
-  "include": ["src", "../scripts", "../vitest.config.ts"]
+  "include": ["src", "../scripts", "../vitest.config.ts"],
+  // Uses Playwright, an optional dev tool that is not a dependency (see the script's header).
+  "exclude": ["../scripts/screenshots.ts"]
 }

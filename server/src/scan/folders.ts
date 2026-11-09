@@ -42,7 +42,11 @@ export async function resolveFolderRoot(
     if (!isDirectory(abs)) return null;
     const letter = /^([A-Za-z]):/.exec(root)?.[1]?.toUpperCase() ?? null;
     if (letter && letter !== folder.last_letter) {
-      db.prepare('UPDATE folders SET last_letter = ?, updated_at = ? WHERE id = ?').run(letter, nowIso(), folder.id);
+      db.prepare('UPDATE folders SET last_letter = ?, updated_at = ? WHERE id = ?').run(
+        letter,
+        nowIso(),
+        folder.id,
+      );
     }
     return abs;
   }
@@ -66,7 +70,8 @@ export async function addFolder(
   if (!raw) throw new HttpError(400, 'Enter a folder path.');
   if (!path.isAbsolute(raw)) throw new HttpError(400, 'Enter a full path, such as E:\\Books.');
   const abs = path.resolve(raw);
-  if (!isDirectory(abs)) throw new HttpError(400, "That folder can't be found. Is the drive connected?");
+  if (!isDirectory(abs))
+    throw new HttpError(400, "That folder can't be found. Is the drive connected?");
   if (input.dataDir && (abs === input.dataDir || abs.startsWith(input.dataDir + path.sep))) {
     throw new HttpError(400, "That's the app's own data folder.");
   }
@@ -112,7 +117,8 @@ export async function reconnectFolder(
   folderId: string,
   newPath: string,
 ): Promise<FolderRow> {
-  const folder = db.prepare('SELECT * FROM folders WHERE id = ?').get(folderId) as FolderRow | undefined;
+  const folder = db.prepare('SELECT * FROM folders WHERE id = ?').get(folderId) as
+    FolderRow | undefined;
   if (!folder) throw new HttpError(404, 'No such folder.');
   const abs = path.resolve(newPath.trim().replace(/^"(.*)"$/, '$1'));
   if (!isDirectory(abs)) throw new HttpError(400, "That folder can't be found.");
@@ -120,6 +126,16 @@ export async function reconnectFolder(
   db.prepare(
     `UPDATE folders SET display_path = ?, volume_id = ?, volume_serial = ?, volume_label = ?,
        relative_path = ?, last_letter = ?, storage_kind = ?, updated_at = ? WHERE id = ?`,
-  ).run(abs, vol.volumeId, vol.serial, vol.label, vol.relativePath, vol.letter, vol.storageKind, nowIso(), folderId);
+  ).run(
+    abs,
+    vol.volumeId,
+    vol.serial,
+    vol.label,
+    vol.relativePath,
+    vol.letter,
+    vol.storageKind,
+    nowIso(),
+    folderId,
+  );
   return db.prepare('SELECT * FROM folders WHERE id = ?').get(folderId) as FolderRow;
 }

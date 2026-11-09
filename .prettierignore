@@ -7,3 +7,5 @@ package-lock.json
 *.gz
 PLAN.md
 LICENSE
+screenshots
+tools/probe/*.bat

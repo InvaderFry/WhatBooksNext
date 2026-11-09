@@ -49,7 +49,15 @@ export interface ParsedName {
 
 const QUALITY_TOKENS = new Set(['hd', 'hq', 'hires', 'highres']);
 /** Size/source tags: recorded and ignored when comparing (M0 probe). */
-const SIZE_TOKENS = new Set(['optimized', 'opt', 'downsampled', 'high', 'ebook', 'digital', 'lowres']);
+const SIZE_TOKENS = new Set([
+  'optimized',
+  'opt',
+  'downsampled',
+  'high',
+  'ebook',
+  'digital',
+  'lowres',
+]);
 const ORDINAL_WORDS: Record<string, number> = {
   first: 1,
   second: 2,
@@ -110,7 +118,22 @@ export function titleCompareKey(title: string): string {
 }
 
 function cap(word: string, first: boolean): string {
-  const small = new Set(['a', 'an', 'the', 'and', 'or', 'of', 'in', 'on', 'to', 'for', 'at', 'by', 'with', 'vs']);
+  const small = new Set([
+    'a',
+    'an',
+    'the',
+    'and',
+    'or',
+    'of',
+    'in',
+    'on',
+    'to',
+    'for',
+    'at',
+    'by',
+    'with',
+    'vs',
+  ]);
   if (!first && small.has(word)) return word;
   return word.charAt(0).toUpperCase() + word.slice(1);
 }
@@ -142,14 +165,18 @@ function extractEdition(seg: string): { rest: string; number?: number; note?: st
   // "completecoloredition" -> "complete color edition"; marker may have swallowed title text.
   for (const note of NOTE_EDITIONS) {
     if (marker.endsWith(note)) {
-      return { rest: rest + marker.slice(0, marker.length - note.length), note: `${splitWords(note).join(' ')} edition` };
+      return {
+        rest: rest + marker.slice(0, marker.length - note.length),
+        note: `${splitWords(note).join(' ')} edition`,
+      };
     }
   }
   return null;
 }
 
 function words(text: string): { value: string; split: boolean } {
-  if (/\s/.test(text.trim()) || !/^[a-z0-9]+$/.test(text)) return { value: text.trim(), split: false };
+  if (/\s/.test(text.trim()) || !/^[a-z0-9]+$/.test(text))
+    return { value: text.trim(), split: false };
   if (text.length <= 6 || /^\d+$/.test(text)) return { value: text, split: false };
   return { value: splitWords(text).join(' '), split: true };
 }
@@ -195,7 +222,10 @@ export function parseFilename(fileName: string): ParsedName {
     base = base.slice(0, qs.index);
   }
 
-  const spaced = /\s/.test(base) || /_-_/.test(base) || (/-/.test(base) && !/_/.test(base) && (base.match(/-/g)?.length ?? 0) >= 2);
+  const spaced =
+    /\s/.test(base) ||
+    /_-_/.test(base) ||
+    (/-/.test(base) && !/_/.test(base) && (base.match(/-/g)?.length ?? 0) >= 2);
   if (spaced) parseSpaced(base.replace(/_-_/g, ' - ').replace(/_/g, ' '), result, tags);
   else parseSlug(base, result, tags);
 
@@ -294,7 +324,8 @@ function parseSlug(base: string, r: Partial<ParsedName>, tags: string[]) {
       markerIndex = markerIndex < 0 ? i : markerIndex;
       continue;
     }
-    if (markerIndex >= 0) textSegs.push(`\u0000${seg}`); // after a marker: subtitle text
+    if (markerIndex >= 0)
+      textSegs.push(`\u0000${seg}`); // after a marker: subtitle text
     else textSegs.push(seg);
   }
 
@@ -344,7 +375,9 @@ function parseSlug(base: string, r: Partial<ParsedName>, tags: string[]) {
 
 /** Spaced names: "Series 001 (2012)", "Series V1 17", "Title - Author", "Series #4". */
 function parseSpaced(base: string, r: Partial<ParsedName>, tags: string[]) {
-  let s = base.replace(/-/g, (m, i: number, str: string) => (str[i - 1] === ' ' || str[i + 1] === ' ' ? m : ' '));
+  let s = base.replace(/-/g, (m, i: number, str: string) =>
+    str[i - 1] === ' ' || str[i + 1] === ' ' ? m : ' ',
+  );
   s = s.replace(/\s+/g, ' ').trim();
   let m: RegExpExecArray | null;
 
@@ -404,7 +437,10 @@ function parseSpaced(base: string, r: Partial<ParsedName>, tags: string[]) {
 
   // Issue: "Series 001", "Series #4"
   // Two digits only when zero-padded ("05"), so "Catch 22" stays a title.
-  if ((m = /^(.+?) #?(\d{1,4})$/.exec(s)) && (m[2]!.length >= 3 || /^0\d$/.test(m[2]!) || s.includes('#'))) {
+  if (
+    (m = /^(.+?) #?(\d{1,4})$/.exec(s)) &&
+    (m[2]!.length >= 3 || /^0\d$/.test(m[2]!) || s.includes('#'))
+  ) {
     r.series = { value: m[1]!, confidence: 0.8 };
     r.issue = { value: m[2]!.replace(/^0+(?=\d)/, ''), confidence: 0.85 };
     r.title = { value: `${m[1]} #${r.issue.value}`, confidence: 0.7 };
@@ -438,7 +474,10 @@ export function compareKeyFor(fileName: string): string {
   const dot = fileName.lastIndexOf('.');
   let base = (dot > 0 ? fileName.slice(0, dot) : fileName).toLowerCase();
   base = base.replace(/\s?\(\d{1,2}\)$/, '');
-  base = base.replace(/(?<![\p{L}\p{N}])(?:hd|hq|hi-?res|high-?res|optimized|opt|downsampled|high|ebook|lowres|\d{10})(?![\p{L}\p{N}])/gu, ' ');
+  base = base.replace(
+    /(?<![\p{L}\p{N}])(?:hd|hq|hi-?res|high-?res|optimized|opt|downsampled|high|ebook|lowres|\d{10})(?![\p{L}\p{N}])/gu,
+    ' ',
+  );
   const key = normalizeForCompare(base);
   return key || normalizeForCompare(fileName);
 }

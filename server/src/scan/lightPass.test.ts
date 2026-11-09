@@ -32,9 +32,13 @@ async function scan() {
   return (await scans.wait())!;
 }
 
-const file = (name: string) => db.prepare('SELECT * FROM files WHERE name = ?').get(name) as Record<string, unknown>;
+const file = (name: string) =>
+  db.prepare('SELECT * FROM files WHERE name = ?').get(name) as Record<string, unknown>;
 const itemOf = (name: string) =>
-  db.prepare('SELECT x.item_id FROM item_files x JOIN files f ON f.id = x.file_id WHERE f.name = ?').pluck().get(name) as string;
+  db
+    .prepare('SELECT x.item_id FROM item_files x JOIN files f ON f.id = x.file_id WHERE f.name = ?')
+    .pluck()
+    .get(name) as string;
 const itemCount = () => db.prepare('SELECT COUNT(*) FROM items').pluck().get() as number;
 const unplug = (root: string) => {
   platform.volumes.find((v) => v.root === path.resolve(root))!.root = null;
@@ -45,7 +49,11 @@ describe('light pass', () => {
     writeFiles(drive, { 'Novels/mapmaking.epub': 100, 'Music/track.mp3': 10, 'notes.txt': 5 });
     await addFolder(db, platform, { path: drive });
     const s = await scan();
-    expect(file('mapmaking.epub')).toMatchObject({ size: 100, availability: 'present', format: 'epub' });
+    expect(file('mapmaking.epub')).toMatchObject({
+      size: 100,
+      availability: 'present',
+      format: 'epub',
+    });
     expect(s.folders[0]!.ignoredByType).toEqual({ mp3: 1, txt: 1 });
   });
 
@@ -60,7 +68,10 @@ describe('light pass', () => {
 
   it('marks files with recall or offline bits as placeholders, and unreadable attributes as unknown', async () => {
     writeFiles(cloud, { 'a/online.epub': 10, 'a/local.epub': 10, 'b/mystery.epub': 10 });
-    platform.attributes.set(path.join(cloud, 'a', 'online.epub'), 0x20 | ATTR_RECALL_ON_DATA_ACCESS | ATTR_OFFLINE);
+    platform.attributes.set(
+      path.join(cloud, 'a', 'online.epub'),
+      0x20 | ATTR_RECALL_ON_DATA_ACCESS | ATTR_OFFLINE,
+    );
     platform.unreadableAttributeDirs.add(path.join(cloud, 'b'));
     await addFolder(db, platform, { path: cloud });
     await scan();
@@ -143,7 +154,10 @@ describe('scenario 10: cancelling, access errors and unplugging never mark unlis
     };
     await scan();
     fs.renameSync(drive + '-gone', drive);
-    const rows = db.prepare('SELECT name, availability, stale FROM files').all() as { availability: string; stale: number }[];
+    const rows = db.prepare('SELECT name, availability, stale FROM files').all() as {
+      availability: string;
+      stale: number;
+    }[];
     expect(rows.filter((r) => r.availability === 'missing')).toEqual([]);
     expect(rows.filter((r) => r.stale === 1).length).toBe(2);
   });
@@ -151,19 +165,26 @@ describe('scenario 10: cancelling, access errors and unplugging never mark unlis
   it('leaves unlisted directories untouched when the scan is cancelled, and says so', async () => {
     await addFolder(db, platform, { path: drive });
     await scan();
-    for (const n of ['A/one.epub', 'B/two.epub', 'C/three.epub']) fs.rmSync(path.join(drive, ...n.split('/')));
+    for (const n of ['A/one.epub', 'B/two.epub', 'C/three.epub'])
+      fs.rmSync(path.join(drive, ...n.split('/')));
     platform.onListDirectory = () => scans.requestCancel();
     const s = await scan();
     expect(s.status).toBe('cancelled');
-    const missing = db.prepare("SELECT COUNT(*) FROM files WHERE availability = 'missing'").pluck().get();
+    const missing = db
+      .prepare("SELECT COUNT(*) FROM files WHERE availability = 'missing'")
+      .pluck()
+      .get();
     expect(missing).toBe(0);
-    expect((db.prepare('SELECT last_complete_scan_at FROM folders').get() as FolderRow).last_complete_scan_at).not.toBeNull();
+    expect(
+      (db.prepare('SELECT last_complete_scan_at FROM folders').get() as FolderRow)
+        .last_complete_scan_at,
+    ).not.toBeNull();
   });
 
   it('does not reset the last complete scan date after a partial scan', async () => {
     await addFolder(db, platform, { path: drive });
     await scan();
-    const first = (db.prepare('SELECT last_complete_scan_at FROM folders').pluck().get() as string);
+    const first = db.prepare('SELECT last_complete_scan_at FROM folders').pluck().get() as string;
     platform.failingDirs.add(path.join(drive, 'A'));
     await new Promise((r) => setTimeout(r, 5));
     await scan();
@@ -173,11 +194,20 @@ describe('scenario 10: cancelling, access errors and unplugging never mark unlis
 
 describe('grouping by name and size (§11.3 rules 1–2)', () => {
   it('groups an EPUB + PDF + MOBI trio in one folder into one item (scenario 17, M1 level)', async () => {
-    writeFiles(drive, { 'Bundle/mapmaking.epub': 100, 'Bundle/mapmaking.pdf': 300, 'Bundle/mapmaking.mobi': 90 });
+    writeFiles(drive, {
+      'Bundle/mapmaking.epub': 100,
+      'Bundle/mapmaking.pdf': 300,
+      'Bundle/mapmaking.mobi': 90,
+    });
     await addFolder(db, platform, { path: drive });
     await scan();
     expect(itemCount()).toBe(1);
-    const primary = db.prepare('SELECT f.name FROM item_files x JOIN files f ON f.id = x.file_id WHERE is_primary = 1').pluck().get();
+    const primary = db
+      .prepare(
+        'SELECT f.name FROM item_files x JOIN files f ON f.id = x.file_id WHERE is_primary = 1',
+      )
+      .pluck()
+      .get();
     expect(primary).toBe('mapmaking.epub');
   });
 
@@ -186,15 +216,26 @@ describe('grouping by name and size (§11.3 rules 1–2)', () => {
     await addFolder(db, platform, { path: drive });
     await scan();
     expect(itemCount()).toBe(1);
-    const primary = db.prepare('SELECT f.name FROM item_files x JOIN files f ON f.id = x.file_id WHERE is_primary = 1').pluck().get();
+    const primary = db
+      .prepare(
+        'SELECT f.name FROM item_files x JOIN files f ON f.id = x.file_id WHERE is_primary = 1',
+      )
+      .pluck()
+      .get();
     expect(primary).toBe('lanternfish_vol1_hd.cbz');
   });
 
   it('groups copies with the same name and size in different folders, chaining with format groups', async () => {
     writeFiles(drive, { 'Books/mapmaking.epub': 100, 'Books/mapmaking.pdf': 300 });
     writeFiles(cloud, { 'Backup/mapmaking.epub': 100, 'Backup/mapmaking.pdf': 300 });
-    platform.attributes.set(path.join(cloud, 'Backup', 'mapmaking.epub'), 0x20 | ATTR_RECALL_ON_DATA_ACCESS);
-    platform.attributes.set(path.join(cloud, 'Backup', 'mapmaking.pdf'), 0x20 | ATTR_RECALL_ON_DATA_ACCESS);
+    platform.attributes.set(
+      path.join(cloud, 'Backup', 'mapmaking.epub'),
+      0x20 | ATTR_RECALL_ON_DATA_ACCESS,
+    );
+    platform.attributes.set(
+      path.join(cloud, 'Backup', 'mapmaking.pdf'),
+      0x20 | ATTR_RECALL_ON_DATA_ACCESS,
+    );
     await addFolder(db, platform, { path: drive });
     await addFolder(db, platform, { path: cloud });
     await scan();
@@ -224,7 +265,10 @@ describe('grouping by name and size (§11.3 rules 1–2)', () => {
   });
 
   it('never groups different edition numbers, even in one folder (scenario 24, filename level)', async () => {
-    writeFiles(drive, { 'Tech/pythonrecipes_2ndedition.pdf': 100, 'Tech/pythonrecipes_3rdedition.epub': 100 });
+    writeFiles(drive, {
+      'Tech/pythonrecipes_2ndedition.pdf': 100,
+      'Tech/pythonrecipes_3rdedition.epub': 100,
+    });
     await addFolder(db, platform, { path: drive });
     await scan();
     expect(itemCount()).toBe(2);
@@ -243,15 +287,25 @@ describe('grouping by name and size (§11.3 rules 1–2)', () => {
     await scan();
     const item = itemOf('mapmaking.epub');
     fs.mkdirSync(path.join(drive, 'Sorted'));
-    fs.renameSync(path.join(drive, 'Inbox', 'mapmaking.epub'), path.join(drive, 'Sorted', 'mapmaking.epub'));
+    fs.renameSync(
+      path.join(drive, 'Inbox', 'mapmaking.epub'),
+      path.join(drive, 'Sorted', 'mapmaking.epub'),
+    );
     await scan();
     const items = db
-      .prepare('SELECT DISTINCT x.item_id FROM item_files x JOIN files f ON f.id = x.file_id WHERE f.name = ?')
+      .prepare(
+        'SELECT DISTINCT x.item_id FROM item_files x JOIN files f ON f.id = x.file_id WHERE f.name = ?',
+      )
       .pluck()
       .all('mapmaking.epub');
     expect(items).toEqual([item]);
     expect(itemCount()).toBe(1);
-    const primary = db.prepare('SELECT f.rel_path FROM item_files x JOIN files f ON f.id = x.file_id WHERE is_primary = 1').pluck().get();
+    const primary = db
+      .prepare(
+        'SELECT f.rel_path FROM item_files x JOIN files f ON f.id = x.file_id WHERE is_primary = 1',
+      )
+      .pluck()
+      .get();
     expect(primary).toBe('Sorted/mapmaking.epub');
   });
 });

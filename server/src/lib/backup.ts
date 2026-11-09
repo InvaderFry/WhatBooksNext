@@ -50,7 +50,8 @@ export interface Backup {
 export function createBackup(db: DB): Backup {
   const tables: Backup['tables'] = {};
   db.transaction(() => {
-    for (const t of BACKUP_TABLES) tables[t] = db.prepare(`SELECT * FROM ${t}`).all() as Record<string, unknown>[];
+    for (const t of BACKUP_TABLES)
+      tables[t] = db.prepare(`SELECT * FROM ${t}`).all() as Record<string, unknown>[];
   })();
   return {
     format: BACKUP_FORMAT,
@@ -63,16 +64,23 @@ export function createBackup(db: DB): Backup {
 }
 
 function columnsOf(db: DB, table: string): Set<string> {
-  return new Set((db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).map((c) => c.name));
+  return new Set(
+    (db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).map((c) => c.name),
+  );
 }
 
 /** Checks shape and columns before anything is touched. Throws a plain-language 400. */
 export function validateBackup(db: DB, raw: unknown): Backup {
-  if (!raw || typeof raw !== 'object') throw new HttpError(400, "That file isn't a whatBooksNext backup.");
+  if (!raw || typeof raw !== 'object')
+    throw new HttpError(400, "That file isn't a whatBooksNext backup.");
   const b = raw as Partial<Backup>;
-  if (b.format !== BACKUP_FORMAT) throw new HttpError(400, "That file isn't a whatBooksNext backup.");
+  if (b.format !== BACKUP_FORMAT)
+    throw new HttpError(400, "That file isn't a whatBooksNext backup.");
   if (b.formatVersion !== BACKUP_FORMAT_VERSION) {
-    throw new HttpError(400, `This backup uses format version ${b.formatVersion}; this app reads version ${BACKUP_FORMAT_VERSION}.`);
+    throw new HttpError(
+      400,
+      `This backup uses format version ${b.formatVersion}; this app reads version ${BACKUP_FORMAT_VERSION}.`,
+    );
   }
   const current = schemaVersion(db);
   if (b.schemaVersion !== current) {
@@ -82,20 +90,24 @@ export function validateBackup(db: DB, raw: unknown): Backup {
         'Restoring across versions is not supported yet.',
     );
   }
-  if (!b.tables || typeof b.tables !== 'object') throw new HttpError(400, 'The backup has no tables.');
+  if (!b.tables || typeof b.tables !== 'object')
+    throw new HttpError(400, 'The backup has no tables.');
   for (const t of BACKUP_TABLES) {
     const rows = b.tables[t];
     if (!Array.isArray(rows)) throw new HttpError(400, `The backup is missing the "${t}" table.`);
     const cols = columnsOf(db, t);
     for (const r of rows) {
-      if (!r || typeof r !== 'object' || Array.isArray(r)) throw new HttpError(400, `A row in "${t}" is malformed.`);
+      if (!r || typeof r !== 'object' || Array.isArray(r))
+        throw new HttpError(400, `A row in "${t}" is malformed.`);
       for (const k of Object.keys(r)) {
-        if (!cols.has(k)) throw new HttpError(400, `The "${t}" table in the backup has an unknown column "${k}".`);
+        if (!cols.has(k))
+          throw new HttpError(400, `The "${t}" table in the backup has an unknown column "${k}".`);
       }
     }
   }
   for (const t of Object.keys(b.tables)) {
-    if (!(BACKUP_TABLES as readonly string[]).includes(t)) throw new HttpError(400, `The backup has an unknown table "${t}".`);
+    if (!(BACKUP_TABLES as readonly string[]).includes(t))
+      throw new HttpError(400, `The backup has an unknown table "${t}".`);
   }
   return b as Backup;
 }
@@ -131,7 +143,9 @@ export async function restoreBackup(
   backup: Backup,
   snapshotDir: string | null,
 ): Promise<{ snapshotPath: string | null }> {
-  const snapshotPath = snapshotDir ? await takeSnapshot(db, snapshotDir, 'pre-restore', RESTORE_SNAPSHOTS_KEPT) : null;
+  const snapshotPath = snapshotDir
+    ? await takeSnapshot(db, snapshotDir, 'pre-restore', RESTORE_SNAPSHOTS_KEPT)
+    : null;
   db.transaction(() => {
     db.pragma('defer_foreign_keys = ON');
     for (const t of [...BACKUP_TABLES].reverse()) db.prepare(`DELETE FROM ${t}`).run();
@@ -146,14 +160,20 @@ export async function restoreBackup(
         const sig = keys.join(',');
         let stmt = stmtCache.get(sig);
         if (!stmt) {
-          stmt = db.prepare(`INSERT INTO ${t} (${keys.join(', ')}) VALUES (${keys.map((k) => '@' + k).join(', ')})`);
+          stmt = db.prepare(
+            `INSERT INTO ${t} (${keys.join(', ')}) VALUES (${keys.map((k) => '@' + k).join(', ')})`,
+          );
           stmtCache.set(sig, stmt);
         }
         stmt.run(r);
       }
     }
     const fk = db.pragma('foreign_key_check') as unknown[];
-    if (fk.length > 0) throw new HttpError(400, 'The backup refers to records it does not contain; nothing was changed.');
+    if (fk.length > 0)
+      throw new HttpError(
+        400,
+        'The backup refers to records it does not contain; nothing was changed.',
+      );
   })();
   return { snapshotPath };
 }

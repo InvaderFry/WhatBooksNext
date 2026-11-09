@@ -31,7 +31,10 @@ export function displayTitle(p: ParsedName): string {
   const subtitle = p.subtitle ? tc(p.subtitle.value) : undefined;
   let t: string;
   if (series && p.issue) {
-    const sv = p.seriesVolume && !p.seriesVolume.value.startsWith('season') ? ` v${p.seriesVolume.value}` : '';
+    const sv =
+      p.seriesVolume && !p.seriesVolume.value.startsWith('season')
+        ? ` v${p.seriesVolume.value}`
+        : '';
     t = `${series}${sv} #${p.issue.value}`;
   } else if (series && p.volume) {
     t = `${series} Vol. ${p.volume.value}${subtitle ? `: ${subtitle}` : ''}`;
@@ -52,13 +55,35 @@ function ordinal(n: number): string {
  * until sources are looked up (M3), so it stays unknown (null) rather than a guess (§4).
  */
 export function kindFromFiles(files: FileFacts[]): { kind: string | null; source: string | null } {
-  if (files.length > 0 && files.every((f) => COMIC_FORMATS.has(f.format))) return { kind: 'comic', source: 'format' };
+  if (files.length > 0 && files.every((f) => COMIC_FORMATS.has(f.format)))
+    return { kind: 'comic', source: 'format' };
   return { kind: null, source: null };
 }
 
-const AVAILABILITY_RANK: Record<string, number> = { present: 0, placeholder: 1, unknown: 2, missing: 3 };
-const PROSE_FORMAT_RANK: Record<string, number> = { epub: 0, pdf: 1, mobi: 2, azw3: 3, cbz: 4, cbr: 5, cb7: 6 };
-const COMIC_FORMAT_RANK: Record<string, number> = { cbz: 0, cbr: 1, cb7: 2, pdf: 3, epub: 4, mobi: 5, azw3: 6 };
+const AVAILABILITY_RANK: Record<string, number> = {
+  present: 0,
+  placeholder: 1,
+  unknown: 2,
+  missing: 3,
+};
+const PROSE_FORMAT_RANK: Record<string, number> = {
+  epub: 0,
+  pdf: 1,
+  mobi: 2,
+  azw3: 3,
+  cbz: 4,
+  cbr: 5,
+  cb7: 6,
+};
+const COMIC_FORMAT_RANK: Record<string, number> = {
+  cbz: 0,
+  cbr: 1,
+  cb7: 2,
+  pdf: 3,
+  epub: 4,
+  mobi: 5,
+  azw3: 6,
+};
 
 /**
  * Primary file (what Open uses and whose length counts, §11.3): a present file before a
@@ -115,20 +140,18 @@ export function attachFiles(db: DB, itemId: string, files: FileFacts[]): void {
 
 export function filesOfItem(db: DB, itemId: string): FileFacts[] {
   return db
-    .prepare(
-      `SELECT f.* FROM files f JOIN item_files x ON x.file_id = f.id WHERE x.item_id = ?`,
-    )
+    .prepare(`SELECT f.* FROM files f JOIN item_files x ON x.file_id = f.id WHERE x.item_id = ?`)
     .all(itemId) as FileFacts[];
 }
 
 export function refreshPrimary(db: DB, itemId: string): void {
-  const item = db.prepare('SELECT kind FROM items WHERE id = ?').get(itemId) as { kind: string | null } | undefined;
+  const item = db.prepare('SELECT kind FROM items WHERE id = ?').get(itemId) as
+    { kind: string | null } | undefined;
   if (!item) return;
   const primary = choosePrimary(filesOfItem(db, itemId), item.kind);
-  db.prepare('UPDATE item_files SET is_primary = CASE WHEN file_id = ? THEN 1 ELSE 0 END WHERE item_id = ?').run(
-    primary?.id ?? null,
-    itemId,
-  );
+  db.prepare(
+    'UPDATE item_files SET is_primary = CASE WHEN file_id = ? THEN 1 ELSE 0 END WHERE item_id = ?',
+  ).run(primary?.id ?? null, itemId);
 }
 
 export function refreshAllPrimaries(db: DB): void {
@@ -138,7 +161,8 @@ export function refreshAllPrimaries(db: DB): void {
 
 /** Does the owner have anything recorded on this item? (Then it is never silently deleted.) */
 export function hasOwnerData(db: DB, itemId: string): boolean {
-  const u = db.prepare('SELECT * FROM user_item WHERE item_id = ?').get(itemId) as Record<string, unknown> | undefined;
+  const u = db.prepare('SELECT * FROM user_item WHERE item_id = ?').get(itemId) as
+    Record<string, unknown> | undefined;
   const loc = db.prepare('SELECT 1 FROM locations WHERE item_id = ? LIMIT 1').get(itemId);
   if (loc) return true;
   if (!u) return false;
@@ -151,7 +175,9 @@ export function hasOwnerData(db: DB, itemId: string): boolean {
 /** Removes items with no files and no owner data (e.g. after a folder is removed). */
 export function removeOrphanItems(db: DB): number {
   const orphans = db
-    .prepare('SELECT id FROM items i WHERE NOT EXISTS (SELECT 1 FROM item_files x WHERE x.item_id = i.id)')
+    .prepare(
+      'SELECT id FROM items i WHERE NOT EXISTS (SELECT 1 FROM item_files x WHERE x.item_id = i.id)',
+    )
     .pluck()
     .all() as string[];
   let removed = 0;
@@ -159,7 +185,9 @@ export function removeOrphanItems(db: DB): number {
   for (const id of orphans) {
     if (hasOwnerData(db, id)) continue;
     db.prepare('DELETE FROM items WHERE id = ?').run(id);
-    db.prepare('INSERT OR REPLACE INTO deletions (entity, entity_id, deleted_at) VALUES (?, ?, ?)').run('item', id, now);
+    db.prepare(
+      'INSERT OR REPLACE INTO deletions (entity, entity_id, deleted_at) VALUES (?, ?, ?)',
+    ).run('item', id, now);
     removed++;
   }
   return removed;

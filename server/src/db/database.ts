@@ -65,7 +65,12 @@ export async function migrate(
 
   let snapshotPath: string | null = null;
   if (from > 0 && opts.snapshotDir) {
-    snapshotPath = await takeSnapshot(db, opts.snapshotDir, `pre-migration-v${from}`, MIGRATION_SNAPSHOTS_KEPT);
+    snapshotPath = await takeSnapshot(
+      db,
+      opts.snapshotDir,
+      `pre-migration-v${from}`,
+      MIGRATION_SNAPSHOTS_KEPT,
+    );
   }
 
   for (const m of pending) {

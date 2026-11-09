@@ -21,9 +21,11 @@ let made: ReturnType<typeof createApp>;
 /** A request as the app's own page would send it. */
 const api = {
   get: (url: string) => request(made.app).get(url).set('Host', HOST),
-  post: (url: string, body: object = {}) => request(made.app).post(url).set('Host', HOST).send(body),
+  post: (url: string, body: object = {}) =>
+    request(made.app).post(url).set('Host', HOST).send(body),
   patch: (url: string, body: object) => request(made.app).patch(url).set('Host', HOST).send(body),
-  delete: (url: string) => request(made.app).delete(url).set('Host', HOST).set('Content-Type', 'application/json'),
+  delete: (url: string) =>
+    request(made.app).delete(url).set('Host', HOST).set('Content-Type', 'application/json'),
 };
 
 async function freshApp() {
@@ -82,7 +84,10 @@ describe('scenario 21: requests from another website are refused', () => {
       .set('Content-Type', 'application/x-www-form-urlencoded')
       .send('a=1');
     expect(r.status).toBe(415);
-    const multipart = await request(made.app).post('/api/restore').set('Host', HOST).field('backup', '{}');
+    const multipart = await request(made.app)
+      .post('/api/restore')
+      .set('Host', HOST)
+      .field('backup', '{}');
     expect(multipart.status).toBe(415);
   });
 
@@ -97,14 +102,25 @@ describe('scenario 21: requests from another website are refused', () => {
   });
 
   it("accepts the app's own origin", async () => {
-    const r = await request(made.app).post('/api/scan/cancel').set('Host', HOST).set('Origin', `http://${HOST}`).send({});
+    const r = await request(made.app)
+      .post('/api/scan/cancel')
+      .set('Host', HOST)
+      .set('Origin', `http://${HOST}`)
+      .send({});
     expect(r.status).toBe(200);
   });
 
   it('allows the Vite dev server only when started in development', async () => {
     const prod = await request(made.app).get('/api/state').set('Host', 'localhost:5173');
     expect(prod.status).toBe(403);
-    const dev = createApp({ db, platform, port: PORT, devPorts: [5173], dataDir: null, snapshotDir: null });
+    const dev = createApp({
+      db,
+      platform,
+      port: PORT,
+      devPorts: [5173],
+      dataDir: null,
+      snapshotDir: null,
+    });
     const ok = await request(dev.app).get('/api/state').set('Host', 'localhost:5173');
     expect(ok.status).toBe(200);
   });
@@ -137,7 +153,9 @@ describe('folders', () => {
     await api.patch(`/api/folders/${id}`, { alsoInICloud: true });
     const item = await itemByTitle('mapmaking');
     await api.patch(`/api/items/${item.id}`, { icloudOverride: 'not_in' });
-    expect((await itemByTitle('mapmaking')) as unknown).toMatchObject({ availability: { alsoInICloud: false } });
+    expect((await itemByTitle('mapmaking')) as unknown).toMatchObject({
+      availability: { alsoInICloud: false },
+    });
   });
 
   it('removing a folder keeps items the owner has recorded something on', async () => {
@@ -165,15 +183,29 @@ describe('progress and owner data (§13.6)', () => {
 
   it('keeps an unknown finish date unknown — never today (scenario 6, data level)', async () => {
     const item = await itemByTitle('mapmaking');
-    await api.patch(`/api/items/${item.id}`, { progress: 'finished', finishedPrecision: 'unknown' });
+    await api.patch(`/api/items/${item.id}`, {
+      progress: 'finished',
+      finishedPrecision: 'unknown',
+    });
     const u = (await api.get(`/api/items/${item.id}`)).body.user;
-    expect(u).toMatchObject({ progress: 'finished', finishedOn: null, finishedPrecision: 'unknown' });
+    expect(u).toMatchObject({
+      progress: 'finished',
+      finishedOn: null,
+      finishedPrecision: 'unknown',
+    });
   });
 
   it('keeps an approximate date and its precision', async () => {
     const item = await itemByTitle('mapmaking');
-    await api.patch(`/api/items/${item.id}`, { progress: 'finished', finishedOn: '2019-06', finishedPrecision: 'approximate' });
-    expect((await api.get(`/api/items/${item.id}`)).body.user).toMatchObject({ finishedOn: '2019-06', finishedPrecision: 'approximate' });
+    await api.patch(`/api/items/${item.id}`, {
+      progress: 'finished',
+      finishedOn: '2019-06',
+      finishedPrecision: 'approximate',
+    });
+    expect((await api.get(`/api/items/${item.id}`)).body.user).toMatchObject({
+      finishedOn: '2019-06',
+      finishedPrecision: 'approximate',
+    });
   });
 
   it('takes an optional DNF reason and clears it when the book is restored', async () => {
@@ -192,24 +224,35 @@ describe('progress and owner data (§13.6)', () => {
 
   it("lets the owner fix the title and kind, and a later scan doesn't undo it", async () => {
     const item = await itemByTitle('mapmaking');
-    await api.patch(`/api/items/${item.id}`, { titleOverride: 'The Mapmaking Book', kindOverride: 'nonfiction' });
+    await api.patch(`/api/items/${item.id}`, {
+      titleOverride: 'The Mapmaking Book',
+      kindOverride: 'nonfiction',
+    });
     await api.post('/api/scan', {});
     await made.scans.wait();
     const after = (await api.get(`/api/items/${item.id}`)).body;
-    expect(after).toMatchObject({ title: 'The Mapmaking Book', kind: 'nonfiction', factTitle: 'Map Making' });
+    expect(after).toMatchObject({
+      title: 'The Mapmaking Book',
+      kind: 'nonfiction',
+      factTitle: 'Map Making',
+    });
   });
 });
 
 describe('shortlist (§13.9)', () => {
   it('keeps an ordered queue that can be reordered', async () => {
     await addAndScan({ 'a/alpha.epub': 1, 'b/bravo.epub': 2, 'c/charlie.epub': 3 });
-    const ids = await Promise.all(['alpha', 'bravo', 'charlie'].map(async (t) => (await itemByTitle(t)).id));
+    const ids = await Promise.all(
+      ['alpha', 'bravo', 'charlie'].map(async (t) => (await itemByTitle(t)).id),
+    );
     for (const id of ids) await api.post('/api/shortlist', { itemId: id });
     await api.post('/api/shortlist/move', { itemId: ids[2], direction: 'up' });
     const titles = (await api.get('/api/shortlist')).body.map((i: { title: string }) => i.title);
     expect(titles).toEqual(['Alpha', 'Charlie', 'Bravo']);
     await api.delete(`/api/shortlist/${ids[0]}`);
-    const after = (await api.get('/api/shortlist')).body.map((i: { user: { shortlistPosition: number } }) => i.user.shortlistPosition);
+    const after = (await api.get('/api/shortlist')).body.map(
+      (i: { user: { shortlistPosition: number } }) => i.user.shortlistPosition,
+    );
     expect(after).toEqual([1, 2]);
   });
 });
@@ -231,7 +274,9 @@ describe('Open and Show in folder (§14)', () => {
     expect(r.status).toBe(409);
     expect(r.body).toMatchObject({ needsConfirmation: true });
     expect(platform.opened).toEqual([]);
-    expect((await api.post(`/api/files/${fileId}/open`, { confirmDownload: true })).status).toBe(200);
+    expect((await api.post(`/api/files/${fileId}/open`, { confirmDownload: true })).status).toBe(
+      200,
+    );
   });
 
   it('says plainly when the drive is not connected', async () => {
@@ -256,9 +301,18 @@ describe('backup and restore (§16)', () => {
   });
 
   it('scenario 14: backup → empty app → restore recovers everything with no drive connected; a later scan reconnects files without changing ids', async () => {
-    await addAndScan({ 'Novels/mapmaking.epub': 10, 'Novels/mapmaking.pdf': 30, 'Comics/lanternfish_vol1.cbz': 40 });
+    await addAndScan({
+      'Novels/mapmaking.epub': 10,
+      'Novels/mapmaking.pdf': 30,
+      'Comics/lanternfish_vol1.cbz': 40,
+    });
     const item = await itemByTitle('mapmaking');
-    await api.patch(`/api/items/${item.id}`, { progress: 'halfway', rating: 9, note: 'Good so far', titleOverride: 'Mapmaking!' });
+    await api.patch(`/api/items/${item.id}`, {
+      progress: 'halfway',
+      rating: 9,
+      note: 'Good so far',
+      titleOverride: 'Mapmaking!',
+    });
     await api.post('/api/shortlist', { itemId: item.id });
     const backup = (await api.get('/api/backup')).body;
     expect(backup.note).toMatch(/API keys/);
@@ -269,11 +323,17 @@ describe('backup and restore (§16)', () => {
 
     const preview = await api.post('/api/restore/preview', { backup });
     expect(preview.status).toBe(200);
-    expect(preview.body.counts.find((c: { table: string }) => c.table === 'items')).toMatchObject({ inBackup: 2, now: 0 });
+    expect(preview.body.counts.find((c: { table: string }) => c.table === 'items')).toMatchObject({
+      inBackup: 2,
+      now: 0,
+    });
     expect((await api.post('/api/restore', { backup, confirm: true })).status).toBe(200);
 
     const restored = (await api.get(`/api/items/${item.id}`)).body;
-    expect(restored).toMatchObject({ title: 'Mapmaking!', user: { progress: 'halfway', rating: 9, note: 'Good so far', shortlistPosition: 1 } });
+    expect(restored).toMatchObject({
+      title: 'Mapmaking!',
+      user: { progress: 'halfway', rating: 9, note: 'Good so far', shortlistPosition: 1 },
+    });
     expect(restored.availability.label).toBe('On external drive (not connected)');
 
     platform.volumes[0]!.root = path.resolve(drive); // plugged back in
@@ -281,7 +341,9 @@ describe('backup and restore (§16)', () => {
     await made.scans.wait();
     const after = (await api.get(`/api/items/${item.id}`)).body;
     expect(after.availability.state).toBe('present');
-    expect(after.files.map((f: { id: string }) => f.id).sort()).toEqual(restored.files.map((f: { id: string }) => f.id).sort());
+    expect(after.files.map((f: { id: string }) => f.id).sort()).toEqual(
+      restored.files.map((f: { id: string }) => f.id).sort(),
+    );
     expect((await api.get('/api/items')).body.total).toBe(2);
   });
 
@@ -321,7 +383,11 @@ describe('diagnostics', () => {
     await addAndScan({ 'mapmaking.epub': 10 });
     const plain = (await api.get('/api/diagnostics')).body;
     expect(JSON.stringify(plain)).not.toContain(drive);
-    expect(plain.folders[0]).toMatchObject({ name: 'Folder 1', reachable: true, files: { present: 1 } });
+    expect(plain.folders[0]).toMatchObject({
+      name: 'Folder 1',
+      reachable: true,
+      files: { present: 1 },
+    });
     const named = (await api.get('/api/diagnostics?names=1')).body;
     expect(named.folders[0].name).toBe(path.resolve(drive));
   });

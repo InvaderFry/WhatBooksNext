@@ -11,7 +11,9 @@ import type { NextFunction, Request, Response } from 'express';
 export function requestGuard(opts: { port: number; devPorts?: number[] }) {
   const ports = [opts.port, ...(opts.devPorts ?? [])];
   const allowedHosts = new Set(ports.flatMap((p) => [`localhost:${p}`, `127.0.0.1:${p}`]));
-  const allowedOrigins = new Set(ports.flatMap((p) => [`http://localhost:${p}`, `http://127.0.0.1:${p}`]));
+  const allowedOrigins = new Set(
+    ports.flatMap((p) => [`http://localhost:${p}`, `http://127.0.0.1:${p}`]),
+  );
 
   return (req: Request, res: Response, next: NextFunction) => {
     const host = (req.headers.host ?? '').toLowerCase();

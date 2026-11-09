@@ -151,7 +151,9 @@ export async function lightScanFolder(
         modifiedMs: e.modifiedMs,
         createdMs: e.createdMs,
         attributes: e.attributes,
-        availability: platform.supportsPlaceholders ? availabilityFromAttributes(e.attributes) : 'present',
+        availability: platform.supportsPlaceholders
+          ? availabilityFromAttributes(e.attributes)
+          : 'present',
       });
     }
     summary.filesSeen = found.length;
@@ -174,7 +176,9 @@ export function applyFolderListing(
 ): void {
   const now = nowIso();
   const existing = db
-    .prepare('SELECT id, rel_path, rel_dir, size, modified_ms, availability, stale FROM files WHERE folder_id = ?')
+    .prepare(
+      'SELECT id, rel_path, rel_dir, size, modified_ms, availability, stale FROM files WHERE folder_id = ?',
+    )
     .all(folder.id) as ExistingFile[];
   // Windows paths are case-insensitive; a rename that only changes case is the same file.
   const byPath = new Map(existing.map((f) => [f.rel_path.toLowerCase(), f]));
@@ -197,7 +201,9 @@ export function applyFolderListing(
        full_hash = CASE WHEN @changed THEN NULL ELSE full_hash END
      WHERE id = @id`,
   );
-  const markMissing = db.prepare("UPDATE files SET availability = 'missing', stale = 0 WHERE id = ?");
+  const markMissing = db.prepare(
+    "UPDATE files SET availability = 'missing', stale = 0 WHERE id = ?",
+  );
   const markStale = db.prepare('UPDATE files SET stale = 1 WHERE id = ?');
   const dirScan = db.prepare(
     'INSERT INTO directory_scans (folder_id, rel_dir, listed_at) VALUES (?, ?, ?) ON CONFLICT (folder_id, rel_dir) DO UPDATE SET listed_at = excluded.listed_at',
@@ -289,7 +295,9 @@ export function isKnownAbsent(
   let parent = parentDir(relDir);
   while (parent !== null) {
     if (completeDirs.has(parent)) {
-      const name = (parent === '' ? child : child.slice(parent.length + 1)).split('/')[0]!.toLowerCase();
+      const name = (parent === '' ? child : child.slice(parent.length + 1))
+        .split('/')[0]!
+        .toLowerCase();
       return !childDirs.get(parent)!.has(name);
     }
     child = parent;

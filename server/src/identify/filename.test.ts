@@ -132,7 +132,9 @@ describe('filename parser — patterns from the M0 probe (invented names)', () =
 
 describe('name comparison', () => {
   it('ignores a leading or trailing article when comparing titles', () => {
-    expect(titleCompareKey('boatofamillionyears')).toBe(titleCompareKey('The Boat of a Million Years'));
+    expect(titleCompareKey('boatofamillionyears')).toBe(
+      titleCompareKey('The Boat of a Million Years'),
+    );
     expect(titleCompareKey('art of waiting the')).toBe(titleCompareKey('The Art of Waiting'));
     expect(titleCompareKey('theboatofamillionyears')).toBe('boatofamillionyears');
   });

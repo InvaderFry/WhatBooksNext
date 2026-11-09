@@ -23,7 +23,15 @@ export async function listWithNode(absDir: string, attributes: number | null): P
     } catch {
       // vanished between readdir and lstat; report what we have
     }
-    out.push({ name: d.name, isDirectory: d.isDirectory(), isLink, size, modifiedMs, createdMs, attributes });
+    out.push({
+      name: d.name,
+      isDirectory: d.isDirectory(),
+      isLink,
+      size,
+      modifiedMs,
+      createdMs,
+      attributes,
+    });
   }
   return out;
 }

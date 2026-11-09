@@ -15,11 +15,19 @@ export default tseslint.config(
     files: ['web/src/**/*.{ts,tsx}'],
     languageOptions: { globals: globals.browser },
     plugins: { 'react-hooks': reactHooks },
-    rules: reactHooks.configs.recommended.rules,
+    rules: {
+      ...reactHooks.configs.recommended.rules,
+      // Pages load data in an effect through an async helper that sets state only after
+      // `await`; the rule can't see through the helper and flags every such load.
+      'react-hooks/set-state-in-effect': 'off',
+    },
   },
   {
     rules: {
-      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
+      ],
     },
   },
 );

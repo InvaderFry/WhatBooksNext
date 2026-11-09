@@ -71,9 +71,19 @@ export async function buildDemoLibrary(db: DB, root: string): Promise<FakePlatfo
   write(second, SECOND_DRIVE);
 
   const p = new FakePlatform();
-  p.addVolume({ volumeId: 'demo-drive', label: 'DEMO DRIVE', storageKind: 'external', root: drive });
+  p.addVolume({
+    volumeId: 'demo-drive',
+    label: 'DEMO DRIVE',
+    storageKind: 'external',
+    root: drive,
+  });
   p.addVolume({ volumeId: 'demo-cloud', label: 'DEMO ICLOUD', storageKind: 'cloud', root: cloud });
-  const secondVol = p.addVolume({ volumeId: 'demo-second', label: 'DEMO DRIVE 2', storageKind: 'external', root: second });
+  const secondVol = p.addVolume({
+    volumeId: 'demo-second',
+    label: 'DEMO DRIVE 2',
+    storageKind: 'external',
+    root: second,
+  });
   for (const rel of ['Books/glassharbor.epub', 'Books/nightorchard.epub']) {
     p.attributes.set(path.join(cloud, ...rel.split('/')), ONLINE_ONLY);
   }
@@ -95,15 +105,36 @@ export async function buildDemoLibrary(db: DB, root: string): Promise<FakePlatfo
   secondVol.root = null;
 
   const byFile = (name: string) =>
-    db.prepare('SELECT x.item_id FROM item_files x JOIN files f ON f.id = x.file_id WHERE f.name = ? LIMIT 1').pluck().get(name) as string;
+    db
+      .prepare(
+        'SELECT x.item_id FROM item_files x JOIN files f ON f.id = x.file_id WHERE f.name = ? LIMIT 1',
+      )
+      .pluck()
+      .get(name) as string;
   const today = new Date();
-  const daysAgo = (n: number) => new Date(today.getTime() - n * 86_400_000).toISOString().slice(0, 10);
+  const daysAgo = (n: number) =>
+    new Date(today.getTime() - n * 86_400_000).toISOString().slice(0, 10);
 
   applyUserPatch(db, byFile('glassharbor.epub'), { progress: 'halfway' }, daysAgo(12));
-  applyUserPatch(db, byFile('mapmakersdaughter.epub'), { progress: 'finished', finishedOn: daysAgo(40), finishedPrecision: 'exact', rating: 8, takeaway: 'Maps are arguments.' });
-  applyUserPatch(db, byFile('Copperline 001 (2019) (Digital).cbz'), { progress: 'finished', finishedPrecision: 'unknown' });
-  applyUserPatch(db, byFile('quietmornings_ahandbookforslowstarts.epub'), { progress: 'dnf', dnfReason: 'not_now' });
-  applyUserPatch(db, byFile('practicalwidgetcrafting_fourthedition.pdf'), { kindOverride: 'tech', referenceOverride: true });
+  applyUserPatch(db, byFile('mapmakersdaughter.epub'), {
+    progress: 'finished',
+    finishedOn: daysAgo(40),
+    finishedPrecision: 'exact',
+    rating: 8,
+    takeaway: 'Maps are arguments.',
+  });
+  applyUserPatch(db, byFile('Copperline 001 (2019) (Digital).cbz'), {
+    progress: 'finished',
+    finishedPrecision: 'unknown',
+  });
+  applyUserPatch(db, byFile('quietmornings_ahandbookforslowstarts.epub'), {
+    progress: 'dnf',
+    dnfReason: 'not_now',
+  });
+  applyUserPatch(db, byFile('practicalwidgetcrafting_fourthedition.pdf'), {
+    kindOverride: 'tech',
+    referenceOverride: true,
+  });
   applyUserPatch(db, byFile('Widget Patterns - Ada Quill.pdf'), { kindOverride: 'tech' });
   applyUserPatch(db, byFile('Starfall Academy v01.cbz'), { kindOverride: 'manga' });
   applyUserPatch(db, byFile('Starfall Academy v02.cbz'), { kindOverride: 'manga' });

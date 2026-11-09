@@ -18,7 +18,8 @@ const snapshotDir = path.join(dataDir, 'snapshots');
 const dbFile = path.join(dataDir, 'whatbooksnext.sqlite');
 
 async function main() {
-  if (!Number.isInteger(port) || port < 1 || port > 65535) fail(`PORT must be a number from 1 to 65535 (got "${process.env.PORT}").`);
+  if (!Number.isInteger(port) || port < 1 || port > 65535)
+    fail(`PORT must be a number from 1 to 65535 (got "${process.env.PORT}").`);
   if (demo) fs.rmSync(dataDir, { recursive: true, force: true });
   fs.mkdirSync(dataDir, { recursive: true });
 
@@ -64,7 +65,9 @@ async function main() {
 
   // Bound to 127.0.0.1 only: never reachable from other machines (§4, §6.3).
   const server = app.listen(port, '127.0.0.1', () => {
-    console.log(`whatBooksNext${demo ? ' (DEMO library)' : ''} is running at http://localhost:${port}`);
+    console.log(
+      `whatBooksNext${demo ? ' (DEMO library)' : ''} is running at http://localhost:${port}`,
+    );
     if (!dev && !fs.existsSync(path.join(webDist, 'index.html'))) {
       console.log('The web pages are not built yet: run "npm run build" first.');
     }
@@ -72,7 +75,9 @@ async function main() {
   });
   server.on('error', (err: NodeJS.ErrnoException) => {
     if (err.code === 'EADDRINUSE') {
-      fail(`Port ${port} is already in use — is whatBooksNext already running? If something else uses it, start with another port, e.g. set PORT=4819.`);
+      fail(
+        `Port ${port} is already in use — is whatBooksNext already running? If something else uses it, start with another port, e.g. set PORT=4819.`,
+      );
     }
     fail(err.message);
   });

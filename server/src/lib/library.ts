@@ -189,7 +189,8 @@ export function availabilityFor(
 ): AvailabilityView {
   // "Also in iCloud": the folder is marked, unless this item says otherwise (§13.1).
   const folderSaysICloud = files.some((f) => folders.get(f.folderId)?.also_in_icloud === 1);
-  const alsoInICloud = user.icloudOverride === 'in' || (user.icloudOverride !== 'not_in' && folderSaysICloud);
+  const alsoInICloud =
+    user.icloudOverride === 'in' || (user.icloudOverride !== 'not_in' && folderSaysICloud);
 
   const reachable = files.filter((f) => f.folderReachable);
   let state = 'none';
@@ -205,7 +206,8 @@ export function availabilityFor(
   } else if (files.some((f) => !f.folderReachable && f.availability !== 'missing')) {
     state = 'not_connected';
     const f = files.find((x) => !x.folderReachable && x.availability !== 'missing')!;
-    label = f.storageKind === 'external' ? 'On external drive (not connected)' : 'Folder not reachable';
+    label =
+      f.storageKind === 'external' ? 'On external drive (not connected)' : 'Folder not reachable';
   } else if (reachable.some((f) => f.availability === 'unknown')) {
     state = 'unknown';
     label = 'Availability unknown';
@@ -227,9 +229,13 @@ export interface LibraryData {
 
 /** Loads every item with files and owner data. A few thousand items take milliseconds. */
 export function loadLibrary(db: DB, reach: FolderReachability, onlyIds?: string[]): LibraryData {
-  const folders = new Map((db.prepare('SELECT * FROM folders').all() as FolderRow[]).map((f) => [f.id, f]));
+  const folders = new Map(
+    (db.prepare('SELECT * FROM folders').all() as FolderRow[]).map((f) => [f.id, f]),
+  );
   const filter = onlyIds ? `WHERE i.id IN (${onlyIds.map(() => '?').join(',')})` : '';
-  const items = db.prepare(`SELECT i.* FROM items i ${filter}`).all(...(onlyIds ?? [])) as ItemRow[];
+  const items = db
+    .prepare(`SELECT i.* FROM items i ${filter}`)
+    .all(...(onlyIds ?? [])) as ItemRow[];
   const users = new Map(
     (db.prepare('SELECT * FROM user_item').all() as UserRow[]).map((u) => [u.item_id, u]),
   );
@@ -266,8 +272,13 @@ export function loadLibrary(db: DB, reach: FolderReachability, onlyIds?: string[
     if (!files.has(r.item_id)) files.set(r.item_id, []);
     files.get(r.item_id)!.push(view);
   }
-  const locations = new Map<string, { kind: string; store: string | null; confirmed_readable: number }[]>();
-  for (const l of db.prepare('SELECT item_id, kind, store, confirmed_readable FROM locations').all() as {
+  const locations = new Map<
+    string,
+    { kind: string; store: string | null; confirmed_readable: number }[]
+  >();
+  for (const l of db
+    .prepare('SELECT item_id, kind, store, confirmed_readable FROM locations')
+    .all() as {
     item_id: string;
     kind: string;
     store: string | null;
@@ -294,7 +305,13 @@ export function loadLibrary(db: DB, reach: FolderReachability, onlyIds?: string[
       formats: [...new Set(fs.map((f) => f.format))],
       fileCount: fs.length,
       folderIds: [...new Set(fs.map((f) => f.folderId))],
-      availability: availabilityFor(fs, folders, user, stores.filter((s) => s.confirmed_readable === 1), stores),
+      availability: availabilityFor(
+        fs,
+        folders,
+        user,
+        stores.filter((s) => s.confirmed_readable === 1),
+        stores,
+      ),
       user,
       firstSeenAt: fs.map((f) => f.firstSeenAt).sort()[0] ?? i.created_at,
     };
@@ -321,15 +338,23 @@ export interface LibraryQuery {
 const collator = new Intl.Collator(undefined, { sensitivity: 'base', numeric: true });
 
 /** Filters and sorts a loaded library. Pure, so it is testable without a database. */
-export function queryLibrary(items: ItemSummary[], q: LibraryQuery): { total: number; items: ItemSummary[] } {
+export function queryLibrary(
+  items: ItemSummary[],
+  q: LibraryQuery,
+): { total: number; items: ItemSummary[] } {
   let list = items;
   if (!q.showHidden) list = list.filter((i) => !i.user.hidden);
   if (q.q) {
     // Spaces and punctuation are ignored, so "mapmaking" finds "Map Making" and vice versa.
     const needle = normalizeForCompare(q.q);
-    list = list.filter((i) => normalizeForCompare(i.title).includes(needle) || normalizeForCompare(i.factTitle).includes(needle));
+    list = list.filter(
+      (i) =>
+        normalizeForCompare(i.title).includes(needle) ||
+        normalizeForCompare(i.factTitle).includes(needle),
+    );
   }
-  if (q.kind) list = list.filter((i) => (q.kind === 'unknown' ? i.kind === null : i.kind === q.kind));
+  if (q.kind)
+    list = list.filter((i) => (q.kind === 'unknown' ? i.kind === null : i.kind === q.kind));
   if (q.progress) list = list.filter((i) => i.user.progress === q.progress);
   if (q.format) list = list.filter((i) => i.formats.includes(q.format!));
   if (q.availability) list = list.filter((i) => i.availability.state === q.availability);
@@ -355,13 +380,16 @@ export function queryLibrary(items: ItemSummary[], q: LibraryQuery): { total: nu
 
 export function resolveItemId(db: DB, id: string): string | null {
   if (db.prepare('SELECT 1 FROM items WHERE id = ?').get(id)) return id;
-  const alias = db.prepare('SELECT new_id FROM id_aliases WHERE old_id = ?').pluck().get(id) as string | undefined;
+  const alias = db.prepare('SELECT new_id FROM id_aliases WHERE old_id = ?').pluck().get(id) as
+    string | undefined;
   return alias ?? null;
 }
 
 export function itemParse(db: DB, itemId: string): unknown {
   const primary = db
-    .prepare('SELECT f.parsed FROM item_files x JOIN files f ON f.id = x.file_id WHERE x.item_id = ? AND x.is_primary = 1')
+    .prepare(
+      'SELECT f.parsed FROM item_files x JOIN files f ON f.id = x.file_id WHERE x.item_id = ? AND x.is_primary = 1',
+    )
     .pluck()
     .get(itemId) as string | undefined;
   return parseJson(primary, null);

@@ -8,7 +8,15 @@ import { HttpError, nowIso, todayLocal } from '../util.ts';
  *  - "Did not finish" takes an optional reason; leaving DNF clears it.
  */
 
-export const PROGRESS = ['not_started', 'sampled', 'into_it', 'halfway', 'nearly_done', 'finished', 'dnf'] as const;
+export const PROGRESS = [
+  'not_started',
+  'sampled',
+  'into_it',
+  'halfway',
+  'nearly_done',
+  'finished',
+  'dnf',
+] as const;
 export const DNF_REASONS = ['not_for_me', 'not_now', 'too_difficult'] as const;
 export const PRECISIONS = ['exact', 'approximate', 'unknown'] as const;
 export const KINDS = ['fiction', 'nonfiction', 'self_help', 'tech', 'comic', 'manga'] as const;
@@ -32,10 +40,18 @@ export interface UserPatch {
 
 const MAX_TEXT = 10_000;
 
-function oneOf<T extends readonly string[]>(name: string, v: unknown, allowed: T, nullable = true): T[number] | null {
+function oneOf<T extends readonly string[]>(
+  name: string,
+  v: unknown,
+  allowed: T,
+  nullable = true,
+): T[number] | null {
   if (v === null && nullable) return null;
   if (typeof v !== 'string' || !(allowed as readonly string[]).includes(v)) {
-    throw new HttpError(400, `${name} must be one of ${allowed.join(', ')}${nullable ? ' or null' : ''}.`);
+    throw new HttpError(
+      400,
+      `${name} must be one of ${allowed.join(', ')}${nullable ? ' or null' : ''}.`,
+    );
   }
   return v as T[number];
 }
@@ -58,7 +74,8 @@ function date(name: string, v: unknown): string | null {
 
 /** Validates an incoming patch; unknown fields are refused rather than ignored. */
 export function validatePatch(body: unknown): UserPatch {
-  if (!body || typeof body !== 'object' || Array.isArray(body)) throw new HttpError(400, 'Expected a JSON object.');
+  if (!body || typeof body !== 'object' || Array.isArray(body))
+    throw new HttpError(400, 'Expected a JSON object.');
   const b = body as Record<string, unknown>;
   const allowed = new Set([
     'progress',
@@ -76,16 +93,22 @@ export function validatePatch(body: unknown): UserPatch {
     'referenceOverride',
     'icloudOverride',
   ]);
-  for (const k of Object.keys(b)) if (!allowed.has(k)) throw new HttpError(400, `Unknown field "${k}".`);
+  for (const k of Object.keys(b))
+    if (!allowed.has(k)) throw new HttpError(400, `Unknown field "${k}".`);
   const p: UserPatch = {};
   if ('progress' in b) p.progress = oneOf('progress', b.progress, PROGRESS, false)!;
   if ('dnfReason' in b) p.dnfReason = oneOf('dnfReason', b.dnfReason, DNF_REASONS);
   if ('startedOn' in b) p.startedOn = date('startedOn', b.startedOn);
-  if ('startedPrecision' in b) p.startedPrecision = oneOf('startedPrecision', b.startedPrecision, PRECISIONS);
+  if ('startedPrecision' in b)
+    p.startedPrecision = oneOf('startedPrecision', b.startedPrecision, PRECISIONS);
   if ('finishedOn' in b) p.finishedOn = date('finishedOn', b.finishedOn);
-  if ('finishedPrecision' in b) p.finishedPrecision = oneOf('finishedPrecision', b.finishedPrecision, PRECISIONS);
+  if ('finishedPrecision' in b)
+    p.finishedPrecision = oneOf('finishedPrecision', b.finishedPrecision, PRECISIONS);
   if ('rating' in b) {
-    if (b.rating !== null && !(Number.isInteger(b.rating) && (b.rating as number) >= 1 && (b.rating as number) <= 10)) {
+    if (
+      b.rating !== null &&
+      !(Number.isInteger(b.rating) && (b.rating as number) >= 1 && (b.rating as number) <= 10)
+    ) {
       throw new HttpError(400, 'rating must be a whole number from 1 to 10, or null.');
     }
     p.rating = b.rating as number | null;
@@ -104,7 +127,8 @@ export function validatePatch(body: unknown): UserPatch {
     }
     p.referenceOverride = b.referenceOverride as boolean | null;
   }
-  if ('icloudOverride' in b) p.icloudOverride = oneOf('icloudOverride', b.icloudOverride, ['in', 'not_in'] as const);
+  if ('icloudOverride' in b)
+    p.icloudOverride = oneOf('icloudOverride', b.icloudOverride, ['in', 'not_in'] as const);
   return p;
 }
 
@@ -127,7 +151,10 @@ interface Row {
 }
 
 export function ensureUserRow(db: DB, itemId: string): void {
-  db.prepare("INSERT OR IGNORE INTO user_item (item_id, updated_at) VALUES (?, ?)").run(itemId, nowIso());
+  db.prepare('INSERT OR IGNORE INTO user_item (item_id, updated_at) VALUES (?, ?)').run(
+    itemId,
+    nowIso(),
+  );
 }
 
 /** Applies a validated patch. `today` is injectable for tests. */
@@ -141,11 +168,19 @@ export function applyUserPatch(db: DB, itemId: string, p: UserPatch, today = tod
     next.progress = p.progress;
     next.progress_at = now;
     // Starting now: record today, exactly — unless a start date is already known.
-    if (row.progress === 'not_started' && !['not_started', 'finished', 'dnf'].includes(p.progress) && !row.started_on) {
+    if (
+      row.progress === 'not_started' &&
+      !['not_started', 'finished', 'dnf'].includes(p.progress) &&
+      !row.started_on
+    ) {
       next.started_on = today;
       next.started_precision = 'exact';
     }
-    if (p.progress === 'finished' && p.finishedOn === undefined && p.finishedPrecision === undefined) {
+    if (
+      p.progress === 'finished' &&
+      p.finishedOn === undefined &&
+      p.finishedPrecision === undefined
+    ) {
       next.finished_on = today;
       next.finished_precision = 'exact';
     }
@@ -160,7 +195,8 @@ export function applyUserPatch(db: DB, itemId: string, p: UserPatch, today = tod
     }
   }
   if (p.dnfReason !== undefined) {
-    if (p.dnfReason !== null && next.progress !== 'dnf') throw new HttpError(400, 'A DNF reason needs progress "dnf".');
+    if (p.dnfReason !== null && next.progress !== 'dnf')
+      throw new HttpError(400, 'A DNF reason needs progress "dnf".');
     next.dnf_reason = p.dnfReason;
   }
   if (p.startedOn !== undefined) next.started_on = p.startedOn;
@@ -178,7 +214,8 @@ export function applyUserPatch(db: DB, itemId: string, p: UserPatch, today = tod
   if (p.hidden !== undefined) next.hidden = p.hidden ? 1 : 0;
   if (p.titleOverride !== undefined) next.title_override = p.titleOverride;
   if (p.kindOverride !== undefined) next.kind_override = p.kindOverride;
-  if (p.referenceOverride !== undefined) next.reference_override = p.referenceOverride === null ? null : p.referenceOverride ? 1 : 0;
+  if (p.referenceOverride !== undefined)
+    next.reference_override = p.referenceOverride === null ? null : p.referenceOverride ? 1 : 0;
   if (p.icloudOverride !== undefined) next.icloud_override = p.icloudOverride;
 
   db.prepare(
@@ -195,39 +232,69 @@ export function applyUserPatch(db: DB, itemId: string, p: UserPatch, today = tod
 /** Shortlist: an ordered "next up" queue (§13.9). Positions are 1..n with no gaps. */
 export function shortlistAdd(db: DB, itemId: string): void {
   ensureUserRow(db, itemId);
-  const has = db.prepare('SELECT shortlist_position FROM user_item WHERE item_id = ?').pluck().get(itemId);
+  const has = db
+    .prepare('SELECT shortlist_position FROM user_item WHERE item_id = ?')
+    .pluck()
+    .get(itemId);
   if (has !== null) return;
-  const max = (db.prepare('SELECT MAX(shortlist_position) FROM user_item').pluck().get() as number | null) ?? 0;
-  db.prepare('UPDATE user_item SET shortlist_position = ?, updated_at = ? WHERE item_id = ?').run(max + 1, nowIso(), itemId);
+  const max =
+    (db.prepare('SELECT MAX(shortlist_position) FROM user_item').pluck().get() as number | null) ??
+    0;
+  db.prepare('UPDATE user_item SET shortlist_position = ?, updated_at = ? WHERE item_id = ?').run(
+    max + 1,
+    nowIso(),
+    itemId,
+  );
 }
 
 export function shortlistRemove(db: DB, itemId: string): void {
   db.transaction(() => {
-    db.prepare('UPDATE user_item SET shortlist_position = NULL, updated_at = ? WHERE item_id = ?').run(nowIso(), itemId);
+    db.prepare(
+      'UPDATE user_item SET shortlist_position = NULL, updated_at = ? WHERE item_id = ?',
+    ).run(nowIso(), itemId);
     compactShortlist(db);
   })();
 }
 
 export function shortlistMove(db: DB, itemId: string, direction: 'up' | 'down'): void {
   db.transaction(() => {
-    const pos = db.prepare('SELECT shortlist_position FROM user_item WHERE item_id = ?').pluck().get(itemId) as number | null | undefined;
-    if (pos === null || pos === undefined) throw new HttpError(404, 'That item is not on the shortlist.');
+    const pos = db
+      .prepare('SELECT shortlist_position FROM user_item WHERE item_id = ?')
+      .pluck()
+      .get(itemId) as number | null | undefined;
+    if (pos === null || pos === undefined)
+      throw new HttpError(404, 'That item is not on the shortlist.');
     const target = direction === 'up' ? pos - 1 : pos + 1;
-    const other = db.prepare('SELECT item_id FROM user_item WHERE shortlist_position = ?').pluck().get(target) as string | undefined;
+    const other = db
+      .prepare('SELECT item_id FROM user_item WHERE shortlist_position = ?')
+      .pluck()
+      .get(target) as string | undefined;
     if (!other) return;
     const now = nowIso();
     db.prepare('UPDATE user_item SET shortlist_position = NULL WHERE item_id = ?').run(itemId);
-    db.prepare('UPDATE user_item SET shortlist_position = ?, updated_at = ? WHERE item_id = ?').run(pos, now, other);
-    db.prepare('UPDATE user_item SET shortlist_position = ?, updated_at = ? WHERE item_id = ?').run(target, now, itemId);
+    db.prepare('UPDATE user_item SET shortlist_position = ?, updated_at = ? WHERE item_id = ?').run(
+      pos,
+      now,
+      other,
+    );
+    db.prepare('UPDATE user_item SET shortlist_position = ?, updated_at = ? WHERE item_id = ?').run(
+      target,
+      now,
+      itemId,
+    );
   })();
 }
 
 function compactShortlist(db: DB): void {
   const ids = db
-    .prepare('SELECT item_id FROM user_item WHERE shortlist_position IS NOT NULL ORDER BY shortlist_position')
+    .prepare(
+      'SELECT item_id FROM user_item WHERE shortlist_position IS NOT NULL ORDER BY shortlist_position',
+    )
     .pluck()
     .all() as string[];
-  db.prepare('UPDATE user_item SET shortlist_position = NULL WHERE shortlist_position IS NOT NULL').run();
+  db.prepare(
+    'UPDATE user_item SET shortlist_position = NULL WHERE shortlist_position IS NOT NULL',
+  ).run();
   const set = db.prepare('UPDATE user_item SET shortlist_position = ? WHERE item_id = ?');
   ids.forEach((id, i) => set.run(i + 1, id));
 }

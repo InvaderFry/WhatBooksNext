@@ -57,7 +57,8 @@ function splitRun(s: string): string[] {
   const merged: string[] = [];
   for (const w of out) {
     const prev = merged.at(-1);
-    if (prev !== undefined && /^\d+$/.test(prev) && /^\d+$/.test(w)) merged[merged.length - 1] = prev + w;
+    if (prev !== undefined && /^\d+$/.test(prev) && /^\d+$/.test(w))
+      merged[merged.length - 1] = prev + w;
     else merged.push(w);
   }
   return merged;

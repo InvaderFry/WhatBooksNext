@@ -27,7 +27,12 @@ export function writeFiles(root: string, files: Record<string, number | string>)
 export function fakePlatformWithDrives(drives: Record<string, string>): FakePlatform {
   const p = new FakePlatform();
   for (const [label, root] of Object.entries(drives)) {
-    p.addVolume({ volumeId: `vol-${label}`, label, storageKind: 'external', root: path.resolve(root) });
+    p.addVolume({
+      volumeId: `vol-${label}`,
+      label,
+      storageKind: 'external',
+      root: path.resolve(root),
+    });
   }
   return p;
 }

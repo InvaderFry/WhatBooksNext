@@ -32,7 +32,9 @@ describe.runIf(canRun)('PowerShell helper (real PowerShell)', () => {
     const file = entries.find((e) => e.name === 'café notes.epub');
     expect(file).toMatchObject({ isDirectory: false, isLink: false, size: 1234 });
     expect(file?.attributes).toEqual(expect.any(Number));
-    expect(Math.abs((file?.modifiedMs ?? 0) - fs.statSync(path.join(dir, 'café notes.epub')).mtimeMs)).toBeLessThan(2000);
+    expect(
+      Math.abs((file?.modifiedMs ?? 0) - fs.statSync(path.join(dir, 'café notes.epub')).mtimeMs),
+    ).toBeLessThan(2000);
     expect(entries.find((e) => e.name === 'Comics')).toMatchObject({ isDirectory: true });
   }, 30_000);
 
@@ -49,7 +51,9 @@ describe.runIf(canRun)('PowerShell helper (real PowerShell)', () => {
   }, 30_000);
 
   it('reads one file\u2019s attributes for the pre-read re-check', async () => {
-    expect(await platform.checkAttributes(path.join(dir, 'café notes.epub'))).toEqual(expect.any(Number));
+    expect(await platform.checkAttributes(path.join(dir, 'café notes.epub'))).toEqual(
+      expect.any(Number),
+    );
   }, 30_000);
 });
 

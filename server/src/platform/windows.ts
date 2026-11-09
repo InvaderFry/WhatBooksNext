@@ -135,7 +135,11 @@ export function storageKindFor(
   cloudRoots: string[],
 ): StorageKind {
   const lower = absPath.toLowerCase();
-  if (cloudRoots.some((r) => r && (lower === r.toLowerCase() || lower.startsWith(r.toLowerCase() + '\\')))) {
+  if (
+    cloudRoots.some(
+      (r) => r && (lower === r.toLowerCase() || lower.startsWith(r.toLowerCase() + '\\')),
+    )
+  ) {
     return 'cloud';
   }
   if (d.busType && EXTERNAL_BUS_TYPES.has(d.busType)) return 'external';
