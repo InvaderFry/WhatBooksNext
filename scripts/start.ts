@@ -45,7 +45,22 @@ if (!(await portFree(PORT))) {
 // Install when there are no dependencies yet, or package-lock.json changed (after an update).
 if (mtime('node_modules/.package-lock.json') < mtime('package-lock.json')) {
   console.log('Installing dependencies (first run or after an update)...');
-  run(`${npm} ci`);
+  try {
+    run(`${npm} ci`);
+  } catch {
+    console.error(
+      [
+        '',
+        'Installing dependencies failed (details above).',
+        '- If you see EPERM or "operation not permitted": another program (File Explorer, an',
+        '  editor, antivirus or a sync app) is holding files in the node_modules folder. Close it,',
+        '  delete the node_modules folder, and start again.',
+        '- If it mentions a network error, check the internet connection and start again.',
+        '',
+      ].join('\n'),
+    );
+    process.exit(1);
+  }
 }
 
 // Rebuild the web pages when any of their sources is newer than the build.
@@ -57,7 +72,14 @@ const newestSource = Math.max(
 );
 if (mtime('web/dist/index.html') < newestSource) {
   console.log('Building the web pages...');
-  run(`${npm} run build`);
+  try {
+    run(`${npm} run build`);
+  } catch {
+    console.error(
+      '\nBuilding the web pages failed (details above). Delete node_modules and start again.\n',
+    );
+    process.exit(1);
+  }
 }
 
 const server = spawn(process.execPath, ['server/src/main.ts'], {
