@@ -97,6 +97,7 @@ export function createApp(ctx: AppContext) {
     coversDir,
     // After a scan, look up what's new — unless the owner turned that off (§12.1).
     onFinished: (s) => {
+      lookups.invalidate();
       if (s.status === 'failed' || lookups.isRunning()) return;
       if (!getSetting<boolean>(db, 'lookupsAfterScan', true)) return;
       if (lookups.pending() > 0) lookups.start();
@@ -568,6 +569,7 @@ export function createApp(ctx: AppContext) {
       try {
         const r = await restoreBackup(db, backup, ctx.snapshotDir);
         reach.invalidate();
+        lookups.invalidate();
         return { ok: true, snapshotPath: r.snapshotPath };
       } catch (err) {
         if (err instanceof HttpError) throw err;

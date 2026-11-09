@@ -23,7 +23,8 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "screenshots": "node scripts/screenshots.ts",
-    "benchmark": "node scripts/benchmark.ts"
+    "benchmark": "node scripts/benchmark.ts",
+    "report:matches": "node scripts/reportMatches.ts"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.0",

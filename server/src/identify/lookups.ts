@@ -485,6 +485,7 @@ export class LookupManager {
   private running: Promise<void> | null = null;
   private readonly db: DB;
   private readonly sources: Sources;
+  private pendingCache: { n: number; at: number } | null = null;
 
   constructor(db: DB, sources: Sources) {
     this.db = db;
@@ -504,8 +505,20 @@ export class LookupManager {
     return last ? parseJson<LookupStatus | null>(last, null) : null;
   }
 
+  /**
+   * Books still to look up. Working it out reads every item's facts (about 0.4 s for 5,000
+   * items), and pages ask on every load, so the answer is kept for half a minute and dropped
+   * whenever a lookup run or a scan ends.
+   */
   pending(): number {
-    return itemsNeedingLookup(this.db, this.sources).length;
+    if (this.pendingCache && Date.now() - this.pendingCache.at < 30_000) return this.pendingCache.n;
+    const n = itemsNeedingLookup(this.db, this.sources).length;
+    this.pendingCache = { n, at: Date.now() };
+    return n;
+  }
+
+  invalidate(): void {
+    this.pendingCache = null;
   }
 
   start(opts: { itemIds?: string[]; refresh?: boolean } = {}): LookupStatus {
@@ -583,6 +596,7 @@ export class LookupManager {
         .prepare('UPDATE enrich_runs SET status = ?, finished_at = ?, summary = ? WHERE id = ?')
         .run(status.status, status.finishedAt, JSON.stringify(status), status.runId);
       this.current = null;
+      this.pendingCache = null;
     }
   }
 }

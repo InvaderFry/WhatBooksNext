@@ -6,13 +6,19 @@ owner has already made. Don't reopen those decisions. Then read the latest
 
 ## Where things stand
 
-- **M0** (Windows probe) and **M1** (library and tracking) are done and checked on the owner's
-  PC. **M2** (deep scan and file identity) is built and passes its checks. The owner still has to
-  run its first real deep scan (see `docs/milestones/M2.md`, "needs checking").
-- **Next: M3**, first real recommendations (PLAN.md §18). Start by asking the owner to create a
-  free Hardcover account (§21).
+- **M0**, **M1** and **M2** are done and checked on the owner's PC. **M3** (first real
+  recommendations) is built and passes its checks; see `docs/milestones/M3.md` for what the owner
+  still has to do (Hardcover test, the first quality session).
+- **Next:** finish M3's owner steps, then **M4** (PLAN.md §18).
 - Content reads go through `server/src/scan/guard.ts` only. Raise a stage in `STAGE_VERSIONS`
   (`server/src/scan/deepPass.ts`) when its reader changes, so the next scan re-reads files.
+- Online sources live in `server/src/sources/`, one polite client each (rate limit, cache,
+  circuit breaker). Tests replay `fixtures/sources/`; never call the network in tests. Raise
+  `MATCH_VERSION` (`server/src/identify/match.ts`) when scoring changes: the next lookup
+  re-scores from the cache without new requests. `npm run report:matches` must keep 0 wrong
+  high-confidence matches.
+- Ranking is pure (`server/src/lib/recommend.ts`); `lib/rankData.ts` assembles its input.
+- API keys go in the `secrets` table only, never in settings, backups or Diagnostics.
 - The **owner actions** for each milestone are in PLAN.md §21. Tell the owner, plainly and at
   the start of your message, whenever one is due.
 
