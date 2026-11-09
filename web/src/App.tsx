@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, type AppState, type ScanStatus } from './api.ts';
 import { Diagnostics } from './pages/Diagnostics.tsx';
 import { ItemPage } from './pages/ItemPage.tsx';
@@ -32,25 +32,32 @@ export function App() {
     void refreshState();
   }, [refreshState]);
 
-  // Poll the scan while one is running; stop when it finishes.
+  // Poll the scan while one is running. A finished run the page hasn't seen yet means the
+  // library changed — even if the scan finished before the first poll (small folders do).
+  const [scanNonce, setScanNonce] = useState(0);
+  const lastFinishedRun = useRef<string | null | undefined>(undefined);
   useEffect(() => {
     let timer: number | undefined;
     let cancelled = false;
     const tick = async () => {
       const s = (await api.get<{ status: ScanStatus | null }>('/api/scan')).status;
       if (cancelled) return;
-      setScan((prev) => {
-        if (prev?.status === 'running' && s?.status !== 'running') libraryChanged();
-        return s;
-      });
-      if (s?.status === 'running') timer = window.setTimeout(tick, 700);
+      setScan(s);
+      if (s?.status === 'running') {
+        timer = window.setTimeout(tick, 700);
+        return;
+      }
+      const finished = s?.runId ?? null;
+      if (lastFinishedRun.current !== undefined && finished !== lastFinishedRun.current)
+        libraryChanged();
+      lastFinishedRun.current = finished;
     };
     void tick();
     return () => {
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [state?.scanRunning, libraryChanged]);
+  }, [scanNonce, libraryChanged]);
 
   useEffect(() => {
     void refreshState();
@@ -67,8 +74,10 @@ export function App() {
     document.title = `${titles[view] ?? 'Library'} · whatBooksNext`;
   }, [view]);
 
-  const scanStarted = () =>
-    void refreshState().then(() => setState((s) => (s ? { ...s, scanRunning: true } : s)));
+  const scanStarted = () => {
+    setScanNonce((n) => n + 1);
+    void refreshState(); // the first folder was just added: leave the welcome page
+  };
 
   return (
     <>
