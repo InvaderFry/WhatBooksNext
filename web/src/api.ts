@@ -196,6 +196,8 @@ export interface DeepProgress {
   phase: 'reading' | 'hashing' | 'done';
   toRead: number;
   read: number;
+  bytesToRead: number;
+  bytesRead: number;
   toHash: number;
   hashed: number;
   bytesToHash: number;

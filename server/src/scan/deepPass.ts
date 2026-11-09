@@ -33,6 +33,8 @@ export interface DeepProgress {
   phase: 'reading' | 'hashing' | 'done';
   toRead: number;
   read: number;
+  bytesToRead: number;
+  bytesRead: number;
   toHash: number;
   hashed: number;
   bytesToHash: number;
@@ -149,6 +151,8 @@ export async function runDeepPass(o: DeepPassOptions): Promise<DeepPassResult> {
     phase: 'reading',
     toRead: toRead.length,
     read: 0,
+    bytesToRead: toRead.reduce((n, f) => n + f.size, 0),
+    bytesRead: 0,
     toHash: toHash.length,
     hashed: 0,
     bytesToHash: toHash.reduce((n, f) => n + f.size, 0),
@@ -162,8 +166,10 @@ export async function runDeepPass(o: DeepPassOptions): Promise<DeepPassResult> {
     const elapsed = (Date.now() - phaseStart) / 1000;
     if (progress.phase === 'reading') {
       progress.estimateSeconds =
-        progress.read >= ESTIMATE_AFTER_FILES
-          ? Math.round((elapsed / progress.read) * (progress.toRead - progress.read))
+        // By bytes, not files: reading is mostly disk time, and a library can hold 1 MB books
+        // and 300 MB comics. Counting files misjudged the owner's first scan badly.
+        progress.read >= ESTIMATE_AFTER_FILES && progress.bytesRead > 0
+          ? Math.round((elapsed / progress.bytesRead) * (progress.bytesToRead - progress.bytesRead))
           : null;
     } else if (progress.phase === 'hashing') {
       progress.estimateSeconds =
@@ -241,6 +247,7 @@ export async function runDeepPass(o: DeepPassOptions): Promise<DeepPassResult> {
       }
     }
     progress.read++;
+    progress.bytesRead += f.size;
     report();
   });
 

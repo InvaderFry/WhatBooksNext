@@ -205,6 +205,33 @@ describe('comic archives', () => {
     expect(imageInfo((await thumb(f, 'cbr'))!)?.type).toBe('jpeg');
   });
 
+  it('reads a ".cbr" that is really a ZIP, as comic readers do', async () => {
+    const f = put('mislabelled.cbr', makeCbz({ pages: 7, comicInfo: info }));
+    const r = await meta(f, 'cbr');
+    expect(r.meta.pageCount).toBe(7);
+    expect(r.meta.metadata.series).toBe('Copperline');
+    expect(await thumb(f, 'cbr')).not.toBeNull();
+  });
+
+  it('reads a ".cbz" that is really a RAR', async () => {
+    const f = put('mislabelled.cbz', makeCbr({ pages: 4 }));
+    expect((await meta(f, 'cbz')).meta.pageCount).toBe(4);
+  });
+
+  it('lists a 7-Zip archive by name only instead of calling it damaged', async () => {
+    const f = put(
+      'seven.cbr',
+      Buffer.concat([Buffer.from([0x37, 0x7a, 0xbc, 0xaf, 0x27, 0x1c]), Buffer.alloc(200)]),
+    );
+    expect((await meta(f, 'cbr')).meta).toEqual({ metadata: {}, wordCount: null, pageCount: null });
+    expect(await thumb(f, 'cbr')).toBeNull();
+  });
+
+  it('still reports a file that is no archive at all as damaged', async () => {
+    const f = put('junk.cbr', Buffer.from('this was never an archive, just text'));
+    await expect(meta(f, 'cbr')).rejects.toThrow();
+  });
+
   it('uses the first page in natural order as the cover', async () => {
     // Page 1's top panel is purple (#8e44ad); the others are red. Pages are stored 12, 11, … 1.
     const f = put('order.cbz', makeCbz({ pages: 12 }));

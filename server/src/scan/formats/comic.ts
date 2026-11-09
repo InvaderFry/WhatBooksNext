@@ -60,7 +60,37 @@ async function openRar(file: string): Promise<Archive> {
   };
 }
 
-export function openComicArchive(file: string, format: string): Promise<Archive> {
+export type ArchiveKind = 'zip' | 'rar' | '7z' | 'unknown';
+
+/**
+ * What an archive really is, from its first bytes. Extensions lie: many ".cbr" comics are ZIP
+ * files renamed (and some ".cbz" are RAR), which comic readers open by looking inside, as we
+ * do. Found on the owner's drive: dozens of ".cbr" files that are ZIPs.
+ */
+export function sniffArchive(file: string): ArchiveKind {
+  const head = Buffer.alloc(8);
+  const fd = fs.openSync(file, 'r');
+  try {
+    fs.readSync(fd, head, 0, 8, 0);
+  } finally {
+    fs.closeSync(fd);
+  }
+  if (head[0] === 0x50 && head[1] === 0x4b && [3, 5, 7].includes(head[2]!)) return 'zip';
+  if (head.toString('latin1', 0, 6) === 'Rar!\x1a\x07') return 'rar';
+  if (head[0] === 0x37 && head[1] === 0x7a && head[2] === 0xbc && head[3] === 0xaf) return '7z';
+  return 'unknown';
+}
+
+/**
+ * Opens a comic archive by what it is, not what it's called. Null for a 7-Zip archive: like a
+ * ".cb7", it's listed by name only (§9.1), not reported as damaged.
+ */
+export async function openComicArchive(file: string, format: string): Promise<Archive | null> {
+  const kind = sniffArchive(file);
+  if (kind === '7z') return null;
+  if (kind === 'rar') return openRar(file);
+  if (kind === 'zip') return openZip(file);
+  // Unrecognised start: try what the extension says, so the error names the expected format.
   return format === 'cbr' ? openRar(file) : openZip(file);
 }
 
@@ -140,6 +170,7 @@ export async function readComic(
   isZipOrRar: boolean,
 ): Promise<MetaResult> {
   const a = await openComicArchive(file, format);
+  if (!a) return { metadata: {}, wordCount: null, pageCount: null };
   try {
     const reason = notAComicReason(a.entries);
     if (reason && isZipOrRar)
@@ -156,6 +187,7 @@ export async function readComic(
 
 export async function comicThumbnail(file: string, format: string): Promise<Buffer | null> {
   const a = await openComicArchive(file, format);
+  if (!a) return null;
   try {
     const first = pageImages(a.entries)[0];
     return first ? await thumbnailFromImage(await a.read(first)) : null;
