@@ -67,6 +67,22 @@ try {
         for (let i = 0; i < 3; i++) await p.keyboard.press('Tab');
       },
     ],
+    [
+      'item-comic-pdf',
+      '/',
+      async (p) => {
+        await p.getByRole('link', { name: /Shadow Service/ }).click();
+        await p.getByRole('heading', { level: 1 }).waitFor();
+      },
+    ],
+    [
+      'review',
+      '/?view=review',
+      async (p) => {
+        await p.locator('summary').click(); // tier 4 is collapsed by default
+      },
+    ],
+    ['health', '/?view=health', async () => {}],
     ['settings', '/?view=settings', async () => {}],
     ['diagnostics', '/?view=diagnostics', async () => {}],
   ];

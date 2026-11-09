@@ -1,11 +1,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { DB } from '../db/database.ts';
 import type { FakePlatform } from '../platform/fake.ts';
 import { ATTR_OFFLINE, ATTR_RECALL_ON_DATA_ACCESS } from '../platform/types.ts';
 import { fakePlatformWithDrives, memoryDb, tempDir, writeFiles } from '../testing/helpers.ts';
 import { addFolder, type FolderRow } from './folders.ts';
+import { WorkerPool } from './pool.ts';
 import { ScanManager } from './scanManager.ts';
 
 let db: DB;
@@ -13,13 +14,17 @@ let drive: string;
 let cloud: string;
 let platform: FakePlatform;
 let scans: ScanManager;
+// One small pool for the whole file: every scan also runs the deep pass, and starting workers
+// for each test is slow on Windows runners.
+const pool = new WorkerPool(1);
+afterAll(() => pool.close());
 
 beforeEach(async () => {
   db = await memoryDb();
   drive = tempDir('wbn-drive-');
   cloud = tempDir('wbn-cloud-');
   platform = fakePlatformWithDrives({ drive, cloud });
-  scans = new ScanManager(db, platform);
+  scans = new ScanManager(db, platform, { runner: pool });
 });
 
 afterEach(() => {

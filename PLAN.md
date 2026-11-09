@@ -15,6 +15,12 @@ tunable number lives in **§20 Starting values**, labelled as an assumption with
 
 ## 1. What changed
 
+### After M2 (November 2026)
+
+| Area | Change | Why |
+| --- | --- | --- |
+| **Calibre** | A modest, read-only **Calibre import** joins the Goodreads and StoryGraph imports in M4 (§14). Folder scanning stays the default way in; automatic syncing with Calibre is deferred (§19). | The owner's decision: whatBooksNext is a reading-decision tool that works with an existing collection, including one managed in Calibre — not a second library manager. |
+
 ### From the M0 probe report (November 2026)
 
 The owner ran the Milestone 0 probe. Title-free findings are in `docs/milestones/M0.md`. The
@@ -140,6 +146,7 @@ depends on it. This project is its own thing; the habits worth keeping are writt
 | **Audience for v1** | The owner and other people comfortable installing Node and running one command. A double-click installer is on the roadmap. |
 | **Windows first** | Windows is supported and tested. Mac and Linux should mostly work through fallbacks but are untested in v1; proper support is on the roadmap. |
 | **Public repo, "look, don't reuse"** | The repo is public. Licence: **PolyForm Strict License 1.0.0**, copyright "InvaderFry" — people may read the code and run it for themselves, not change or redistribute it. `LICENSE` added in M1. The owner's library stays out of git (§5). |
+| **Folders first; Calibre is an import** | Scanning folders is how books get in. A Calibre library is read on request (§14), never synced automatically and never written to. |
 | **Restore replaces** | Restoring a backup replaces all app data, after a snapshot and a preview. No merging into existing data in v1 (§16). |
 
 Owner answers that shape the product (from the plan reviews):
@@ -926,6 +933,24 @@ honest empty state. Never loosen eligibility just to fill the screen.
 - **Goodreads and StoryGraph history import** (for other users). **Verify the column names against a
   fresh export of each.** Ratings converted explicitly; unknown dates stay unknown. Read-but-unowned
   books become **history-only** — they teach taste but never appear as recommendations.
+- **Calibre import** (M4), modest and read-only. For people who manage their books in Calibre:
+  - The owner points the app at a Calibre library folder (the one holding `metadata.db`). The
+    app **copies `metadata.db` into its data folder and reads the copy**, so it never writes to,
+    locks or interferes with a running Calibre. Nothing in the Calibre library is changed.
+  - **Facts** (title, authors, series and index, ISBN and other identifiers, publisher, tags,
+    description) are Calibre-curated metadata: strong evidence for identification (§11.2), with
+    the source recorded as Calibre. They never overwrite the owner's corrections.
+  - **The owner's own data** comes across only if they choose it in the preview: Calibre's rating
+    (stored 0–10, i.e. two per star; 0 means unrated, never "1"), and "read" status from a
+    custom column the owner picks (Calibre has no built-in one). Dates come from a date column
+    the owner picks, else they stay unknown.
+  - **Matching:** a Calibre book's files are matched to scanned files by path when the Calibre
+    library is (or is inside) a scanned folder, then by full hash, then by identifiers with
+    title/author corroboration. Unmatched Calibre books without files on disk can be kept as
+    unverified store-style items or skipped. Preview, conflicts and repeatability as for other
+    imports.
+  - **Verify** the `metadata.db` schema (books, authors, series, ratings, identifiers, custom
+    columns) against a current Calibre version when building it.
 - **Imports are repeatable**: re-importing the same file doesn't duplicate anything or overwrite
   owner edits. Rows are recognised by ISBN when present, otherwise by normalised title + author +
   store.
@@ -1148,9 +1173,11 @@ down and the important ones fixed or scheduled.
 - Series runs and issues, collection coverage (suggested/confirmed) and its shared reading state
   (§12.5), gaps on cards, publication status.
 - Merge/split with conflict preview, the undo stack and the "edited since" rule.
-- Store titles (search, manual, CSV); Goodreads/StoryGraph import.
+- Store titles (search, manual, CSV); Goodreads/StoryGraph import; **Calibre import** (§14),
+  read-only from a copy of `metadata.db`.
 
-**Done when:** scenarios 3, 4, 13, 19 and 20 pass; imports can be repeated without duplicates; dates keep their
+**Done when:** scenarios 3, 4, 13, 19 and 20 pass; imports can be repeated without duplicates (including a
+Calibre import that leaves the Calibre library untouched); dates keep their
 precision; no unowned gap is ever recommended.
 
 ### M5 — All modes and taste
@@ -1198,14 +1225,17 @@ Windows behaviour is either confirmed on the owner's machine or documented as un
 2. **"Reading now" hand-off folder** — copy shortlisted files to a folder the owner picks (e.g. in
    iCloud Drive), with a preview of duplicates and space. The only other place the app would ever
    write, and only where pointed.
-3. **Kindle for PC library cache** — investigate whether a local list of owned books can be read. No
+3. **Automatic Calibre sync** — keep whatBooksNext in step with a Calibre library as it changes,
+   instead of re-running the import (§14). Deferred: the import covers the need, and two-way sync
+   would make the app a second library manager.
+4. **Kindle for PC library cache** — investigate whether a local list of owned books can be read. No
    promises; search and manual entry remain the fallback.
-4. **Optional AI** — opt-in summaries from a book's opening, or "more like this" by text similarity,
+5. **Optional AI** — opt-in summaries from a book's opening, or "more like this" by text similarity,
    only after ordinary recommendations work well, and only if they measurably help.
-5. **Easy install for everyone** — a normal double-click Windows installer, so users don't need to
+6. **Easy install for everyone** — a normal double-click Windows installer, so users don't need to
    install Node or run commands. Check the options when the time comes (e.g. a packaged Node
    executable vs a desktop wrapper) and pick the lightest that works.
-6. **Mac and Linux support** — real platform adapters (drive identity, cloud placeholders such as
+7. **Mac and Linux support** — real platform adapters (drive identity, cloud placeholders such as
    macOS "dataless" files, launching), tested on those systems. Until then, Mac/Linux are "should
    mostly work, untested".
 
@@ -1281,5 +1311,6 @@ plainly at the start of your message, with what to do and roughly how long it ta
 - The two owner quality sessions (§17.2).
 - Reading speeds and thresholds, once there's real use to calibrate against.
 - Each source's current access rules and export column names, when its adapter is built.
+- Calibre's `metadata.db` schema and custom columns, when the Calibre import is built (M4).
 
 No further product decisions are needed to start M0 and M1.

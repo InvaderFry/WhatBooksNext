@@ -17,6 +17,9 @@ beforeEach(() => {
 });
 afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
 
+/** The M1 schema, as the owner's database was before M2. */
+const v1 = loadMigrations().slice(0, 1);
+
 describe('migrations and snapshots (§6.2)', () => {
   it('applies every migration to a new database without a snapshot', async () => {
     const db = openDatabase(path.join(dir, 'a.sqlite'));
@@ -30,10 +33,10 @@ describe('migrations and snapshots (§6.2)', () => {
   it('snapshots a database with data before migrating it, and the snapshot opens with the old data', async () => {
     const file = path.join(dir, 'b.sqlite');
     const db = openDatabase(file);
-    await migrate(db, { snapshotDir: null });
+    await migrate(db, { snapshotDir: null, migrations: v1 });
     db.prepare("INSERT INTO settings (key, value, updated_at) VALUES ('k', '1', 'now')").run();
     const next = [
-      ...loadMigrations(),
+      ...v1,
       { version: 999, name: '999_test.sql', sql: 'CREATE TABLE extra (x INTEGER);' },
     ];
     const r = await migrate(db, { snapshotDir: path.join(dir, 'snap'), migrations: next });
@@ -47,9 +50,9 @@ describe('migrations and snapshots (§6.2)', () => {
 
   it('rolls back a failed migration and reports which snapshot to restore', async () => {
     const db = openDatabase(path.join(dir, 'c.sqlite'));
-    await migrate(db, { snapshotDir: null });
+    await migrate(db, { snapshotDir: null, migrations: v1 });
     const bad = [
-      ...loadMigrations(),
+      ...v1,
       { version: 2, name: '002_bad.sql', sql: 'CREATE TABLE ok (x); THIS IS NOT SQL;' },
     ];
     const err = await migrate(db, { snapshotDir: path.join(dir, 'snap'), migrations: bad }).catch(
@@ -59,6 +62,23 @@ describe('migrations and snapshots (§6.2)', () => {
     expect(err.snapshotPath).toMatch(/pre-migration-v1-/);
     expect(schemaVersion(db)).toBe(1);
     expect(db.prepare("SELECT name FROM sqlite_master WHERE name = 'ok'").get()).toBeUndefined();
+    db.close();
+  });
+
+  it("upgrades a version-1 database with the owner's data to the latest version, keeping it", async () => {
+    const db = openDatabase(path.join(dir, 'd.sqlite'));
+    await migrate(db, { snapshotDir: null, migrations: v1 });
+    db.prepare(
+      "INSERT INTO items (id, title, created_at, updated_at) VALUES ('i1', 'Kept', 'now', 'now')",
+    ).run();
+    db.prepare(
+      "INSERT INTO user_item (item_id, progress, updated_at) VALUES ('i1', 'halfway', 'now')",
+    ).run();
+    const r = await migrate(db, { snapshotDir: path.join(dir, 'snap-d') });
+    expect(r.from).toBe(1);
+    expect(r.to).toBe(loadMigrations().at(-1)!.version);
+    expect(db.prepare('SELECT progress FROM user_item').pluck().get()).toBe('halfway');
+    expect(db.prepare('SELECT title_source FROM items').pluck().get()).toBeNull();
     db.close();
   });
 

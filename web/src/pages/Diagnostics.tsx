@@ -20,6 +20,7 @@ interface Diag {
   lastSnapshot: { kind: string; createdAt: string } | null;
   placeholderDetection: string;
   folders: DiagFolder[];
+  deepScan: { filesRead: number; filesHashed: number; problems: number; covers: number };
   sources: string;
 }
 
@@ -94,6 +95,12 @@ export function Diagnostics() {
               <li>
                 Node.js {diag.app.node} · {diag.app.platform}
               </li>
+              <li>
+                Deep scan: {diag.deepScan.filesRead.toLocaleString()} files read,{' '}
+                {diag.deepScan.filesHashed.toLocaleString()} fingerprinted,{' '}
+                {diag.deepScan.covers.toLocaleString()} covers, {diag.deepScan.problems} with
+                problems (see Library health)
+              </li>
               <li>{diag.sources}</li>
               <li>
                 Open: use the Open button on any book’s page to check it opens in your default app.
@@ -148,6 +155,7 @@ function toReport(d: Diag): string {
       `  last complete scan: ${f.lastCompleteScanAt ?? 'never'}`,
     ]),
     '',
+    `Deep scan: ${d.deepScan.filesRead} read, ${d.deepScan.filesHashed} hashed, ${d.deepScan.covers} covers, ${d.deepScan.problems} problems`,
     d.sources,
   ];
   return lines.join('\n');

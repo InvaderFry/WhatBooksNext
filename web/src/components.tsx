@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { FORMAT_LABELS, KIND_LABELS, type Availability, type ItemSummary } from './api.ts';
 
 /** Availability shown as text plus an icon — never colour alone (PLAN.md §13.4). */
@@ -53,4 +53,44 @@ export function Notice({
       {children}
     </div>
   );
+}
+
+/**
+ * A cover thumbnail, or a plain placeholder. Decorative: the title is always next to it, so the
+ * image has empty alt text and screen readers don't hear every title twice.
+ */
+export function Cover({
+  fileId,
+  kind,
+  size = 'small',
+}: {
+  fileId: string | null;
+  kind?: string | null;
+  size?: 'small' | 'large';
+}) {
+  const [failed, setFailed] = useState(false);
+  if (!fileId || failed)
+    return (
+      <span
+        className={`cover cover-${size} cover-none`}
+        aria-hidden="true"
+        data-kind={kind ?? ''}
+      />
+    );
+  return (
+    <img
+      className={`cover cover-${size}`}
+      src={`/api/files/${encodeURIComponent(fileId)}/thumbnail`}
+      alt=""
+      loading="lazy"
+      decoding="async"
+      onError={() => setFailed(true)}
+    />
+  );
+}
+
+export function creatorsText(creators: { name: string; role?: string }[]): string {
+  const names = [...new Set(creators.map((c) => c.name))];
+  if (names.length <= 2) return names.join(' & ');
+  return `${names.slice(0, 2).join(', ')} and ${names.length - 2} more`;
 }

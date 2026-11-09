@@ -8,7 +8,14 @@ import {
   type Folder,
   type ItemSummary,
 } from '../api.ts';
-import { AvailabilityLabels, Formats, KindText, Notice } from '../components.tsx';
+import {
+  AvailabilityLabels,
+  Cover,
+  creatorsText,
+  Formats,
+  KindText,
+  Notice,
+} from '../components.tsx';
 import { hrefFor, onLinkClick, updateParams, useParams } from '../url.ts';
 import { AddFolderForm } from './Settings.tsx';
 
@@ -249,6 +256,7 @@ export function Library({
         <ul className="item-list">
           {items.map((item) => (
             <li key={item.id} className="item-row">
+              <Cover fileId={item.coverFileId} kind={item.kind} />
               <div className="item-main">
                 <a
                   className="item-title"
@@ -258,6 +266,7 @@ export function Library({
                   {item.title}
                 </a>
                 <div className="item-meta">
+                  {item.creators.length > 0 && <span>{creatorsText(item.creators)}</span>}
                   <span>
                     <KindText item={item} />
                   </span>

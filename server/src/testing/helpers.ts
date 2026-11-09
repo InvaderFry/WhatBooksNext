@@ -14,12 +14,26 @@ export function tempDir(prefix = 'wbn-'): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
 }
 
+/**
+ * Filler content of `size` bytes, the same for the same file name (so two copies of a file
+ * really are copies, down to their hashes) and different for different names.
+ */
+export function fillerFor(name: string, size: number): Buffer {
+  const seed = Buffer.from(`${name.toLowerCase()}|`);
+  const b = Buffer.alloc(size);
+  for (let i = 0; i < size; i += seed.length) seed.copy(b, i);
+  return b;
+}
+
 /** Writes files (relative path -> size in bytes, or exact content) under `root`. */
-export function writeFiles(root: string, files: Record<string, number | string>): void {
+export function writeFiles(root: string, files: Record<string, number | string | Buffer>): void {
   for (const [rel, content] of Object.entries(files)) {
     const abs = path.join(root, ...rel.split('/'));
     fs.mkdirSync(path.dirname(abs), { recursive: true });
-    fs.writeFileSync(abs, typeof content === 'number' ? Buffer.alloc(content, 1) : content);
+    fs.writeFileSync(
+      abs,
+      typeof content === 'number' ? fillerFor(path.basename(abs), content) : content,
+    );
   }
 }
 

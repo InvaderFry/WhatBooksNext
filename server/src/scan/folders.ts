@@ -16,6 +16,7 @@ export interface FolderRow {
   also_in_icloud: number;
   last_seen_at: string | null;
   last_complete_scan_at: string | null;
+  reminder_snoozed_until?: string | null;
   created_at: string;
   updated_at: string;
 }

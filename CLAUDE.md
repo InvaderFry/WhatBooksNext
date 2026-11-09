@@ -7,10 +7,12 @@ owner has already made. Don't reopen those decisions. Then read the latest
 ## Where things stand
 
 - **M0** (Windows probe) and **M1** (library and tracking) are done and checked on the owner's
-  PC.
-- **Next: M2**, the deep scan (PLAN.md §18). Reading EPUB/CBZ/CBR/PDF contents, word and page
-  counts, thumbnails, PDF type, hashing, moves by hash, the content-read guard with an attribute
-  re-check, the worker pool with limits, the scan reminder and Library health.
+  PC. **M2** (deep scan and file identity) is built and passes its checks. The owner still has to
+  run its first real deep scan (see `docs/milestones/M2.md`, "needs checking").
+- **Next: M3**, first real recommendations (PLAN.md §18). Start by asking the owner to create a
+  free Hardcover account (§21).
+- Content reads go through `server/src/scan/guard.ts` only. Raise a stage in `STAGE_VERSIONS`
+  (`server/src/scan/deepPass.ts`) when its reader changes, so the next scan re-reads files.
 - The **owner actions** for each milestone are in PLAN.md §21. Tell the owner, plainly and at
   the start of your message, whenever one is due.
 

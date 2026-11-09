@@ -24,7 +24,15 @@ export const BACKUP_TABLES = [
   'user_item',
   'id_aliases',
   'deletions',
+  'file_user',
+  'review_items',
 ] as const;
+
+/**
+ * Tables a backup from an older schema may lack, with the schema version that added them.
+ * Restoring such a backup leaves them empty. (M1 backups were made at version 1.)
+ */
+const ADDED_IN: Record<string, number> = { file_user: 2, review_items: 2 };
 
 /**
  * Tables deliberately left out. The backup-coverage test fails on any table that is in
@@ -83,16 +91,23 @@ export function validateBackup(db: DB, raw: unknown): Backup {
     );
   }
   const current = schemaVersion(db);
-  if (b.schemaVersion !== current) {
+  // Older backups restore: every column added since has a default (migrations must keep it so).
+  if (
+    typeof b.schemaVersion !== 'number' ||
+    !Number.isInteger(b.schemaVersion) ||
+    b.schemaVersion < 1 ||
+    b.schemaVersion > current
+  ) {
     throw new HttpError(
       400,
       `This backup was made with database version ${b.schemaVersion}; this app is at version ${current}. ` +
-        'Restoring across versions is not supported yet.',
+        'Update the app to restore it.',
     );
   }
   if (!b.tables || typeof b.tables !== 'object')
     throw new HttpError(400, 'The backup has no tables.');
   for (const t of BACKUP_TABLES) {
+    if (b.tables[t] === undefined && (ADDED_IN[t] ?? 0) > b.schemaVersion) b.tables[t] = [];
     const rows = b.tables[t];
     if (!Array.isArray(rows)) throw new HttpError(400, `The backup is missing the "${t}" table.`);
     const cols = columnsOf(db, t);

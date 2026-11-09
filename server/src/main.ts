@@ -46,7 +46,11 @@ async function main() {
 
   let platform: Platform;
   if (demo) {
-    platform = await buildDemoLibrary(db, path.join(dataDir, 'library'));
+    platform = await buildDemoLibrary(
+      db,
+      path.join(dataDir, 'library'),
+      path.join(dataDir, 'covers'),
+    );
   } else {
     platform = createPlatform();
   }

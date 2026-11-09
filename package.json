@@ -22,7 +22,8 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "screenshots": "node scripts/screenshots.ts"
+    "screenshots": "node scripts/screenshots.ts",
+    "benchmark": "node scripts/benchmark.ts"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.0",
