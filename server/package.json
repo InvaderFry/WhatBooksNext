@@ -1,0 +1,16 @@
+{
+  "name": "@whatbooksnext/server",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "better-sqlite3": "^13.0.3",
+    "express": "^5.3.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^9.6.0",
+    "@types/express": "^5.0.6",
+    "@types/node": "^24.0.0",
+    "@types/supertest": "^7.2.1",
+    "supertest": "^7.3.2"
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "extends": "../tsconfig.base.json",
+  // The server runs as TypeScript directly on Node (type stripping), so it uses only
+  // erasable syntax and imports with .ts extensions. No build step for the server.
+  "compilerOptions": {
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "allowImportingTsExtensions": true,
+    "erasableSyntaxOnly": true,
+    "lib": ["es2023"],
+    "types": ["node"]
+  },
+  "include": ["src", "../scripts", "../vitest.config.ts"]
+}

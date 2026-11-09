@@ -1,0 +1,156 @@
+import { describe, expect, it } from 'vitest';
+import { compareKeyFor, parseFilename, titleCompareKey } from './filename.ts';
+
+// Fixture names are invented look-alikes of real patterns (PLAN.md §5, §11.1). The owner's real
+// filenames live in fixtures/private/ and never in this file.
+
+const v = <T>(p?: { value: T }) => p?.value;
+
+describe('filename parser — plan fixtures (§11.1)', () => {
+  it('splits a run-together name into words', () => {
+    expect(v(parseFilename('boatofamillionyears.epub').title)).toBe('boat of a million years');
+  });
+
+  it('reads series, volume and subtitle from a Humble-style slug', () => {
+    const p = parseFilename('shadowservice_vol1_darkarts.pdf');
+    expect(v(p.series)).toBe('shadow service');
+    expect(v(p.volume)).toBe('1');
+    expect(v(p.subtitle)).toBe('dark arts');
+  });
+
+  it('reads series, issue and year from a scene-style comic name, dropping release tags', () => {
+    const p = parseFilename('Saga 001 (2012) (Digital) (Zone-Empire).cbz');
+    expect(v(p.series)).toBe('Saga');
+    expect(v(p.issue)).toBe('1');
+    expect(v(p.year)).toBe(2012);
+    expect(p.tags).toEqual(expect.arrayContaining(['Digital', 'Zone-Empire']));
+  });
+
+  it('reads a manga volume marker', () => {
+    const p = parseFilename('Berserk v01 (2003).cbz');
+    expect(v(p.series)).toBe('Berserk');
+    expect(v(p.volume)).toBe('1');
+    expect(v(p.year)).toBe(2003);
+  });
+
+  it('keeps both readings of "Title - Author", likelier first', () => {
+    const p = parseFilename('Clean Code - Robert C. Martin.pdf');
+    expect(p.authorTitle?.[0]).toEqual({ title: 'Clean Code', author: 'Robert C. Martin' });
+    expect(p.authorTitle?.[1]).toEqual({ title: 'Robert C. Martin', author: 'Clean Code' });
+  });
+
+  it('records an HD quality tag and leaves it out of the name', () => {
+    const p = parseFilename('saga_vol1_hd.cbz');
+    expect(v(p.series)).toBe('saga');
+    expect(v(p.volume)).toBe('1');
+    expect(p.quality).toBe('HD');
+  });
+});
+
+describe('filename parser — patterns from the M0 probe (invented names)', () => {
+  it('reads "V2 14" as series volume 2, issue 14 — not a book volume', () => {
+    const p = parseFilename('Copperline V2 14.cbr');
+    expect(v(p.seriesVolume)).toBe('2');
+    expect(v(p.issue)).toBe('14');
+    expect(p.volume).toBeUndefined();
+  });
+
+  it('treats the "Vol. 3" in an issue file as a hint about its trade, not its own volume', () => {
+    const p = parseFilename('Copperline 012 Vol. 3 Low Tide, May 2, 2006.cbr');
+    expect(v(p.issue)).toBe('12');
+    expect(p.volume).toBeUndefined();
+    expect(p.tradeHint).toEqual({ volume: '3', title: 'Low Tide' });
+    expect(v(p.year)).toBe(2006);
+  });
+
+  it('reads "#7" as an issue', () => {
+    expect(v(parseFilename('Copperline #7.pdf').issue)).toBe('7');
+  });
+
+  it('reads a zero-padded two-digit issue, but leaves a number in a title alone', () => {
+    expect(v(parseFilename('Lanternfish 05.cbr').issue)).toBe('5');
+    expect(parseFilename('Catch 22.epub').issue).toBeUndefined();
+  });
+
+  it('reads a year joined to a series name as the start year', () => {
+    const p = parseFilename('ironharbor1994_issue2.pdf');
+    expect(v(p.series)).toBe('iron harbor');
+    expect(v(p.startYear)).toBe(1994);
+    expect(v(p.issue)).toBe('2');
+  });
+
+  it('strips size tags and Humble ids, and never uses the id as a date', () => {
+    const p = parseFilename('quietgardens_vol1_optimized_1400000000.pdf');
+    expect(v(p.series)).toBe('quiet gardens');
+    expect(p.tags).toEqual(['optimized', 'humble-id 1400000000']);
+    expect(p.year).toBeUndefined();
+  });
+
+  it('reads edition numbers from words and digits', () => {
+    expect(parseFilename('pythonrecipes_fourthedition.pdf').editionNumber).toBe(4);
+    expect(parseFilename('gardeningbasics_3rdedition.pdf').editionNumber).toBe(3);
+    expect(parseFilename('bigideas30thanniversaryedition.pdf').editionNote).toBe(
+      '30th anniversary edition',
+    );
+    expect(parseFilename('bigideas30thanniversaryedition.pdf').editionNumber).toBeUndefined();
+  });
+
+  it('moves a trailing "the" to the front', () => {
+    expect(v(parseFilename('artofwaitingthe.epub').title)).toBe('the art of waiting');
+  });
+
+  it('strips a download-duplicate suffix', () => {
+    const p = parseFilename('fieldnotes(1).epub');
+    expect(v(p.title)).toBe('field notes');
+    expect(p.tags).toContain('duplicate(1)');
+  });
+
+  it('reads issue words in their several forms', () => {
+    expect(v(parseFilename('starlanterns_issue_2.pdf').issue)).toBe('2');
+    expect(v(parseFilename('starlanterns_freeissue1.pdf').issue)).toBe('1');
+    expect(v(parseFilename('starlanterns_issue0.pdf').issue)).toBe('0');
+    expect(v(parseFilename('starlanterns_special_1.epub').issue)).toBe('Special 1');
+  });
+
+  it('reads "vol1_5" as volume 1.5 and "book2" as volume 2', () => {
+    expect(v(parseFilename('glasscity_vol1_5.epub').volume)).toBe('1.5');
+    expect(v(parseFilename('glasscity_book2.pdf').volume)).toBe('2');
+  });
+
+  it('treats hyphens as spaces in hyphenated names', () => {
+    const p = parseFilename('The-Tin-Orchard-124.cbz');
+    expect(v(p.series)).toBe('The Tin Orchard');
+    expect(v(p.issue)).toBe('124');
+  });
+
+  it('strips a "-high" suffix', () => {
+    const p = parseFilename('tinycomics-volume0-high.pdf');
+    expect(v(p.volume)).toBe('0');
+    expect(p.tags).toContain('high');
+  });
+});
+
+describe('name comparison', () => {
+  it('ignores a leading or trailing article when comparing titles', () => {
+    expect(titleCompareKey('boatofamillionyears')).toBe(titleCompareKey('The Boat of a Million Years'));
+    expect(titleCompareKey('art of waiting the')).toBe(titleCompareKey('The Art of Waiting'));
+    expect(titleCompareKey('theboatofamillionyears')).toBe('boatofamillionyears');
+  });
+
+  it('gives an HD and a standard version the same comparison key', () => {
+    expect(compareKeyFor('saga_vol1_hd.cbz')).toBe(compareKeyFor('saga_vol1.cbz'));
+    expect(compareKeyFor('Saga 001 HD.cbz')).toBe(compareKeyFor('Saga 001.cbz'));
+  });
+
+  it('gives EPUB and PDF of one book the same key, and different books different keys', () => {
+    expect(compareKeyFor('mapmaking.epub')).toBe(compareKeyFor('mapmaking.pdf'));
+    expect(compareKeyFor('mapmaking_vol1.pdf')).not.toBe(compareKeyFor('mapmaking_vol2.pdf'));
+  });
+
+  it('ignores size tags, Humble ids and download duplicates in the key', () => {
+    expect(compareKeyFor('quietgardens_optimized_1400000000.pdf')).toBe(
+      compareKeyFor('quietgardens.epub'),
+    );
+    expect(compareKeyFor('fieldnotes (1).pdf')).toBe(compareKeyFor('fieldnotes.epub'));
+  });
+});
