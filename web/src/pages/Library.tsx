@@ -97,7 +97,12 @@ export function Library({
     );
   };
 
-  if (state && state.folders === 0) return <FirstRun onScanStarted={onScanStarted} />;
+  // The welcome page is only for a truly empty app. After the last folder is removed, books with
+  // recorded history are kept (PLAN.md §9.3), so they must stay visible here.
+  if (state && state.folders === 0 && state.items === 0) {
+    return <FirstRun onScanStarted={onScanStarted} />;
+  }
+  const noFolders = state?.folders === 0;
 
   const filtersActive = Boolean(
     params.q ||
@@ -221,6 +226,16 @@ export function Library({
         in iCloud”.
       </p>
 
+      {noFolders && (
+        <Notice>
+          No library folders are added. The books below are kept because you recorded progress,
+          ratings or notes on them.{' '}
+          <a href={hrefFor({ view: 'settings' })} onClick={onLinkClick({ view: 'settings' })}>
+            Add a folder in Settings
+          </a>
+          .
+        </Notice>
+      )}
       {error && <Notice kind="error">{error}</Notice>}
       {items && items.length === 0 && (
         <Notice>

@@ -181,6 +181,10 @@ export function applyFolderListing(
 ): string[] {
   const now = nowIso();
   const reparsedFileIds: string[] = [];
+  // Windows paths ignore case, so coverage is checked case-insensitively too: a folder renamed
+  // from "CaseFolder" to "casefolder" is the same folder, completely listed.
+  const completeLower = new Set([...completeDirs].map((d) => d.toLowerCase()));
+  const childLower = new Map([...childDirs].map(([d, c]) => [d.toLowerCase(), c]));
   const existing = db
     .prepare(
       'SELECT id, rel_path, rel_dir, size, modified_ms, availability, stale, name, stages FROM files WHERE folder_id = ?',
@@ -289,7 +293,7 @@ export function applyFolderListing(
 
     for (const old of existing) {
       if (seen.has(old.rel_path.toLowerCase())) continue;
-      if (isKnownAbsent(old.rel_dir, completeDirs, childDirs)) {
+      if (isKnownAbsent(old.rel_dir.toLowerCase(), completeLower, childLower)) {
         if (old.availability !== 'missing') {
           markMissing.run(old.id);
           summary.missing++;
@@ -314,6 +318,7 @@ export function applyFolderListing(
 /**
  * Is a file in `relDir` known to be gone? Yes if `relDir` itself was completely listed, or if
  * the nearest completely-listed ancestor no longer contains the next directory on the path.
+ * All arguments are lowercase (paths compare case-insensitively); child names already are.
  */
 export function isKnownAbsent(
   relDir: string,

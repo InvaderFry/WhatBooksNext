@@ -338,3 +338,30 @@ describe('re-reading names after the parser improves (§9.2 "Refresh")', () => {
     expect(again.folders[0]!.reparsed).toBe(0); // read once per parser version, not every scan
   });
 });
+
+describe('folder names that change only in case (Windows ignores case)', () => {
+  it('still marks a deleted file missing after its folder was renamed CaseFolder -> casefolder', async () => {
+    writeFiles(drive, { 'CaseFolder/separate.epub': 10, 'CaseFolder/keep.epub': 11 });
+    await addFolder(db, platform, { path: drive });
+    await scan();
+    fs.renameSync(path.join(drive, 'CaseFolder'), path.join(drive, 'casefolder-tmp'));
+    fs.renameSync(path.join(drive, 'casefolder-tmp'), path.join(drive, 'casefolder'));
+    fs.rmSync(path.join(drive, 'casefolder', 'separate.epub'));
+    await scan();
+    expect(file('separate.epub')).toMatchObject({ availability: 'missing', stale: 0 });
+    expect(file('keep.epub')).toMatchObject({
+      availability: 'present',
+      stale: 0,
+      rel_dir: 'casefolder',
+    });
+  });
+});
+
+describe('title words are never mistaken for quality tags', () => {
+  it('keeps "The High Road" and "The Road" in one folder as two books', async () => {
+    writeFiles(drive, { 'Novels/The High Road.epub': 10, 'Novels/The Road.pdf': 20 });
+    await addFolder(db, platform, { path: drive });
+    await scan();
+    expect(itemCount()).toBe(2);
+  });
+});

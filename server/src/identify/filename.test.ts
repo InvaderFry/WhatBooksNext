@@ -177,6 +177,19 @@ describe("display titles for patterns found in the owner's first scan (invented 
   it('drops a trailing author name only when it looks like one', () => {
     expect(title('Widget Patterns - Ada Q. Quillfeather.pdf')).toBe('Widget Patterns');
     expect(title('salt_road_songs_-_mirela_vasquezhollow.epub')).toBe('Salt Road Songs');
+    // A rare word on the left doesn't make it an author: the usual order is "Title - Author".
+    expect(title('Widget Patterns - Ada Quill.pdf')).not.toBe('Ada Quill');
+    expect(title('QUILLFEATHER Ada - The Widget Way.pdf')).toBe('The Widget Way');
+  });
+
+  it('keeps title words that look like tags: "The High Road" is not "The Road" in HD', () => {
+    expect(compareKeyFor('The High Road.epub')).not.toBe(compareKeyFor('The Road.pdf'));
+    expect(title('Digital Widgetry.epub')).toBe('Digital Widgetry');
+    expect(title('Aim High.epub')).toBe('Aim High');
+    expect(compareKeyFor('lanternfish_vol1_optimized.pdf')).toBe(
+      compareKeyFor('lanternfish_vol1.epub'),
+    );
+    expect(compareKeyFor('Book (HQ).pdf')).toBe(compareKeyFor('Book.epub'));
   });
 
   it('reads "Series 01 - Subtitle" as a volume with its subtitle', () => {

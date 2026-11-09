@@ -10,9 +10,10 @@ import { splitWords, wordRank } from './wordsplit.ts';
  * Version of the parser's rules. Raise it whenever the rules change: the next scan then reads
  * every file name again and refreshes titles taken from file names (owner corrections are kept).
  *   1 — M1.  2 — fixes from the owner's first real scan ("Series - 12", "Series - Subtitle",
- *   ranges, "Book 1 - Title", hyphens inside words, …).
+ *   ranges, "Book 1 - Title", hyphens inside words, …).  3 — tags removed only where tags appear,
+ *   never as title words ("The High Road" no longer matches "The Road").
  */
-export const PARSER_VERSION = 2;
+export const PARSER_VERSION = 3;
 
 export interface Part<T> {
   value: T;
@@ -228,8 +229,12 @@ export function parseFilename(fileName: string): ParsedName {
     if (d) base = base.slice(0, d.index);
   }
 
-  // "-high" / "_hd" / "-low" / "-high_definition" style suffix at the very end, in any naming style.
-  const qs = /[-_ ](high[-_ ]?definition|high|hd|hq|hi-?res|high-?res|lowres|low)$/i.exec(base);
+  // A quality/size suffix at the very end. Joined by "-" or "_" ("-high", "_hd", "-low",
+  // "-high_definition") it is always a tag. After a space only unmistakable tags count
+  // ("Saga 001 HD"), so title words stay: "Aim High" is a title, not "Aim" in high quality.
+  const qs =
+    /[-_](high[-_]?definition|high|hd|hq|hi-?res|high-?res|lowres|low)$/i.exec(base) ??
+    / (hd|hq|hi-?res|high-?res|lowres)$/i.exec(base);
   if (qs) {
     let t = qs[1]!.toLowerCase().replace(/[-_ ]/g, '');
     if (t === 'highdefinition') t = 'hd';
@@ -416,22 +421,17 @@ function parseSpaced(base: string, ext: string, r: Partial<ParsedName>, tags: st
     return;
   }
 
-  // Trailing quality / size words: "Saga 001 HD"
-  s = s
-    .split(' ')
-    .filter((w) => {
-      const lw = w.toLowerCase();
-      if (QUALITY_TOKENS.has(lw)) {
-        r.quality = w.toUpperCase();
-        return false;
-      }
-      if (SIZE_TOKENS.has(lw) && lw !== 'high') {
-        tags.push(lw);
-        return false;
-      }
-      return true;
-    })
-    .join(' ');
+  // Trailing quality / size words only ("Saga 001 HD", "Saga 001 Digital"). Words earlier in
+  // the name are title words: "Digital Fortress", "The HD Guide".
+  const words = s.split(' ');
+  while (words.length > 1) {
+    const lw = words.at(-1)!.toLowerCase();
+    if (QUALITY_TOKENS.has(lw)) r.quality = lw.toUpperCase();
+    else if (SIZE_TOKENS.has(lw) && lw !== 'high') tags.push(lw);
+    else break;
+    words.pop();
+  }
+  s = words.join(' ');
 
   // A release date at the end: ", November 24, 2004"
   if ((m = new RegExp(`,? ((?:${MONTHS}) \\d{1,2}, ((?:19|20)\\d\\d))$`, 'i').exec(s))) {
@@ -526,8 +526,11 @@ function parseSpaced(base: string, ext: string, r: Partial<ParsedName>, tags: st
     const initial = (t: string) => / [A-Z]\. /.test(` ${t} `);
     const bIsAuthor =
       looksLikePersonName(b) && (!looksLikePersonName(a) || (initial(b) && !initial(a)));
-    const aIsAuthor =
-      looksLikePersonName(a) && (!looksLikePersonName(b) || (initial(a) && !initial(b)));
+    // The usual order is "Title - Author", so the left side counts as the author only on a strong
+    // sign: an initial ("Robert C. Martin"), "Martin, Robert", or "SURNAME First".
+    const strongName = (t: string) =>
+      initial(t) || /^[A-Z][a-z]+, [A-Z]/.test(t) || /^[A-Z]{2,} [A-Z][a-z]+$/.test(t);
+    const aIsAuthor = strongName(a) && !strongName(b);
     if (!comic && bIsAuthor) {
       r.authorTitle = [first, second];
       r.title = { value: a, confidence: 0.6 };
@@ -594,10 +597,21 @@ export function compareKeyFor(fileName: string): string {
   const dot = fileName.lastIndexOf('.');
   let base = (dot > 0 ? fileName.slice(0, dot) : fileName).toLowerCase();
   base = base.replace(/\s?\(\d{1,2}\)$/, '');
-  base = base.replace(
-    /(?<![\p{L}\p{N}])(?:hd|hq|hi-?res|high-?res|optimized|opt|downsampled|high|ebook|lowres|\d{10})(?![\p{L}\p{N}])/gu,
-    ' ',
-  );
+  // Tags are removed only where tags appear — in brackets, as an "_tag_" slug segment, or as a
+  // "-tag" / " HD" ending — never as words inside a title. Otherwise "The High Road" and
+  // "The Road" would share a key and be grouped as one book.
+  const tag =
+    '(?:hd|hq|hi-?res|high-?res|high[-_]?definition|optimized|opt|downsampled|high|low|ebook|lowres|digital|\\d{10})';
+  base = base.replace(new RegExp(`[([]\\s*${tag}\\s*[)\\]]`, 'g'), ' ');
+  let prev: string;
+  do {
+    prev = base;
+    base = base
+      .replace(new RegExp(`_${tag}(?=_|$)`, 'g'), '')
+      .replace(new RegExp(`-${tag}$`), '')
+      .replace(/ (?:hd|hq|hi-?res|high-?res|lowres)$/, '')
+      .trim();
+  } while (base !== prev);
   const key = normalizeForCompare(base);
   return key || normalizeForCompare(fileName);
 }
