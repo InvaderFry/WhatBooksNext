@@ -1,4 +1,5 @@
 * text=auto
-# cmd.exe misreads labels and goto in LF-only batch files.
-*.bat text eol=crlf
-*.cmd text eol=crlf
+# Stored byte-for-byte with CRLF (no conversion), so a raw download from GitHub
+# is also CRLF: cmd.exe can misread LF-only batch files.
+*.bat -text
+*.cmd -text
