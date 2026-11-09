@@ -1,0 +1,6 @@
+# LF everywhere (Prettier checks for it, and CI runs on Windows too)...
+* text=auto eol=lf
+# ...except batch files, stored byte-for-byte with CRLF so a raw download from GitHub is also
+# CRLF: cmd.exe can misread LF-only batch files.
+*.bat -text
+*.cmd -text

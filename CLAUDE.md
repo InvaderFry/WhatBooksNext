@@ -1,0 +1,60 @@
+# Notes for AI agents working on whatBooksNext
+
+Read **`PLAN.md`** first. It is the spec: what to build, in what order, and the decisions the
+owner has already made. Don't reopen those decisions. Then read the latest
+**`docs/milestones/M*.md`** for where things stand.
+
+## Where things stand
+
+- **M0** (Windows probe) and **M1** (library and tracking) are done and checked on the owner's
+  PC.
+- **Next: M2**, the deep scan (PLAN.md §18). Reading EPUB/CBZ/CBR/PDF contents, word and page
+  counts, thumbnails, PDF type, hashing, moves by hash, the content-read guard with an attribute
+  re-check, the worker pool with limits, the scan reminder and Library health.
+- The **owner actions** for each milestone are in PLAN.md §21. Tell the owner, plainly and at
+  the start of your message, whenever one is due.
+
+## Hard rules
+
+- **The repo is public. The owner's library stays out of it** (PLAN.md §5). Never commit real
+  filenames, the probe report, the owner's backups or anything derived from them that names
+  books. Tests and fixtures use **invented** names that copy the real patterns. If the owner
+  shares filenames or a backup, analyse them only in your scratch area, and record title-free
+  summaries (counts and patterns) in the milestone notes.
+- **Read-only on the library.** Nothing writes into library folders. No content read happens
+  unless the file is confirmed present by a fresh attribute check (§9.5).
+- **Unknown is unknown.** Never invent ratings, dates, ids or lengths, even in the demo.
+- **Owner corrections win.** Scans and lookups never overwrite `user_item` data.
+
+## Working on the code
+
+- Node ≥ 24. The server is TypeScript run directly by Node's type stripping: use erasable syntax
+  only and `.ts` import extensions. No server build step.
+- `npm test`, `npm run typecheck`, `npm run lint` and `npm run format:check` must all pass. CI
+  runs them on Ubuntu **and Windows**. `npm run build` builds the web UI.
+- Tests are sentences (`it("keeps a book's progress when its file moves")`). Route-level tests
+  run against in-memory SQLite (`server/src/testing/helpers.ts`).
+- **Check in a real browser:** `npm run screenshots` drives the demo library in Chromium (light
+  and dark, desktop and phone). Look at the screenshots before calling UI work done.
+- Windows-specific code lives behind `server/src/platform/`: a long-lived PowerShell helper, a
+  generic fallback, and a fake for tests and the demo. Passing the fake proves nothing about
+  Windows, so list such behaviour in the milestone notes as "needs checking on the owner's
+  machine".
+- **Schema changes:** add a new numbered file in `server/src/db/migrations/`. Never edit
+  `001_init.sql`, because the owner's database is already on it. Add every new table to the
+  backup or to its commented exclusion list (`server/src/lib/backup.ts`); a test enforces it.
+- **Filename parser:** raise `PARSER_VERSION` in `server/src/identify/filename.ts` whenever its
+  rules change. The next scan then re-reads names and refreshes titles taken from filenames.
+- Every tunable number comes from PLAN.md §20 and lives in `server/src/config.ts`, with its
+  reason.
+- `.npmrc` sets `ignore-scripts=true`: better-sqlite3 ships prebuilt binaries, and npm's
+  automatic compile step breaks on PCs without Visual Studio. Check before adding a dependency
+  that needs an install script.
+- `.bat` files are stored with CRLF (`.gitattributes`). Everything else is LF.
+
+## The owner
+
+The owner runs Windows 11, with one external USB drive (`E:\My Books and Comics`) and no iCloud
+on the PC. They read on an iPhone and iPad. They aren't a programmer: give steps that need no
+command line wherever possible (see `INSTALL.md`). They asked to be told plainly whenever they
+need to do something.

@@ -1,0 +1,37 @@
+{
+  "name": "whatbooksnext",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Choose what to read next from the ebooks and comics you already own.",
+  "license": "SEE LICENSE IN LICENSE",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "workspaces": [
+    "server",
+    "web"
+  ],
+  "scripts": {
+    "start": "node server/src/main.ts",
+    "dev": "node scripts/dev.ts",
+    "build": "npm run build -w web",
+    "demo": "node scripts/demo.ts",
+    "test": "vitest run",
+    "typecheck": "tsc -p server && tsc -p web",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "screenshots": "node scripts/screenshots.ts"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.0",
+    "eslint": "^10.14.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^17.14.0",
+    "prettier": "^3.9.10",
+    "typescript": "~6.0.3",
+    "typescript-eslint": "^8.72.1",
+    "vitest": "^5.1.0"
+  }
+}

@@ -1,0 +1,11 @@
+node_modules
+web/dist
+data
+fixtures/private
+docs/private
+package-lock.json
+*.gz
+PLAN.md
+LICENSE
+screenshots
+tools/probe/*.bat
