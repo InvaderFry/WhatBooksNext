@@ -29,3 +29,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
+
+## npm dependencies used to read files (Milestone 2)
+
+Installed from npm, not bundled in this repository. Each keeps its own licence file in
+`node_modules`.
+
+| Package                       | Used for                                  | Licence                                                                                                     |
+| ----------------------------- | ----------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `pdfjs-dist` (Mozilla pdf.js) | Reading PDFs and drawing their first page | Apache-2.0                                                                                                  |
+| `@napi-rs/canvas`             | Drawing cover thumbnails                  | MIT                                                                                                         |
+| `yauzl`                       | Reading EPUB and CBZ (ZIP) files          | MIT                                                                                                         |
+| `node-unrar-js`               | Reading CBR (RAR) files, in WebAssembly   | MIT (the bundled UnRAR code is under the unRAR licence, which allows extracting but not creating RAR files) |

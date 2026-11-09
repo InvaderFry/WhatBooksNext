@@ -88,12 +88,14 @@ export function Review({ onChanged }: { onChanged: () => void }) {
       )}
       {data && data.rows.length > 0 && (
         <>
-          <p className="tier-counts">
-            {[1, 4]
-              .filter((n) => tier(n).length > 0)
-              .map((n) => `${TIER_TITLES[n]}: ${tier(n).length}`)
-              .join(' · ')}
-          </p>
+          {tier(1).length > 0 && tier(4).length > 0 && (
+            <p className="tier-counts">
+              {[1, 4]
+                .filter((n) => tier(n).length > 0)
+                .map((n) => `${TIER_TITLES[n]}: ${tier(n).length}`)
+                .join(' · ')}
+            </p>
+          )}
           {tier(1).length > 0 && (
             <section aria-labelledby="tier1-h" className="section">
               <h2 id="tier1-h">{TIER_TITLES[1]}</h2>

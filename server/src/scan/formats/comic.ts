@@ -158,7 +158,7 @@ export async function comicThumbnail(file: string, format: string): Promise<Buff
   const a = await openComicArchive(file, format);
   try {
     const first = pageImages(a.entries)[0];
-    return first ? thumbnailFromImage(await a.read(first)) : null;
+    return first ? await thumbnailFromImage(await a.read(first)) : null;
   } finally {
     a.close();
   }

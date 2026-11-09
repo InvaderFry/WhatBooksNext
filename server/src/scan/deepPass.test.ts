@@ -546,3 +546,20 @@ function sameSizePdfs(): [Buffer, Buffer] {
   const pad = (x: Buffer) => Buffer.concat([x, Buffer.alloc(size - x.length, 0x0a)]);
   return [pad(a), pad(b)];
 }
+
+describe('titles from embedded metadata', () => {
+  it('keeps the edition from the filename so two editions stay distinguishable', async () => {
+    writeFiles(drive, {
+      'thelanternkeepers_2ndedition.epub': makeEpub({ title: 'The Lantern Keepers', seed: 2 }),
+      'thelanternkeepers_3rdedition.epub': makeEpub({ title: 'The Lantern Keepers', seed: 3 }),
+    });
+    await addFolder(db, platform, { path: drive });
+    await scan();
+    expect(item('thelanternkeepers_2ndedition.epub').title).toBe(
+      'The Lantern Keepers (2nd edition)',
+    );
+    expect(item('thelanternkeepers_3rdedition.epub').title).toBe(
+      'The Lantern Keepers (3rd edition)',
+    );
+  });
+});

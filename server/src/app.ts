@@ -365,7 +365,8 @@ export function createApp(ctx: AppContext) {
       return;
     }
     res.setHeader('Cache-Control', 'private, max-age=300');
-    res.sendFile(file);
+    // dotfiles: the data folder itself may sit under a hidden folder; the path is ours alone.
+    res.sendFile(file, { dotfiles: 'allow' });
   });
 
   // Owner correction of a file's PDF type (§11.4 "Fix PDF type"). null returns to the detected one.

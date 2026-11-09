@@ -37,6 +37,16 @@ const thumb = async (file: string, format: string) => {
   return r.jpeg;
 };
 
+/** The colour at a point of a JPEG thumbnail, to prove the cover was really drawn. */
+async function pixelAt(jpeg: Uint8Array, fx: number, fy: number): Promise<number[]> {
+  const { createCanvas, loadImage } = await import('@napi-rs/canvas');
+  const img = await loadImage(Buffer.from(jpeg));
+  const c = createCanvas(img.width, img.height);
+  const g = c.getContext('2d');
+  g.drawImage(img, 0, 0);
+  return [...g.getImageData(Math.floor(img.width * fx), Math.floor(img.height * fy), 1, 1).data];
+}
+
 describe('XML reader', () => {
   it('reads elements, attributes, entities and CDATA, ignoring a DOCTYPE', () => {
     const doc = parseXml(
@@ -143,6 +153,9 @@ describe('EPUB', () => {
     expect(r.partialHash).toMatch(/^[0-9a-f]{64}$/);
     const jpeg = await thumb(f, 'epub');
     expect(imageInfo(jpeg!)).toMatchObject({ type: 'jpeg', height: 320 });
+    // The cover's top panel is #2a6f97 (42, 111, 151): drawn, not a blank page.
+    const [red, green, blue] = await pixelAt(jpeg!, 0.5, 0.2);
+    expect(Math.abs(red! - 42) + Math.abs(green! - 111) + Math.abs(blue! - 151)).toBeLessThan(40);
   });
 
   it('reads an EPUB 3 belongs-to-collection series', async () => {
@@ -193,9 +206,10 @@ describe('comic archives', () => {
   });
 
   it('uses the first page in natural order as the cover', async () => {
-    // Page 1 is drawn in a different colour; pages are stored 12, 11, … 1.
+    // Page 1's top panel is purple (#8e44ad); the others are red. Pages are stored 12, 11, … 1.
     const f = put('order.cbz', makeCbz({ pages: 12 }));
-    expect(await thumb(f, 'cbz')).not.toBeNull();
+    const [r, g, b] = await pixelAt((await thumb(f, 'cbz'))!, 0.5, 0.2);
+    expect(Math.abs(r! - 0x8e) + Math.abs(g! - 0x44) + Math.abs(b! - 0xad)).toBeLessThan(40);
   });
 
   it('says a .zip of documents is not a comic', async () => {

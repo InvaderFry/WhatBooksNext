@@ -168,7 +168,7 @@ export async function epubThumbnail(file: string): Promise<Buffer | null> {
     if (!href) return null;
     const name = zip.find(resolve(opf.dir, href));
     if (!name) return null;
-    return thumbnailFromImage(await zip.read(name));
+    return await thumbnailFromImage(await zip.read(name));
   } finally {
     zip.close();
   }

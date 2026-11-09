@@ -267,6 +267,11 @@ export async function buildDemoLibrary(
     await scans.close();
   }
   secondVol.root = null;
+  // The unplugged drive was last scanned a month ago, so the scan reminder shows (§9.7).
+  db.prepare('UPDATE folders SET last_complete_scan_at = ? WHERE volume_id = ?').run(
+    new Date(Date.now() - 34 * 86_400_000).toISOString(),
+    'demo-second',
+  );
 
   const byFile = (name: string) =>
     db

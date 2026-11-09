@@ -253,7 +253,10 @@ export function factsFromPrimary(p: PrimaryRow): ItemFacts {
       f.issue = comic.number;
       f.volume = null;
     } else if (md.title && (p.format !== 'pdf' || pdfTitleAgrees(md.title, p.name))) {
-      f.title = md.title;
+      // Editions stay distinguishable (§11.3): the filename's edition joins the file's title.
+      const ed = parse?.editionNumber;
+      f.title =
+        ed && !/edition|ed\./i.test(md.title) ? `${md.title} (${ordinal(ed)} edition)` : md.title;
       f.titleSource = 'embedded';
       if (md.series) {
         f.seriesHint = md.series;

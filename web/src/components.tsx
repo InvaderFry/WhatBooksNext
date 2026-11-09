@@ -71,9 +71,11 @@ export function Cover({
   const [failed, setFailed] = useState(false);
   if (!fileId || failed)
     return (
-      <span className={`cover cover-${size} cover-none`} aria-hidden="true">
-        {kind === 'comic' || kind === 'manga' ? '▤' : '▯'}
-      </span>
+      <span
+        className={`cover cover-${size} cover-none`}
+        aria-hidden="true"
+        data-kind={kind ?? ''}
+      />
     );
   return (
     <img
