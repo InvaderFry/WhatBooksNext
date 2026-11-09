@@ -309,3 +309,32 @@ describe('grouping by name and size (§11.3 rules 1–2)', () => {
     expect(primary).toBe('Sorted/mapmaking.epub');
   });
 });
+
+describe('re-reading names after the parser improves (§9.2 "Refresh")', () => {
+  it("refreshes titles read by an older parser, and never touches the owner's own title", async () => {
+    writeFiles(drive, {
+      'Manga/Starfall Academy Manga - 12 [grp].zip': 10,
+      'Manga/Starfall Academy Manga - 13 [grp].zip': 11,
+    });
+    await addFolder(db, platform, { path: drive });
+    await scan();
+    // Pretend both were read by an older parser that got the titles wrong.
+    db.prepare("UPDATE files SET stages = '{}'").run();
+    db.prepare("UPDATE items SET title = 'wrong'").run();
+    const owned = itemOf('Starfall Academy Manga - 13 [grp].zip');
+    db.prepare(
+      "INSERT INTO user_item (item_id, title_override, updated_at) VALUES (?, 'My own title', 'x')",
+    ).run(owned);
+
+    const s = await scan();
+    expect(s.folders[0]!.reparsed).toBe(2);
+    const titles = db.prepare('SELECT title FROM items ORDER BY title').pluck().all();
+    expect(titles).toEqual(['Starfall Academy Manga Vol. 12', 'Starfall Academy Manga Vol. 13']);
+    expect(
+      db.prepare('SELECT title_override FROM user_item WHERE item_id = ?').pluck().get(owned),
+    ).toBe('My own title');
+
+    const again = await scan();
+    expect(again.folders[0]!.reparsed).toBe(0); // read once per parser version, not every scan
+  });
+});

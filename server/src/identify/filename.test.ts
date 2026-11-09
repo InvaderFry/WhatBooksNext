@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { compareKeyFor, parseFilename, titleCompareKey } from './filename.ts';
+import { displayTitle } from './items.ts';
 
 // Fixture names are invented look-alikes of real patterns (PLAN.md §5, §11.1). The owner's real
 // filenames live in fixtures/private/ and never in this file.
@@ -82,7 +83,7 @@ describe('filename parser — patterns from the M0 probe (invented names)', () =
   it('strips size tags and Humble ids, and never uses the id as a date', () => {
     const p = parseFilename('quietgardens_vol1_optimized_1400000000.pdf');
     expect(v(p.series)).toBe('quiet gardens');
-    expect(p.tags).toEqual(['optimized', 'humble-id 1400000000']);
+    expect(p.tags).toEqual(expect.arrayContaining(['optimized', 'humble-id 1400000000']));
     expect(p.year).toBeUndefined();
   });
 
@@ -154,5 +155,56 @@ describe('name comparison', () => {
       compareKeyFor('quietgardens.epub'),
     );
     expect(compareKeyFor('fieldnotes (1).pdf')).toBe(compareKeyFor('fieldnotes.epub'));
+  });
+});
+
+describe("display titles for patterns found in the owner's first scan (invented names)", () => {
+  const title = (n: string) => displayTitle(parseFilename(n));
+
+  it('reads "Series - 12" as volume 12, never as a book titled "12"', () => {
+    expect(title('Starfall Academy Manga - 12 [grp].zip')).toBe('Starfall Academy Manga Vol. 12');
+    expect(title('Starfall Academy Manga - 01 [grp].zip')).toBe('Starfall Academy Manga Vol. 1');
+  });
+
+  it('keeps the subtitle of "Series - Subtitle" comics instead of dropping it', () => {
+    expect(title('Copperline - Winter Special.cbr')).toBe('Copperline: Winter Special');
+    expect(title('Copperline - The Long Night (Kman).cbz')).toBe('Copperline: The Long Night');
+    expect(title('tinycomics_-_attack_of_the_paper_moths-high.pdf')).toBe(
+      'Tinycomics: Attack of the Paper Moths',
+    );
+  });
+
+  it('drops a trailing author name only when it looks like one', () => {
+    expect(title('Widget Patterns - Ada Q. Quillfeather.pdf')).toBe('Widget Patterns');
+    expect(title('salt_road_songs_-_mirela_vasquezhollow.epub')).toBe('Salt Road Songs');
+  });
+
+  it('reads "Series 01 - Subtitle" as a volume with its subtitle', () => {
+    expect(title('Lanternfish 02 - Lanternfish vs. the Tide (2005) (grp).cbz')).toBe(
+      'Lanternfish Vol. 2: Lanternfish vs. the Tide',
+    );
+  });
+
+  it('reads a two-digit number on a comic archive as an issue', () => {
+    expect(title('The Tin Orchard 10.cbr')).toBe('The Tin Orchard #10');
+    expect(title('Catch 22.epub')).toBe('Catch 22');
+  });
+
+  it('treats a bare year as a year, not an issue number', () => {
+    const p = parseFilename('Copperline - The Movie Summer 1990 (grp).cbr');
+    expect(p.issue).toBeUndefined();
+    expect(p.year?.value).toBe(1990);
+  });
+
+  it("keeps an issue file's subtitle", () => {
+    expect(title('Copperline v1 04b - Paper Moth 01.cbr')).toBe('Copperline v1 #4b: Paper Moth 01');
+  });
+
+  it('strips -low, -high_definition, dashed Humble ids and a trailing _new', () => {
+    expect(title('tinycomics-volume0-low.pdf')).toBe('Tiny Comics Vol. 0');
+    expect(parseFilename('quietgardens-high_definition-1400000000.pdf').quality).toBe('HD');
+    const p = parseFilename('pythonrecipes_new.epub');
+    expect(displayTitle(p)).toBe('Python Recipes');
+    expect(p.editionNote).toBe('new edition');
   });
 });

@@ -270,6 +270,8 @@ function LastScan({ scan }: { scan: ScanStatus }) {
         Last scan: {scan.status === 'completed' ? 'finished' : scan.status}{' '}
         {formatDate(scan.finishedAt)}
         {scan.grouping && ` · ${scan.grouping.itemsCreated} new items`}
+        {scan.folders.some((f) => f.reparsed > 0) &&
+          ` · ${scan.folders.reduce((n, f) => n + (f.reparsed ?? 0), 0).toLocaleString()} file names re-read with improved rules (your own title fixes are kept)`}
       </summary>
       {scan.error && <Notice kind="error">{scan.error}</Notice>}
       <table className="table">

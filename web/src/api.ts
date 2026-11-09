@@ -134,6 +134,7 @@ export interface FolderScan {
   missing: number;
   stale: number;
   returned: number;
+  reparsed: number;
   ignoredByType: Record<string, number>;
 }
 

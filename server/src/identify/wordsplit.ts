@@ -14,6 +14,7 @@ import zlib from 'node:zlib';
 const WORDS_FILE = path.join(import.meta.dirname, 'data', 'wordninja_words.txt.gz');
 
 let costs: Map<string, number> | null = null;
+let ranks: Map<string, number> | null = null;
 let maxWordLength = 0;
 
 function load(): Map<string, number> {
@@ -22,7 +23,9 @@ function load(): Map<string, number> {
   const list = words.map((w) => w.trim()).filter(Boolean);
   const logN = Math.log(list.length);
   costs = new Map();
+  ranks = new Map();
   list.forEach((w, i) => {
+    if (!ranks!.has(w)) ranks!.set(w, i + 1);
     if (!costs!.has(w)) costs!.set(w, Math.log((i + 1) * logN));
     maxWordLength = Math.max(maxWordLength, w.length);
   });
@@ -75,4 +78,10 @@ export function splitWords(text: string): string[] {
 
 export function isKnownWord(word: string): boolean {
   return load().has(word.toLowerCase());
+}
+
+/** 1-based frequency rank of a word in English (1 = most common), or null if unknown. */
+export function wordRank(word: string): number | null {
+  load();
+  return ranks!.get(word.toLowerCase()) ?? null;
 }

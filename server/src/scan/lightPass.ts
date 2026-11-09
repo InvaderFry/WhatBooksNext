@@ -1,9 +1,9 @@
 import path from 'node:path';
 import { EXTENSION_FORMATS, MAX_SCAN_DEPTH } from '../config.ts';
 import type { DB } from '../db/database.ts';
-import { parseFilename } from '../identify/filename.ts';
+import { PARSER_VERSION, parseFilename } from '../identify/filename.ts';
 import { availabilityFromAttributes, type Platform } from '../platform/types.ts';
-import { newId, nowIso } from '../util.ts';
+import { newId, nowIso, parseJson } from '../util.ts';
 import { resolveFolderRoot, type FolderRow } from './folders.ts';
 
 /**
@@ -31,6 +31,8 @@ export interface FolderScanSummary {
   missing: number;
   stale: number;
   returned: number;
+  /** Files whose names were read again because the parser improved. */
+  reparsed: number;
   ignoredByType: Record<string, number>;
 }
 
@@ -55,6 +57,8 @@ interface ExistingFile {
   modified_ms: number | null;
   availability: string;
   stale: number;
+  name: string;
+  stages: string;
 }
 
 export function formatForName(name: string): { ext: string; format: string } | null {
@@ -77,7 +81,7 @@ export async function lightScanFolder(
   folder: FolderRow,
   cancel: CancelToken,
   onProgress?: (s: FolderScanSummary) => void,
-): Promise<FolderScanSummary> {
+): Promise<FolderScanSummary & { reparsedFileIds?: string[] }> {
   const summary: FolderScanSummary = {
     folderId: folder.id,
     status: 'completed',
@@ -89,6 +93,7 @@ export async function lightScanFolder(
     missing: 0,
     stale: 0,
     returned: 0,
+    reparsed: 0,
     ignoredByType: {},
   };
 
@@ -161,8 +166,8 @@ export async function lightScanFolder(
   }
   if (summary.status !== 'cancelled' && summary.dirErrors > 0) summary.status = 'partial';
 
-  applyFolderListing(db, folder, found, completeDirs, childDirs, summary);
-  return summary;
+  const reparsedFileIds = applyFolderListing(db, folder, found, completeDirs, childDirs, summary);
+  return { ...summary, reparsedFileIds };
 }
 
 /** Writes one folder's listing to the database in a single transaction. */
@@ -173,11 +178,12 @@ export function applyFolderListing(
   completeDirs: Set<string>,
   childDirs: Map<string, Set<string>>,
   summary: FolderScanSummary,
-): void {
+): string[] {
   const now = nowIso();
+  const reparsedFileIds: string[] = [];
   const existing = db
     .prepare(
-      'SELECT id, rel_path, rel_dir, size, modified_ms, availability, stale FROM files WHERE folder_id = ?',
+      'SELECT id, rel_path, rel_dir, size, modified_ms, availability, stale, name, stages FROM files WHERE folder_id = ?',
     )
     .all(folder.id) as ExistingFile[];
   // Windows paths are case-insensitive; a rename that only changes case is the same file.
@@ -187,19 +193,24 @@ export function applyFolderListing(
   const insert = db.prepare(
     `INSERT INTO files (id, folder_id, rel_path, rel_dir, name, ext, format, size, created_ms, modified_ms,
        availability, stale, attributes, parsed, compare_key, quality_tag, edition_number, edition_note,
-       first_seen_at, last_seen_at)
+       stages, first_seen_at, last_seen_at)
      VALUES (@id, @folder_id, @rel_path, @rel_dir, @name, @ext, @format, @size, @created_ms, @modified_ms,
        @availability, 0, @attributes, @parsed, @compare_key, @quality_tag, @edition_number, @edition_note,
-       @now, @now)`,
+       @stages, @now, @now)`,
   );
   const update = db.prepare(
     `UPDATE files SET rel_path = @rel_path, rel_dir = @rel_dir, name = @name, size = @size,
        created_ms = @created_ms, modified_ms = @modified_ms, availability = @availability, stale = 0,
        attributes = @attributes, last_seen_at = @now,
-       stages = CASE WHEN @reset THEN '{}' ELSE stages END,
+       stages = @stages,
        partial_hash = CASE WHEN @changed THEN NULL ELSE partial_hash END,
        full_hash = CASE WHEN @changed THEN NULL ELSE full_hash END
      WHERE id = @id`,
+  );
+  // The filename parser improved since this file was read: read its name again (§9.2 "Refresh").
+  const reparse = db.prepare(
+    `UPDATE files SET parsed = @parsed, compare_key = @compare_key, quality_tag = @quality_tag,
+       edition_number = @edition_number, edition_note = @edition_note WHERE id = @id`,
   );
   const markMissing = db.prepare(
     "UPDATE files SET availability = 'missing', stale = 0 WHERE id = ?",
@@ -230,9 +241,25 @@ export function applyFolderListing(
           availability: f.availability,
           attributes: f.attributes,
           now,
-          reset: changed || becamePresent ? 1 : 0,
+          stages: JSON.stringify({
+            ...(changed || becamePresent ? {} : parseJson<Record<string, number>>(old.stages, {})),
+            parse: PARSER_VERSION,
+          }),
           changed: changed ? 1 : 0,
         });
+        const oldParse = parseJson<Record<string, number>>(old.stages, {}).parse;
+        if (oldParse !== PARSER_VERSION || old.name !== f.name) {
+          const parsed = parseFilename(f.name);
+          reparse.run({
+            id: old.id,
+            parsed: JSON.stringify(parsed),
+            compare_key: parsed.compareKey,
+            quality_tag: parsed.quality ?? null,
+            edition_number: parsed.editionNumber ?? null,
+            edition_note: parsed.editionNote ?? null,
+          });
+          reparsedFileIds.push(old.id);
+        }
       } else {
         const parsed = parseFilename(f.name);
         insert.run({
@@ -249,6 +276,7 @@ export function applyFolderListing(
           availability: f.availability,
           attributes: f.attributes,
           parsed: JSON.stringify(parsed),
+          stages: JSON.stringify({ parse: PARSER_VERSION }),
           compare_key: parsed.compareKey,
           quality_tag: parsed.quality ?? null,
           edition_number: parsed.editionNumber ?? null,
@@ -279,6 +307,8 @@ export function applyFolderListing(
          last_complete_scan_at = CASE WHEN ? THEN ? ELSE last_complete_scan_at END WHERE id = ?`,
     ).run(now, now, complete ? 1 : 0, now, folder.id);
   })();
+  summary.reparsed = reparsedFileIds.length;
+  return reparsedFileIds;
 }
 
 /**

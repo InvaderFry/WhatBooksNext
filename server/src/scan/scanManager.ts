@@ -1,6 +1,6 @@
 import type { DB } from '../db/database.ts';
 import { groupUnassignedFiles, type GroupingResult } from '../identify/grouping.ts';
-import { refreshAllPrimaries } from '../identify/items.ts';
+import { refreshAllPrimaries, refreshItemFacts } from '../identify/items.ts';
 import type { Platform } from '../platform/types.ts';
 import { HttpError, newId, nowIso } from '../util.ts';
 import type { FolderRow } from './folders.ts';
@@ -84,20 +84,27 @@ export class ScanManager {
   }
 
   private async run(folders: FolderRow[], status: ScanStatus, cancel: CancelToken): Promise<void> {
+    const reparsed: string[] = [];
     try {
       for (const folder of folders) {
         if (cancel.cancelled) break;
         status.currentFolderId = folder.id;
         const entry = { ...emptySummary(folder.id), displayPath: folder.display_path };
         status.folders.push(entry);
-        const s = await lightScanFolder(this.db, this.platform, folder, cancel, (p) =>
-          Object.assign(entry, p),
+        const { reparsedFileIds = [], ...s } = await lightScanFolder(
+          this.db,
+          this.platform,
+          folder,
+          cancel,
+          (p) => Object.assign(entry, p),
         );
         Object.assign(entry, s);
+        reparsed.push(...reparsedFileIds);
       }
       status.grouping = this.db.transaction(() => {
         const g = groupUnassignedFiles(this.db);
         refreshAllPrimaries(this.db);
+        refreshItemFacts(this.db, reparsed);
         return g;
       })();
       status.status = cancel.cancelled ? 'cancelled' : 'completed';
@@ -128,6 +135,7 @@ function emptySummary(folderId: string): FolderScanSummary {
     missing: 0,
     stale: 0,
     returned: 0,
+    reparsed: 0,
     ignoredByType: {},
   };
 }

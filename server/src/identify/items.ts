@@ -35,7 +35,7 @@ export function displayTitle(p: ParsedName): string {
       p.seriesVolume && !p.seriesVolume.value.startsWith('season')
         ? ` v${p.seriesVolume.value}`
         : '';
-    t = `${series}${sv} #${p.issue.value}`;
+    t = `${series}${sv} #${p.issue.value}${subtitle ? `: ${subtitle}` : ''}`;
   } else if (series && p.volume) {
     t = `${series} Vol. ${p.volume.value}${subtitle ? `: ${subtitle}` : ''}`;
   } else {
@@ -191,4 +191,42 @@ export function removeOrphanItems(db: DB): number {
     removed++;
   }
   return removed;
+}
+
+/**
+ * After the filename parser improved and files were read again: refresh the facts of the items
+ * holding them (title, series hint, volume, issue) from each item's primary file. Only facts
+ * change — the owner's own title, kind and other corrections live in user_item and are untouched.
+ * (From M3, facts from online sources will outrank the filename; this then applies only to
+ * items whose facts still come from the filename.)
+ */
+export function refreshItemFacts(db: DB, fileIds: string[]): number {
+  if (fileIds.length === 0) return 0;
+  const itemOf = db.prepare('SELECT item_id FROM item_files WHERE file_id = ?').pluck();
+  const itemIds = new Set<string>();
+  for (const f of fileIds) {
+    const i = itemOf.get(f) as string | undefined;
+    if (i) itemIds.add(i);
+  }
+  const primaryParse = db
+    .prepare(
+      'SELECT f.parsed FROM item_files x JOIN files f ON f.id = x.file_id WHERE x.item_id = ? AND x.is_primary = 1',
+    )
+    .pluck();
+  const update = db.prepare(
+    `UPDATE items SET title = ?, series_hint = ?, volume_label = ?, issue_label = ?, updated_at = ?
+     WHERE id = ? AND (title IS NOT ? OR series_hint IS NOT ? OR volume_label IS NOT ? OR issue_label IS NOT ?)`,
+  );
+  let changed = 0;
+  const now = nowIso();
+  for (const id of itemIds) {
+    const p = parseJson<ParsedName | null>(primaryParse.get(id) as string | undefined, null);
+    if (!p) continue;
+    const t = displayTitle(p);
+    const series = p.series?.value ?? null;
+    const vol = p.volume?.value ?? null;
+    const issue = p.issue?.value ?? null;
+    changed += update.run(t, series, vol, issue, now, id, t, series, vol, issue).changes;
+  }
+  return changed;
 }
