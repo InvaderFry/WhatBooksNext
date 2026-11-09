@@ -73,6 +73,9 @@ export interface ItemSummary {
   kindIsGuess: boolean;
   isReference: boolean;
   seriesHint: string | null;
+  creators: { name: string; role?: string }[];
+  /** File whose thumbnail is this item's cover; null when there is none. */
+  coverFileId: string | null;
   formats: string[];
   fileCount: number;
   folderIds: string[];
@@ -99,12 +102,107 @@ export interface FileDetail {
   language: string | null;
   modifiedMs: number | null;
   firstSeenAt: string;
+  wordCount: number | null;
+  pageCount: number | null;
+  pdfType: PdfType | 'uncertain' | null;
+  pdfTypeEvidence: string | null;
+  pdfTypeOverride: PdfType | null;
+  hasThumbnail: boolean;
+  hashed: boolean;
+  problem: string | null;
+  problemDetail: string | null;
+  metadata: EmbeddedMetadata | null;
+}
+
+export type PdfType = 'comic' | 'text' | 'scanned';
+
+/** What a file says about itself. Untrusted text: always rendered as text, never as HTML. */
+export interface EmbeddedMetadata {
+  title?: string;
+  creators?: { name: string; role?: string }[];
+  language?: string;
+  publisher?: string;
+  date?: string;
+  identifiers?: { scheme: string; value: string }[];
+  isbnCandidates?: string[];
+  subjects?: string[];
+  description?: string;
+  series?: string;
+  seriesIndex?: string;
+  comic?: Record<string, string | number>;
 }
 
 export interface ItemDetail extends ItemSummary {
   files: FileDetail[];
   parse: Record<string, unknown> | null;
+  titleSource: 'embedded' | 'filename' | null;
   redirectedFrom?: string;
+}
+
+export interface ReviewFile {
+  id: string;
+  name: string;
+  folderPath: string;
+  relPath: string;
+  format: string;
+  size: number;
+  availability: string;
+}
+
+export interface ReviewRow {
+  id: string;
+  kind: 'move' | 'group_conflict' | 'copy_conflict' | 'cross_folder' | 'pdf_type';
+  tier: number;
+  why: string;
+  items: { id: string; title: string; hasHistory: boolean }[];
+  files: ReviewFile[];
+  actions: ('accept' | 'decline' | 'split')[];
+}
+
+export interface HealthFile {
+  fileId: string;
+  itemId: string | null;
+  name: string;
+  folderPath: string;
+  relPath: string;
+  format: string;
+  size: number;
+  problem: string | null;
+  detail: string | null;
+  at: string | null;
+}
+
+export interface Health {
+  errors: HealthFile[];
+  notComics: HealthFile[];
+  noTextLayer: HealthFile[];
+  uncertainPdfs: number;
+  itemsWithCopies: number;
+  filesInCopies: number;
+  notYetRead: number;
+  notYetHashed: number;
+  ignoredByType: Record<string, number>;
+}
+
+export interface Reminder {
+  folderId: string;
+  displayPath: string;
+  storageKind: 'local' | 'external' | 'cloud';
+  days: number;
+  neverCompleted: boolean;
+}
+
+export interface DeepProgress {
+  phase: 'reading' | 'hashing' | 'done';
+  toRead: number;
+  read: number;
+  toHash: number;
+  hashed: number;
+  bytesToHash: number;
+  bytesHashed: number;
+  failed: number;
+  refused: number;
+  estimateSeconds: number | null;
 }
 
 export interface Folder {
@@ -146,6 +244,9 @@ export interface ScanStatus {
   folders: FolderScan[];
   currentFolderId: string | null;
   grouping: { itemsCreated: number; filesAttached: number; ambiguous: number } | null;
+  phase?: 'listing' | 'reading' | 'hashing' | 'finishing';
+  deep?: DeepProgress | null;
+  identity?: { excluded: number; split: number; mergedByHash: number; reviewAdded: number } | null;
   error: string | null;
 }
 
@@ -155,6 +256,8 @@ export interface AppState {
   folders: number;
   items: number;
   scanRunning: boolean;
+  reviewOpen: number;
+  healthProblems: number;
 }
 
 export type Progress =
@@ -220,3 +323,28 @@ export function daysAgo(iso: string | null): number | null {
   if (!iso) return null;
   return Math.floor((Date.now() - Date.parse(iso)) / 86_400_000);
 }
+
+export function formatDuration(seconds: number): string {
+  if (seconds < 60) return 'less than a minute';
+  const m = Math.round(seconds / 60);
+  if (m < 60) return `about ${m} minute${m === 1 ? '' : 's'}`;
+  const h = Math.floor(m / 60);
+  const rest = m % 60;
+  return `about ${h} h${rest ? ` ${rest} min` : ''}`;
+}
+
+export const PDF_TYPE_LABELS: Record<string, string> = {
+  comic: 'Comic',
+  text: 'Text book',
+  scanned: 'Scanned book',
+  uncertain: 'Uncertain',
+};
+
+export const PROBLEM_LABELS: Record<string, string> = {
+  corrupt: 'Unreadable or damaged',
+  limit: 'Over a safety limit',
+  timeout: 'Took too long to read',
+  not_comic: 'Archive that isn’t a comic',
+  too_large: 'Too large to read',
+  encrypted: 'Password-protected',
+};

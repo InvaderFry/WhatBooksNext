@@ -5,70 +5,230 @@ import { FakePlatform } from '../platform/fake.ts';
 import { ATTR_OFFLINE, ATTR_RECALL_ON_DATA_ACCESS } from '../platform/types.ts';
 import { addFolder } from '../scan/folders.ts';
 import { ScanManager } from '../scan/scanManager.ts';
+import {
+  makeCbr,
+  makeCbz,
+  makeEpub,
+  makeImage,
+  makePdf,
+  makeZip,
+  textLines,
+} from '../testing/fixtures.ts';
+import { fillerFor } from '../testing/helpers.ts';
 import { applyUserPatch, shortlistAdd } from './progress.ts';
 
 /**
- * The demo library (DEMO=1, PLAN.md §17): clearly labelled, no keys, no owner files.
- * Every title is invented. Files are tiny stand-ins — enough for the light pass, which reads
- * names, sizes and attributes only. No ratings, ids or claims about real works.
+ * The demo library (DEMO=1, PLAN.md §17): clearly labelled, no keys, no owner files. Every
+ * title, author and word is invented, and the files are generated here — real EPUBs, CBZs,
+ * CBRs and PDFs, so the deep pass reads them like any other. No ratings, ids or claims about
+ * real works.
  *
- * It shows the M1 cases: a book in several formats, an HD comic next to its standard version,
- * the same files in two folders (one copy online-only), separate editions, placeholder /
+ * It shows the M1 and M2 cases: a book in several formats, an HD comic next to its standard
+ * version, the same files in two folders (one copy online-only), separate editions, a
+ * translation split from its original, text / comic / scanned / uncertain PDFs, files that
+ * can't be read, an archive that isn't a comic, a cross-folder suggestion, placeholder /
  * unknown / missing files, a disconnected drive, and some reading history.
  */
 
 const ONLINE_ONLY = 0x20 | ATTR_RECALL_ON_DATA_ACCESS | ATTR_OFFLINE;
 
-const DRIVE: Record<string, number> = {
-  'Novels/glassharbor.epub': 412_000,
-  'Novels/glassharbor.pdf': 1_830_000,
-  'Novels/glassharbor.mobi': 520_000,
-  'Novels/mapmakersdaughter.epub': 388_000,
-  'Novels/thelanternkeepers_2ndedition.epub': 450_000,
-  'Novels/thelanternkeepers_3rdedition.epub': 471_000,
-  'Novels/riverofclocks.epub': 299_000,
-  'Nonfiction/quietmornings_ahandbookforslowstarts.epub': 210_000,
-  'Nonfiction/oldnotes.pdf': 90_000,
-  'Tech/practicalwidgetcrafting_fourthedition.pdf': 9_400_000,
-  'Tech/Widget Patterns - Ada Quill.pdf': 6_200_000,
-  'Comics/Copperline/Copperline 001 (2019) (Digital).cbz': 31_000_000,
-  'Comics/Copperline/Copperline 002 (2019) (Digital).cbz': 29_500_000,
-  'Comics/Copperline/Copperline 004 (2019) (Digital).cbz': 30_200_000,
-  'Comics/lanternfish_vol1.cbz': 88_000_000,
-  'Comics/lanternfish_vol1_hd.cbz': 240_000_000,
-  'Comics/tinyrobots_issue1.zip': 12_000_000,
-  'Manga/Starfall Academy v01.cbz': 61_000_000,
-  'Manga/Starfall Academy v02.cbz': 59_000_000,
-  'Music/not-a-book.mp3': 4_000,
-};
+const words = (n: number) => Array.from({ length: Math.ceil(n / 1500) }, () => 1500);
+const textPdf = (pages: number, seed: number, info?: Record<string, string>) =>
+  makePdf({
+    pages: Array.from({ length: pages }, (_, i) => ({ text: textLines(40, seed + i) })),
+    info,
+  });
+const comicPdf = (pages: number, color: string) =>
+  makePdf({
+    pages: Array.from({ length: pages }, () => ({ image: makeImage(400, 615, 'jpeg', color) })),
+    width: 400,
+    height: 615,
+  });
+const greyPdf = (pages: number, hiddenText: boolean) =>
+  makePdf({
+    pages: Array.from({ length: pages }, (_, i) => ({
+      image: makeImage(420, 640, 'jpeg', '#000', true),
+      imageGray: true,
+      hiddenText: hiddenText ? textLines(40, 50 + i) : undefined,
+    })),
+    width: 420,
+    height: 640,
+  });
 
-const CLOUD: Record<string, number> = {
-  'Books/glassharbor.epub': 412_000, // same name + size as the drive copy: grouped as one item
-  'Books/mapmakersdaughter.epub': 388_000,
-  'Books/nightorchard.epub': 333_000,
-  'Unsorted/fieldguidetopuddles.pdf': 2_100_000,
-};
+function driveFiles(): Record<string, Buffer> {
+  const glass = makeEpub({
+    title: 'Glass Harbor',
+    creators: ['Mira Vantongeren'],
+    language: 'en',
+    publisher: 'Demo Press',
+    subjects: ['Fiction', 'Sea stories'],
+    description: 'A lighthouse keeper finds a harbor made of glass. (Invented for the demo.)',
+    chapters: words(96_000),
+    cover: true,
+    seed: 1,
+  });
+  return {
+    'Novels/glassharbor.epub': glass,
+    'Novels/glassharbor.pdf': textPdf(12, 1),
+    'Novels/glassharbor.mobi': fillerFor('glassharbor.mobi', 520_000),
+    'Novels/mapmakersdaughter.epub': mapmaker,
+    'Novels/thelanternkeepers_2ndedition.epub': makeEpub({
+      title: 'The Lantern Keepers',
+      creators: ['Odile Brannagh'],
+      language: 'en',
+      chapters: words(71_000),
+      cover: true,
+      seed: 3,
+    }),
+    'Novels/thelanternkeepers_3rdedition.epub': makeEpub({
+      title: 'The Lantern Keepers',
+      creators: ['Odile Brannagh'],
+      language: 'en',
+      chapters: words(74_500),
+      cover: true,
+      seed: 4,
+    }),
+    'Novels/riverofclocks.epub': makeEpub({
+      title: 'River of Clocks',
+      creators: ['Tamsin Achterberg'],
+      language: 'en',
+      series: 'The Clockwater Books',
+      seriesIndex: '1',
+      chapters: words(58_000),
+      cover: true,
+      seed: 5,
+    }),
+    // A translation in the same folder: grouped by name first, then split by language.
+    'Translations/saltandember.epub': makeEpub({
+      title: 'Salt and Ember',
+      creators: ['Inés Corvalán'],
+      language: 'en',
+      chapters: words(40_000),
+      seed: 6,
+    }),
+    'Translations/saltandember_hq.epub': makeEpub({
+      title: 'Sal y brasa',
+      creators: ['Inés Corvalán'],
+      language: 'es',
+      chapters: words(42_000),
+      seed: 7,
+    }),
+    'Nonfiction/quietmornings_ahandbookforslowstarts.epub': makeEpub({
+      title: 'Quiet Mornings: A Handbook for Slow Starts',
+      creators: ['Bertil Haaland'],
+      language: 'en',
+      chapters: words(31_000),
+      cover: true,
+      seed: 8,
+    }),
+    'Nonfiction/oldnotes.pdf': textPdf(3, 9),
+    'Nonfiction/damagedcopy.epub': Buffer.from('This file was cut short during a download.'),
+    'Tech/practicalwidgetcrafting_fourthedition.pdf': textPdf(14, 10, {
+      Title: 'Practical Widget Crafting',
+      Author: 'Lio Sandoval',
+    }),
+    'Tech/Widget Patterns - Ada Quill.pdf': textPdf(10, 20, {
+      Title: 'Widget Patterns',
+      Author: 'Ada Quill',
+    }),
+    ...Object.fromEntries(
+      [1, 2, 4].map((n) => [
+        `Comics/Copperline/Copperline 00${n} (2019) (Digital).cbz`,
+        makeCbz({
+          pages: 22,
+          comicInfo: {
+            Series: 'Copperline',
+            Number: String(n),
+            Year: '2019',
+            Writer: 'Rue Fenwick',
+          },
+        }),
+      ]),
+    ),
+    'Comics/lanternfish_vol1.cbz': makeCbz({ pages: 8 }),
+    'Comics/lanternfish_vol1_hd.cbz': makeCbz({ pages: 8, width: 320, height: 490 }),
+    'Comics/tinyrobots_issue1.zip': makeCbz({ pages: 6 }),
+    'Comics/tinyrobots_issue2.rar': makeCbr({ pages: 6 }),
+    'Comics/shadowservice_vol1_darkarts.pdf': comicPdf(6, '#1f6f8b'),
+    'Comics/software_bundle.zip': makeZip([
+      { name: 'setup.exe', data: fillerFor('setup.exe', 4000) },
+      { name: 'readme.txt', data: 'Not a comic.' },
+      { name: 'licence.pdf', data: fillerFor('licence.pdf', 3000) },
+    ]),
+    'Scans/harborgazette1952.pdf': greyPdf(5, true),
+    'Scans/inkandsilence.pdf': greyPdf(5, false),
+    ...Object.fromEntries(
+      [1, 2].map((n) => [
+        `Manga/Starfall Academy v0${n}.cbz`,
+        makeCbz({
+          pages: 10,
+          comicInfo: {
+            Series: 'Starfall Academy',
+            Number: String(n),
+            Manga: 'YesAndRightToLeft',
+            Writer: 'Kaede Morishita',
+          },
+        }),
+      ]),
+    ),
+    'Music/not-a-book.mp3': fillerFor('not-a-book.mp3', 4000),
+  };
+}
 
-const SECOND_DRIVE: Record<string, number> = {
-  'saltroadsongs.epub': 275_000,
-};
+const mapmaker = makeEpub({
+  title: 'The Mapmaker’s Daughter',
+  creators: ['Hollis Quarrender'],
+  language: 'en',
+  chapters: words(83_000),
+  cover: true,
+  seed: 2,
+});
 
-function write(root: string, files: Record<string, number>) {
-  for (const [rel, size] of Object.entries(files)) {
+function cloudFiles(drive: Record<string, Buffer>): Record<string, Buffer> {
+  return {
+    // Exact copies of drive files: grouped as one item.
+    'Books/glassharbor.epub': drive['Novels/glassharbor.epub']!,
+    'Books/mapmakersdaughter.epub': drive['Novels/mapmakersdaughter.epub']!,
+    'Books/nightorchard.epub': makeEpub({
+      title: 'Night Orchard',
+      creators: ['Petra Lindqvist-Arno'],
+      language: 'en',
+      chapters: words(60_000),
+      seed: 11,
+    }),
+    // Only a PDF here, an EPUB on the drive: suggested as one book, never grouped silently.
+    'Books/riverofclocks.pdf': textPdf(9, 30),
+    'Unsorted/fieldguidetopuddles.pdf': textPdf(4, 40),
+  };
+}
+
+function write(root: string, files: Record<string, Buffer>) {
+  for (const [rel, data] of Object.entries(files)) {
     const abs = path.join(root, ...rel.split('/'));
     fs.mkdirSync(path.dirname(abs), { recursive: true });
-    // Sizes are scaled down 1000x on disk; the demo only needs distinct, repeatable sizes.
-    fs.writeFileSync(abs, Buffer.alloc(Math.max(1, Math.round(size / 1000)), 0x20));
+    fs.writeFileSync(abs, data);
   }
 }
 
-export async function buildDemoLibrary(db: DB, root: string): Promise<FakePlatform> {
+export async function buildDemoLibrary(
+  db: DB,
+  root: string,
+  coversDir: string | null = null,
+): Promise<FakePlatform> {
   const drive = path.join(root, 'Demo external drive');
   const cloud = path.join(root, 'Demo iCloud Drive');
   const second = path.join(root, 'Demo second drive');
-  write(drive, DRIVE);
-  write(cloud, CLOUD);
-  write(second, SECOND_DRIVE);
+  const d = driveFiles();
+  write(drive, d);
+  write(cloud, cloudFiles(d));
+  write(second, {
+    'saltroadsongs.epub': makeEpub({
+      title: 'Salt Road Songs',
+      creators: ['Anouk Teversham'],
+      chapters: words(52_000),
+      seed: 12,
+    }),
+  });
 
   const p = new FakePlatform();
   p.addVolume({
@@ -94,14 +254,18 @@ export async function buildDemoLibrary(db: DB, root: string): Promise<FakePlatfo
   await addFolder(db, p, { path: second });
   db.prepare('UPDATE folders SET also_in_icloud = 1 WHERE id = ?').run(driveFolder.id);
 
-  const scans = new ScanManager(db, p);
-  scans.start();
-  await scans.wait();
+  const scans = new ScanManager(db, p, { coversDir });
+  try {
+    scans.start();
+    await scans.wait();
 
-  // A file that has since been deleted, and a drive that has since been unplugged.
-  fs.rmSync(path.join(drive, 'Nonfiction', 'oldnotes.pdf'));
-  scans.start();
-  await scans.wait();
+    // A file that has since been deleted, and a drive that has since been unplugged.
+    fs.rmSync(path.join(drive, 'Nonfiction', 'oldnotes.pdf'));
+    scans.start();
+    await scans.wait();
+  } finally {
+    await scans.close();
+  }
   secondVol.root = null;
 
   const byFile = (name: string) =>
@@ -136,8 +300,6 @@ export async function buildDemoLibrary(db: DB, root: string): Promise<FakePlatfo
     referenceOverride: true,
   });
   applyUserPatch(db, byFile('Widget Patterns - Ada Quill.pdf'), { kindOverride: 'tech' });
-  applyUserPatch(db, byFile('Starfall Academy v01.cbz'), { kindOverride: 'manga' });
-  applyUserPatch(db, byFile('Starfall Academy v02.cbz'), { kindOverride: 'manga' });
   applyUserPatch(db, byFile('thelanternkeepers_2ndedition.epub'), { icloudOverride: 'not_in' });
   shortlistAdd(db, byFile('thelanternkeepers_3rdedition.epub'));
   shortlistAdd(db, byFile('Starfall Academy v01.cbz'));

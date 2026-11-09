@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, type AppState, type ScanStatus } from './api.ts';
 import { Diagnostics } from './pages/Diagnostics.tsx';
+import { Health } from './pages/Health.tsx';
+import { Review } from './pages/Review.tsx';
+import { ReminderBanner } from './ReminderBanner.tsx';
 import { ItemPage } from './pages/ItemPage.tsx';
 import { Library } from './pages/Library.tsx';
 import { Settings } from './pages/Settings.tsx';
@@ -11,6 +14,7 @@ import { hrefFor, onLinkClick, useParams } from './url.ts';
 const NAV = [
   { view: 'library', label: 'Library' },
   { view: 'shortlist', label: 'Shortlist' },
+  { view: 'review', label: 'Needs review' },
   { view: 'settings', label: 'Settings' },
   { view: 'diagnostics', label: 'Diagnostics' },
 ] as const;
@@ -69,6 +73,8 @@ export function App() {
       shortlist: 'Shortlist',
       settings: 'Settings',
       diagnostics: 'Diagnostics',
+      review: 'Needs review',
+      health: 'Library health',
       item: 'Book',
     };
     document.title = `${titles[view] ?? 'Library'} · whatBooksNext`;
@@ -104,12 +110,17 @@ export function App() {
                     href={hrefFor({ view: n.view })}
                     onClick={onLinkClick({ view: n.view })}
                     aria-current={
-                      view === n.view || (view === 'item' && n.view === 'library')
+                      view === n.view ||
+                      (view === 'item' && n.view === 'library') ||
+                      (view === 'health' && n.view === 'review')
                         ? 'page'
                         : undefined
                     }
                   >
                     {n.label}
+                    {n.view === 'review' && state && state.reviewOpen > 0 && (
+                      <span className="count"> ({state.reviewOpen})</span>
+                    )}
                   </a>
                 </li>
               ))}
@@ -118,6 +129,9 @@ export function App() {
         </div>
       </header>
       {scan?.status === 'running' && <ScanProgress scan={scan} />}
+      {scan?.status !== 'running' && (
+        <ReminderBanner key={dataVersion} onScanStarted={scanStarted} />
+      )}
       <main id="main" tabIndex={-1}>
         {view === 'library' && (
           <Library key={dataVersion} state={state} onScanStarted={scanStarted} />
@@ -135,6 +149,8 @@ export function App() {
           />
         )}
         {view === 'diagnostics' && <Diagnostics key={dataVersion} />}
+        {view === 'review' && <Review key={dataVersion} onChanged={() => void refreshState()} />}
+        {view === 'health' && <Health key={dataVersion} />}
       </main>
     </>
   );

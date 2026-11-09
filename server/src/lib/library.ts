@@ -29,6 +29,7 @@ export interface FileView {
   language: string | null;
   modifiedMs: number | null;
   firstSeenAt: string;
+  hasThumbnail: boolean;
 }
 
 export interface UserData {
@@ -60,6 +61,9 @@ export interface ItemSummary {
   kindIsGuess: boolean;
   isReference: boolean;
   seriesHint: string | null;
+  creators: { name: string; role?: string }[];
+  /** A file of this item with a thumbnail (its cover is served by this file id), or null. */
+  coverFileId: string | null;
   formats: string[];
   fileCount: number;
   folderIds: string[];
@@ -149,6 +153,7 @@ interface ItemRow {
   is_reference: number;
   title: string;
   series_hint: string | null;
+  creators: string;
   created_at: string;
 }
 
@@ -169,6 +174,7 @@ interface FileJoinRow {
   language: string | null;
   modified_ms: number | null;
   first_seen_at: string;
+  has_thumbnail: number;
 }
 
 const STORE_LABELS: Record<string, string> = {
@@ -244,7 +250,7 @@ export function loadLibrary(db: DB, reach: FolderReachability, onlyIds?: string[
     .prepare(
       `SELECT x.item_id, x.is_primary, f.id, f.folder_id, f.rel_path, f.name, f.format, f.size,
          f.availability, f.stale, f.quality_tag, f.edition_number, f.edition_note, f.language,
-         f.modified_ms, f.first_seen_at
+         f.modified_ms, f.first_seen_at, f.has_thumbnail
        FROM item_files x JOIN files f ON f.id = x.file_id`,
     )
     .all() as FileJoinRow[]) {
@@ -268,6 +274,7 @@ export function loadLibrary(db: DB, reach: FolderReachability, onlyIds?: string[
       language: r.language,
       modifiedMs: r.modified_ms,
       firstSeenAt: r.first_seen_at,
+      hasThumbnail: r.has_thumbnail === 1,
     };
     if (!files.has(r.item_id)) files.set(r.item_id, []);
     files.get(r.item_id)!.push(view);
@@ -302,6 +309,9 @@ export function loadLibrary(db: DB, reach: FolderReachability, onlyIds?: string[
       kindIsGuess: !user.kindOverride && i.kind !== null,
       isReference: user.referenceOverride ?? i.is_reference === 1,
       seriesHint: i.series_hint,
+      creators: parseJson<{ name: string; role?: string }[]>(i.creators, []),
+      // The primary file's cover first (files are sorted primary-first).
+      coverFileId: fs.find((f) => f.hasThumbnail)?.id ?? null,
       formats: [...new Set(fs.map((f) => f.format))],
       fileCount: fs.length,
       folderIds: [...new Set(fs.map((f) => f.folderId))],

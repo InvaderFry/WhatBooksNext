@@ -29,6 +29,7 @@ const api = {
 };
 
 async function freshApp() {
+  await made?.close();
   db = await memoryDb();
   made = createApp({ db, platform, port: PORT, dataDir: null, snapshotDir: snapshots });
 }
@@ -40,7 +41,8 @@ beforeEach(async () => {
   await freshApp();
 });
 
-afterEach(() => {
+afterEach(async () => {
+  await made.close();
   fs.rmSync(drive, { recursive: true, force: true });
   fs.rmSync(snapshots, { recursive: true, force: true });
 });

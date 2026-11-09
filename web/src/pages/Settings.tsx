@@ -274,6 +274,25 @@ function LastScan({ scan }: { scan: ScanStatus }) {
           ` · ${scan.folders.reduce((n, f) => n + (f.reparsed ?? 0), 0).toLocaleString()} file names re-read with improved rules (your own title fixes are kept)`}
       </summary>
       {scan.error && <Notice kind="error">{scan.error}</Notice>}
+      {scan.deep && (
+        <p className="small">
+          Read {scan.deep.read.toLocaleString()} of {scan.deep.toRead.toLocaleString()} files and
+          fingerprinted {scan.deep.hashed.toLocaleString()} of {scan.deep.toHash.toLocaleString()}
+          {scan.deep.failed > 0 && ` · ${scan.deep.failed} couldn’t be read (see Library health)`}
+          {scan.deep.refused > 0 &&
+            ` · ${scan.deep.refused} skipped because they were online-only or had changed when their turn came`}
+          {scan.identity &&
+            scan.identity.mergedByHash > 0 &&
+            ` · ${scan.identity.mergedByHash} recognised as copies or moved files`}
+          {scan.identity &&
+            scan.identity.split > 0 &&
+            ` · ${scan.identity.split} groups split because their files turned out to differ`}
+          {scan.identity &&
+            scan.identity.reviewAdded > 0 &&
+            ` · ${scan.identity.reviewAdded} new questions in Needs review`}
+          .
+        </p>
+      )}
       <table className="table">
         <caption className="visually-hidden">Last scan by folder</caption>
         <thead>

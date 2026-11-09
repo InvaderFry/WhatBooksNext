@@ -7,6 +7,8 @@ import {
   formatBytes,
   formatDate,
   KIND_LABELS,
+  PDF_TYPE_LABELS,
+  PROBLEM_LABELS,
   PROGRESS_LABELS,
   type DnfReason,
   type FileDetail,
@@ -15,7 +17,7 @@ import {
   type Progress,
   type UserData,
 } from '../api.ts';
-import { AvailabilityLabels, Notice } from '../components.tsx';
+import { AvailabilityLabels, Cover, creatorsText, Notice } from '../components.tsx';
 import { hrefFor, onLinkClick } from '../url.ts';
 
 type Patch = Partial<{
@@ -96,9 +98,22 @@ export function ItemPage({ id }: { id: string }) {
       >
         ← Library
       </a>
-      <TitleEditor item={item} onSave={save} />
-      <div className="item-meta big">
-        <AvailabilityLabels a={item.availability} />
+      <div className="item-head">
+        <Cover fileId={item.coverFileId} kind={item.kind} size="large" />
+        <div className="item-head-text">
+          <TitleEditor item={item} onSave={save} />
+          {item.creators.length > 0 && <p className="byline">{creatorsText(item.creators)}</p>}
+          {!u.titleOverride && (
+            <p className="muted small">
+              {item.titleSource === 'embedded'
+                ? 'Title from the file’s own details.'
+                : 'Title guessed from the filename.'}
+            </p>
+          )}
+          <div className="item-meta big">
+            <AvailabilityLabels a={item.availability} />
+          </div>
+        </div>
       </div>
       <div className="live" aria-live="polite">
         {saved && <span className="saved">✓ {saved}</span>}
@@ -251,11 +266,13 @@ export function ItemPage({ id }: { id: string }) {
         </section>
       </div>
 
+      <FromTheFile file={item.files.find((f) => f.isPrimary) ?? item.files[0]} />
+
       <section aria-labelledby="files-h">
         <h2 id="files-h">Files</h2>
         <ul className="file-list">
           {item.files.map((f) => (
-            <FileRow key={f.id} file={f} />
+            <FileRow key={f.id} file={f} onChanged={load} />
           ))}
         </ul>
       </section>
@@ -480,7 +497,46 @@ const FILE_STATE: Record<string, string> = {
   missing: 'Missing — not found in the last scan',
 };
 
-function FileRow({ file }: { file: FileDetail }) {
+/**
+ * What the primary file says about itself (§10). Text from files is untrusted: React renders it
+ * as text, so a description containing HTML or a script tag shows as plain characters (§6.3).
+ */
+function FromTheFile({ file }: { file: FileDetail | undefined }) {
+  const m = file?.metadata;
+  if (!file || !m) return null;
+  const rows: [string, string][] = [];
+  if (m.title) rows.push(['Title', m.title]);
+  if (m.creators?.length) rows.push(['By', creatorsText(m.creators)]);
+  if (m.series) rows.push(['Series', m.seriesIndex ? `${m.series}, #${m.seriesIndex}` : m.series]);
+  if (m.publisher) rows.push(['Publisher', m.publisher]);
+  if (m.date) rows.push(['Date in the file', m.date]);
+  if (m.language) rows.push(['Language', m.language]);
+  const isbns = m.identifiers?.filter((i) => i.scheme === 'isbn').map((i) => i.value) ?? [];
+  if (isbns.length) rows.push(['ISBN', isbns.join(', ')]);
+  if (m.isbnCandidates?.length)
+    rows.push(['ISBNs mentioned inside (unconfirmed)', m.isbnCandidates.slice(0, 5).join(', ')]);
+  if (m.subjects?.length) rows.push(['Subjects', m.subjects.slice(0, 8).join(', ')]);
+  if (rows.length === 0 && !m.description) return null;
+  return (
+    <section aria-labelledby="fromfile-h" className="card from-file">
+      <h2 id="fromfile-h">From the file</h2>
+      <p className="muted small">
+        What {file.name} says about itself. Online lookups arrive in a later version.
+      </p>
+      <dl className="facts">
+        {rows.map(([k, v]) => (
+          <div key={k}>
+            <dt>{k}</dt>
+            <dd>{v}</dd>
+          </div>
+        ))}
+      </dl>
+      {m.description && <p className="description">{m.description}</p>}
+    </section>
+  );
+}
+
+function FileRow({ file, onChanged }: { file: FileDetail; onChanged: () => Promise<void> }) {
   const [message, setMessage] = useState<{ kind: 'error' | 'info'; text: string } | null>(null);
   const [confirm, setConfirm] = useState<string | null>(null);
 
@@ -509,6 +565,8 @@ function FileRow({ file }: { file: FileDetail }) {
     file.editionNumber && `Edition ${file.editionNumber}`,
     file.editionNote,
     file.language && `Language: ${file.language}`,
+    file.wordCount !== null && `${file.wordCount.toLocaleString()} words`,
+    file.pageCount !== null && `${file.pageCount.toLocaleString()} pages`,
   ].filter(Boolean);
 
   const usable = file.folderReachable && file.availability !== 'missing';
@@ -525,6 +583,41 @@ function FileRow({ file }: { file: FileDetail }) {
             : ''}
         </div>
         <div className="small">{details.join(' · ')}</div>
+        {file.problem && (
+          <div className="small problem">
+            <span aria-hidden="true">⚠ </span>
+            {PROBLEM_LABELS[file.problem] ?? file.problem}
+            {file.problemDetail ? `: ${file.problemDetail}` : ''}
+          </div>
+        )}
+        {file.format === 'pdf' && file.pdfType && (
+          <div className="small pdf-type">
+            <label htmlFor={`pdftype-${file.id}`}>PDF type</label>{' '}
+            <select
+              id={`pdftype-${file.id}`}
+              value={file.pdfTypeOverride ?? ''}
+              onChange={async (e) => {
+                try {
+                  await api.patch(`/api/files/${file.id}`, {
+                    pdfTypeOverride: e.target.value || null,
+                  });
+                  await onChanged();
+                } catch (err) {
+                  setMessage({ kind: 'error', text: (err as Error).message });
+                }
+              }}
+            >
+              <option value="">Detected: {PDF_TYPE_LABELS[file.pdfType] ?? file.pdfType}</option>
+              <option value="comic">Comic</option>
+              <option value="text">Text book</option>
+              <option value="scanned">Scanned book</option>
+            </select>
+            {!file.pdfTypeOverride && file.pdfTypeEvidence && (
+              <span className="muted"> {file.pdfTypeEvidence}</span>
+            )}
+            {file.pdfTypeOverride && <span className="muted"> (your correction)</span>}
+          </div>
+        )}
         <div className="small">
           {file.folderReachable
             ? (FILE_STATE[file.availability] ?? file.availability)

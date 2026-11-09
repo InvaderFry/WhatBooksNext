@@ -208,7 +208,16 @@ export function applyFolderListing(
        attributes = @attributes, last_seen_at = @now,
        stages = @stages,
        partial_hash = CASE WHEN @changed THEN NULL ELSE partial_hash END,
-       full_hash = CASE WHEN @changed THEN NULL ELSE full_hash END
+       full_hash = CASE WHEN @changed THEN NULL ELSE full_hash END,
+       -- A changed file is read afresh: what the old contents said no longer holds.
+       metadata = CASE WHEN @changed THEN NULL ELSE metadata END,
+       pdf_type = CASE WHEN @changed THEN NULL ELSE pdf_type END,
+       pdf_type_evidence = CASE WHEN @changed THEN NULL ELSE pdf_type_evidence END,
+       word_count = CASE WHEN @changed THEN NULL ELSE word_count END,
+       page_count = CASE WHEN @changed THEN NULL ELSE page_count END,
+       problem = CASE WHEN @changed THEN NULL ELSE problem END,
+       problem_detail = CASE WHEN @changed THEN NULL ELSE problem_detail END,
+       excluded = CASE WHEN @changed THEN 0 ELSE excluded END
      WHERE id = @id`,
   );
   // The filename parser improved since this file was read: read its name again (§9.2 "Refresh").

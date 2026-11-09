@@ -755,3 +755,155 @@ legend {
 .shortlist .item-main {
   flex: 1 1 14rem;
 }
+
+/* Covers (M2). Thumbnails are portrait; the placeholder keeps rows aligned. */
+.cover {
+  flex: none;
+  object-fit: cover;
+  border-radius: 4px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+}
+.cover-small {
+  width: 42px;
+  height: 63px;
+}
+.cover-large {
+  width: 120px;
+  height: 180px;
+}
+.cover-none {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  font-size: 1.2rem;
+}
+.cover-large.cover-none {
+  font-size: 2.5rem;
+}
+.item-head {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+  margin-bottom: 0.5rem;
+}
+.item-head-text {
+  flex: 1;
+  min-width: 0;
+}
+.item-head-text p {
+  margin: 0.2rem 0;
+}
+.byline {
+  font-size: 1.05rem;
+}
+@media (max-width: 30rem) {
+  .cover-large {
+    width: 80px;
+    height: 120px;
+  }
+}
+
+/* What a file says about itself */
+.from-file {
+  margin: 1rem 0;
+}
+.facts {
+  display: grid;
+  gap: 0.25rem;
+  margin: 0.5rem 0;
+}
+.facts > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 0.75rem;
+}
+.facts dt {
+  font-weight: 600;
+  min-width: 9rem;
+}
+.facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.description {
+  white-space: pre-line;
+  max-width: 70ch;
+}
+.problem {
+  color: var(--warn);
+}
+.pdf-type {
+  margin-top: 0.25rem;
+}
+.pdf-type select {
+  font-size: 0.85rem;
+  padding: 0.1rem 0.3rem;
+}
+
+/* Scan reminder (§9.7) */
+.reminder-banner {
+  background: var(--warn-bg);
+  border-bottom: 1px solid var(--border);
+}
+.reminder {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 0.5rem 1rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem 1rem;
+}
+.reminder p {
+  margin: 0;
+}
+
+/* Needs review and Library health */
+.tier-counts {
+  color: var(--muted);
+}
+.review-list,
+.health-list {
+  list-style: none;
+  padding: 0;
+  margin: 0.5rem 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+.review-card h3 {
+  margin: 0 0 0.25rem;
+  font-size: 1rem;
+}
+.review-card p {
+  margin: 0.25rem 0;
+}
+.review-items li,
+.review-files li {
+  overflow-wrap: anywhere;
+}
+.review-items .tag {
+  margin-left: 0.4rem;
+}
+.review-card .row-actions {
+  margin-top: 0.5rem;
+}
+.review-card .row-actions p {
+  flex-basis: 100%;
+}
+.tier4 summary {
+  cursor: pointer;
+}
+.tier4 summary h2 {
+  display: inline;
+  font-size: 1.15rem;
+}
+.health-list li {
+  overflow-wrap: anywhere;
+}
+nav .count {
+  font-weight: 600;
+}

@@ -1,10 +1,14 @@
 import express, { type NextFunction, type Request, type Response } from 'express';
 import fs from 'node:fs';
 import path from 'node:path';
-import { MAX_JSON_BODY, SCAN_REMINDER_DAYS } from './config.ts';
+import { MAX_JSON_BODY, SCAN_REMINDER_DAYS, SCAN_REMINDER_SNOOZE_DAYS } from './config.ts';
 import { schemaVersion, type DB } from './db/database.ts';
 import { listSnapshots } from './db/snapshots.ts';
-import { removeOrphanItems } from './identify/items.ts';
+import { refreshFactsOfItems, removeOrphanItems } from './identify/items.ts';
+import { healthProblemCount, libraryHealth } from './lib/health.ts';
+import { actOnReview, listReview, openReviewCount } from './lib/review.ts';
+import { coverPath } from './scan/deepPass.ts';
+import type { TaskRunner } from './scan/pool.ts';
 import { createBackup, previewRestore, restoreBackup, validateBackup } from './lib/backup.ts';
 import {
   itemParse,
@@ -31,7 +35,7 @@ import {
 } from './scan/folders.ts';
 import { ScanManager } from './scan/scanManager.ts';
 import { requestGuard, securityHeaders } from './security.ts';
-import { HttpError, nowIso, todayLocal } from './util.ts';
+import { HttpError, nowIso, parseJson, todayLocal } from './util.ts';
 
 export interface AppContext {
   db: DB;
@@ -44,6 +48,8 @@ export interface AppContext {
   /** Built web UI to serve, if present. */
   webDist?: string | null;
   demo?: boolean;
+  /** Content-reading pool for the deep pass (tests pass a small one). */
+  runner?: TaskRunner;
 }
 
 /** Folder reachability, refreshed at most every few seconds (a check asks the platform). */
@@ -85,7 +91,8 @@ const int = (v: unknown): number | undefined =>
 
 export function createApp(ctx: AppContext) {
   const { db, platform } = ctx;
-  const scans = new ScanManager(db, platform);
+  const coversDir = ctx.dataDir ? path.join(ctx.dataDir, 'covers') : null;
+  const scans = new ScanManager(db, platform, { runner: ctx.runner, coversDir });
   const reach = new Reachability(ctx);
   const app = express();
   app.disable('x-powered-by');
@@ -109,7 +116,49 @@ export function createApp(ctx: AppContext) {
       folders: db.prepare('SELECT COUNT(*) FROM folders').pluck().get(),
       items: db.prepare('SELECT COUNT(*) FROM items').pluck().get(),
       scanRunning: scans.isRunning(),
+      reviewOpen: openReviewCount(db),
+      healthProblems: healthProblemCount(db),
     })),
+  );
+
+  // ---- Scan reminder (§9.7) -------------------------------------------------------------------
+  // A folder whose last complete scan is over 30 days old, unless the banner was dismissed in
+  // the last 7 days. A folder never completely scanned counts from when it was added.
+  app.get(
+    '/api/reminders',
+    route(() => {
+      const now = Date.now();
+      const folders = db
+        .prepare('SELECT * FROM folders ORDER BY display_path')
+        .all() as FolderRow[];
+      return folders
+        .map((f) => {
+          const since = f.last_complete_scan_at ?? f.created_at;
+          const days = Math.floor((now - Date.parse(since)) / 86_400_000);
+          const snoozed = f.reminder_snoozed_until && Date.parse(f.reminder_snoozed_until) > now;
+          return days > SCAN_REMINDER_DAYS && !snoozed
+            ? {
+                folderId: f.id,
+                displayPath: f.display_path,
+                storageKind: f.storage_kind,
+                days,
+                neverCompleted: !f.last_complete_scan_at,
+              }
+            : null;
+        })
+        .filter(Boolean);
+    }),
+  );
+  app.post(
+    '/api/folders/:id/snooze-reminder',
+    route((req) => {
+      const until = new Date(Date.now() + SCAN_REMINDER_SNOOZE_DAYS * 86_400_000).toISOString();
+      const r = db
+        .prepare('UPDATE folders SET reminder_snoozed_until = ?, updated_at = ? WHERE id = ?')
+        .run(until, nowIso(), req.params.id);
+      if (r.changes === 0) throw new HttpError(404, 'No such folder.');
+      return { ok: true, until };
+    }),
   );
 
   // ---- Folders ---------------------------------------------------------------------------------
@@ -259,8 +308,9 @@ export function createApp(ctx: AppContext) {
       const item = lib.items[0]!;
       const files = db
         .prepare(
-          `SELECT f.*, x.is_primary FROM files f JOIN item_files x ON x.file_id = f.id WHERE x.item_id = ?
-           ORDER BY x.is_primary DESC, f.rel_path`,
+          `SELECT f.*, x.is_primary, u.pdf_type_override FROM files f
+           JOIN item_files x ON x.file_id = f.id LEFT JOIN file_user u ON u.file_id = f.id
+           WHERE x.item_id = ? ORDER BY x.is_primary DESC, f.rel_path`,
         )
         .all(id) as (Record<string, unknown> & { folder_id: string })[];
       const r = await reach.get();
@@ -268,6 +318,7 @@ export function createApp(ctx: AppContext) {
         ...item,
         redirectedFrom: id !== req.params.id ? req.params.id : undefined,
         parse: itemParse(db, id),
+        titleSource: db.prepare('SELECT title_source FROM items WHERE id = ?').pluck().get(id),
         files: files.map((f) => ({
           id: f.id,
           name: f.name,
@@ -286,9 +337,88 @@ export function createApp(ctx: AppContext) {
           language: f.language,
           modifiedMs: f.modified_ms,
           firstSeenAt: f.first_seen_at,
+          // What the deep pass read (§10). Text from files is untrusted: the page shows it as text.
+          wordCount: f.word_count,
+          pageCount: f.page_count,
+          pdfType: f.pdf_type,
+          pdfTypeEvidence: f.pdf_type_evidence,
+          pdfTypeOverride: f.pdf_type_override ?? null,
+          hasThumbnail: f.has_thumbnail === 1,
+          hashed: Boolean(f.full_hash),
+          problem: f.problem,
+          problemDetail: f.problem_detail,
+          metadata: parseJson(f.metadata as string | null, null),
         })),
       };
     }),
+  );
+
+  // ---- Covers: served from the data folder by file id only (§6.3) -----------------------------
+  app.get('/api/files/:fileId/thumbnail', (req, res) => {
+    const f = db
+      .prepare('SELECT id, has_thumbnail FROM files WHERE id = ?')
+      .get(String(req.params.fileId)) as { id: string; has_thumbnail: number } | undefined;
+    // The id comes from our own table, never from the request, so it can't name another path.
+    const file = f?.has_thumbnail && coversDir ? coverPath(coversDir, f.id) : null;
+    if (!file || !fs.existsSync(file)) {
+      res.status(404).json({ error: 'No cover.' });
+      return;
+    }
+    res.setHeader('Cache-Control', 'private, max-age=300');
+    res.sendFile(file);
+  });
+
+  // Owner correction of a file's PDF type (§11.4 "Fix PDF type"). null returns to the detected one.
+  app.patch(
+    '/api/files/:fileId',
+    route((req) => {
+      const body = req.body as Record<string, unknown>;
+      for (const k of Object.keys(body))
+        if (k !== 'pdfTypeOverride') throw new HttpError(400, `Unknown field "${k}".`);
+      const v = body.pdfTypeOverride;
+      if (v !== null && v !== 'comic' && v !== 'text' && v !== 'scanned')
+        throw new HttpError(400, 'pdfTypeOverride must be "comic", "text", "scanned" or null.');
+      const f = db
+        .prepare('SELECT id, format FROM files WHERE id = ?')
+        .get(String(req.params.fileId)) as { id: string; format: string } | undefined;
+      if (!f) throw new HttpError(404, 'No such file.');
+      if (f.format !== 'pdf') throw new HttpError(400, 'Only a PDF has a PDF type.');
+      db.transaction(() => {
+        db.prepare(
+          `INSERT INTO file_user (file_id, pdf_type_override, updated_at) VALUES (?, ?, ?)
+           ON CONFLICT (file_id) DO UPDATE SET pdf_type_override = excluded.pdf_type_override,
+             updated_at = excluded.updated_at`,
+        ).run(f.id, v, nowIso());
+        const item = db
+          .prepare('SELECT item_id FROM item_files WHERE file_id = ?')
+          .pluck()
+          .get(f.id) as string | undefined;
+        if (item) refreshFactsOfItems(db, [item]);
+      })();
+      return { ok: true };
+    }),
+  );
+
+  // ---- Needs review and Library health (§11.4, §15) -------------------------------------------
+  app.get(
+    '/api/review',
+    route(() => listReview(db)),
+  );
+  app.post(
+    '/api/review/:id',
+    route((req) => {
+      if (scans.isRunning()) throw new HttpError(409, 'Wait for the scan to finish.');
+      const action = req.body?.action;
+      if (action !== 'accept' && action !== 'decline' && action !== 'split')
+        throw new HttpError(400, 'action must be "accept", "decline" or "split".');
+      const fileId = typeof req.body?.fileId === 'string' ? req.body.fileId : undefined;
+      db.transaction(() => actOnReview(db, String(req.params.id), action, fileId))();
+      return { ok: true };
+    }),
+  );
+  app.get(
+    '/api/health',
+    route(() => libraryHealth(db)),
   );
 
   app.patch(
@@ -483,6 +613,19 @@ export function createApp(ctx: AppContext) {
           ? 'On: files with RecallOnDataAccess, RecallOnOpen or Offline set count as online-only.'
           : 'Not available on this platform: files count as present.',
         folders: folderChecks,
+        deepScan: {
+          // Counts only; Library health lists the files.
+          filesRead: db
+            .prepare("SELECT COUNT(*) FROM files WHERE json_extract(stages, '$.meta') IS NOT NULL")
+            .pluck()
+            .get(),
+          filesHashed: db
+            .prepare('SELECT COUNT(*) FROM files WHERE full_hash IS NOT NULL')
+            .pluck()
+            .get(),
+          problems: healthProblemCount(db),
+          covers: db.prepare('SELECT COUNT(*) FROM files WHERE has_thumbnail = 1').pluck().get(),
+        },
         sources: 'No online sources yet (they arrive in Milestone 3).',
       };
     }),
@@ -531,7 +674,14 @@ export function createApp(ctx: AppContext) {
       .json({ error: 'Something went wrong. Details are in the window running the app.' });
   });
 
-  return { app, scans, close: () => platform.close() };
+  return {
+    app,
+    scans,
+    close: async () => {
+      await scans.close();
+      await platform.close();
+    },
+  };
 }
 
 /** Open on an online-only (or unknown) file asks first (§9.5). */

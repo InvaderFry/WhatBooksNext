@@ -16,7 +16,7 @@ import { attachFiles, createItemForFiles, type FileFacts } from './items.ts';
  * an item of its own (the review queue arrives in M3).
  */
 
-function hashesDisagree(a: FileFacts, b: FileFacts): boolean {
+export function hashesDisagree(a: FileFacts, b: FileFacts): boolean {
   if (a.full_hash && b.full_hash && a.full_hash !== b.full_hash) return true;
   if (a.partial_hash && b.partial_hash && a.partial_hash !== b.partial_hash) return true;
   return false;
@@ -35,6 +35,8 @@ export function knownConflict(a: FileFacts, b: FileFacts): boolean {
 }
 
 export function areCopies(a: FileFacts, b: FileFacts): boolean {
+  // Full hashes match: the same file, whatever the names (§11.3 rule 1).
+  if (a.id !== b.id && a.size > 0 && a.full_hash && a.full_hash === b.full_hash) return true;
   return (
     a.id !== b.id &&
     a.size > 0 && // empty files all "match" each other; they say nothing
@@ -82,7 +84,7 @@ export interface GroupingResult {
 export function groupUnassignedFiles(db: DB): GroupingResult {
   const unassigned = db
     .prepare(
-      'SELECT f.* FROM files f WHERE NOT EXISTS (SELECT 1 FROM item_files x WHERE x.file_id = f.id)',
+      'SELECT f.* FROM files f WHERE f.excluded = 0 AND NOT EXISTS (SELECT 1 FROM item_files x WHERE x.file_id = f.id)',
     )
     .all() as FileFacts[];
   const result: GroupingResult = { itemsCreated: 0, filesAttached: 0, ambiguous: 0 };
@@ -90,11 +92,15 @@ export function groupUnassignedFiles(db: DB): GroupingResult {
 
   const byNameSize = db.prepare(
     `SELECT f.*, x.item_id FROM files f LEFT JOIN item_files x ON x.file_id = f.id
-     WHERE f.name = ? COLLATE NOCASE AND f.size = ?`,
+     WHERE f.name = ? COLLATE NOCASE AND f.size = ? AND f.excluded = 0`,
+  );
+  const byHash = db.prepare(
+    `SELECT f.*, x.item_id FROM files f LEFT JOIN item_files x ON x.file_id = f.id
+     WHERE f.full_hash = ? AND f.excluded = 0`,
   );
   const siblings = db.prepare(
     `SELECT f.*, x.item_id FROM files f LEFT JOIN item_files x ON x.file_id = f.id
-     WHERE f.folder_id = ? AND f.rel_dir = ? AND f.compare_key = ?`,
+     WHERE f.folder_id = ? AND f.rel_dir = ? AND f.compare_key = ? AND f.excluded = 0`,
   );
 
   const uf = new UnionFind();
@@ -106,9 +112,10 @@ export function groupUnassignedFiles(db: DB): GroupingResult {
   };
 
   for (const f of unassigned) {
-    for (const other of byNameSize.all(f.name, f.size) as (FileFacts & {
-      item_id: string | null;
-    })[]) {
+    const candidates = byNameSize.all(f.name, f.size) as (FileFacts & { item_id: string | null })[];
+    if (f.full_hash)
+      candidates.push(...(byHash.all(f.full_hash) as (FileFacts & { item_id: string | null })[]));
+    for (const other of candidates) {
       if (!areCopies(f, other)) continue;
       if (other.item_id) link(f.id, other.item_id);
       else uf.union(f.id, other.id);
