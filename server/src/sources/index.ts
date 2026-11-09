@@ -23,14 +23,16 @@ export class Sources {
   }
 
   /**
-   * Which sources to ask for an item of this kind (§12.1). Open Library and AniList are the
-   * keyless baseline; Hardcover joins for books when the owner has a token. Western comics
-   * need Metron or ComicVine (M4), so they aren't looked up yet.
+   * Which sources to ask for an item (§12.1). Open Library and AniList are the keyless baseline;
+   * Hardcover joins for books when the owner has a token. Western comics — and any single issue
+   * (a file numbered "#48" is a comic or magazine issue, whatever its kind) — need Metron or
+   * ComicVine (M4): asking book sources for "Series #48" only finds unrelated novels with the
+   * series' name.
    */
-  forKind(kind: string | null): SourceAdapter[] {
+  forItem(kind: string | null, issue: string | null = null): SourceAdapter[] {
     if (this.demo) return [this.demoSource];
     if (kind === 'manga') return [this.anilist];
-    if (kind === 'comic') return [];
+    if (kind === 'comic' || issue) return [];
     return this.hardcover.configured() ? [this.openlibrary, this.hardcover] : [this.openlibrary];
   }
 

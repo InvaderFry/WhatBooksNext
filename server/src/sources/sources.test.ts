@@ -257,6 +257,45 @@ describe('matching (§11.2)', () => {
     expect(r.best!.record.rating!.count).toBe(416);
   });
 
+  it('treats a record with the subtitle and one without, by the same author, as one work', () => {
+    const base = { ...tm[0]!, isbns: [], rating: undefined };
+    const a = {
+      ...base,
+      sourceId: 'a',
+      title: 'Ninety Lessons for Lamplighters',
+      authors: ['Ivo Brandt'],
+    };
+    const b = {
+      ...base,
+      sourceId: 'b',
+      title: 'Ninety Lessons for Lamplighters: Advice from the Guild',
+      authors: ['Ivo Brandt'],
+      rating: { value: 3.4, scale: 5, count: 20, scope: 'book' as const },
+    };
+    const r = decide(facts({ title: 'Ninety Lessons for Lamplighters', authors: ['Ivo Brandt'] }), [
+      a,
+      b,
+    ]);
+    expect(r.decision).toBe('accepted');
+  });
+
+  it('never fully accepts a title that matches only without its subtitle', () => {
+    const base = { ...tm[0]!, isbns: [], rating: undefined, authors: ['Ivo Brandt'] };
+    const r = decide(facts({ title: 'Lamplighting', authors: ['Ivo Brandt'] }), [
+      { ...base, sourceId: 'sequel', title: 'Lamplighting: The Second Watch' },
+    ]);
+    expect(r.decision).toBe('provisional');
+  });
+
+  it('keeps two different subtitles apart, even by the same author', () => {
+    const base = { ...tm[0]!, isbns: [], rating: undefined, authors: ['Ivo Brandt'] };
+    const r = decide(facts({ title: 'Lamplighting', titleSource: 'filename' }), [
+      { ...base, sourceId: 'v1', title: 'Lamplighting', subtitle: 'Volume One' },
+      { ...base, sourceId: 'v2', title: 'Lamplighting', subtitle: 'Volume Two' },
+    ]);
+    expect(r.decision).toBe('tie');
+  });
+
   it('leaves two different works scoring within 0.05 as a tie, with neither accepted (scenario 18)', () => {
     const a = { ...tm[0]!, sourceId: '/works/A', title: 'The Glass Bell', authors: [] };
     const b = { ...tm[0]!, sourceId: '/works/B', title: 'The Glass Bells', authors: ['Other'] };

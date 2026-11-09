@@ -169,6 +169,7 @@ function MatchSummary({ report }: { report: MatchReport }) {
         <strong>Matches:</strong> {b.accepted} matched · {b.provisional} unconfirmed · {b.tie} tied
         · {b.unidentified} not found
         {b.notLookedUp > 0 && ` · ${b.notLookedUp} not looked up yet`}
+        {b.noSourceYet > 0 && ` · ${b.noSourceYet} comics and issues (looked up from Milestone 4)`}
       </summary>
       <p className="small">
         Your answers so far: {report.labelled.confirmed} matches confirmed,{' '}

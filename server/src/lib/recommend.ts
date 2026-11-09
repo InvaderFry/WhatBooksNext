@@ -203,7 +203,7 @@ const fmt = (n: number) => n.toLocaleString('en-US');
 function ratingReason(c: CommunityRating): string {
   const src = SOURCE_LABELS[c.source];
   const raw = c.scale === 100 ? `${Math.round(c.raw)}/100` : `${c.raw.toFixed(1)}/5`;
-  const votes = c.votes ? ` from ${fmt(c.votes)} ratings` : '';
+  const votes = c.votes ? ` from ${fmt(c.votes)} rating${c.votes === 1 ? '' : 's'}` : '';
   return c.scope === 'series'
     ? `Series rated ${raw} on ${src}${votes}`
     : `Rated ${raw} by ${src} readers${votes}`;

@@ -519,6 +519,7 @@ export interface MatchReport {
     tie: number;
     unidentified: number;
     notLookedUp: number;
+    noSourceYet: number;
   };
   byFormat: Record<string, { items: number; identified: number }>;
   byKind: Record<string, { items: number; identified: number }>;

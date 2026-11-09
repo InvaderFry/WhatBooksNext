@@ -15,7 +15,7 @@ import { normalizeForCompare, titleCompareKey } from './filename.ts';
  */
 
 /** Bump when the scoring changes: the next lookup re-scores from the cache (no new requests). */
-export const MATCH_VERSION = 2;
+export const MATCH_VERSION = 3;
 
 export interface MatchFacts {
   title: string;
@@ -94,27 +94,36 @@ export function similarity(a: string, b: string): number {
   return (2 * hits) / (a.length - 1 + (b.length - 1));
 }
 
+/**
+ * A title that matches only once a subtitle is dropped, on either side ("Title" against
+ * "Title: Subtitle"), scores at most this. It may be the same book with its subtitle, or another
+ * book in a series that shares the main title — so on its own it can only ever be "unconfirmed".
+ */
+const MAIN_TITLE_ONLY = 0.85;
+
 function titleScore(f: MatchFacts, r: SourceRecord): number {
-  const mine = [searchTitle(f), f.rawTitle ?? ''].filter(Boolean);
-  // "Title: Subtitle" on our side may be "Title" + subtitle on theirs, or the other way round.
   const mainOf = (t: string) => t.split(/[:—–]| - /)[0]!;
-  const mineKeys = new Set(mine.flatMap((t) => [titleCompareKey(t), titleCompareKey(mainOf(t))]));
+  const mine = [searchTitle(f), f.rawTitle ?? ''].filter(Boolean);
   const theirs = [r.title, ...(r.alternativeTitles ?? [])];
-  const theirKeys = new Set(
-    theirs.flatMap((t) => [
-      titleCompareKey(t),
-      ...(r.subtitle ? [titleCompareKey(`${t} ${r.subtitle}`)] : []),
-    ]),
+  const mineFull = new Set(mine.map(titleCompareKey).filter(Boolean));
+  const theirFull = new Set(
+    theirs
+      .flatMap((t) => [
+        titleCompareKey(t),
+        ...(r.subtitle ? [titleCompareKey(`${t} ${r.subtitle}`)] : []),
+      ])
+      .filter(Boolean),
   );
   let best = 0;
-  for (const a of mineKeys) {
-    if (!a) continue;
-    for (const b of theirKeys) {
-      if (!b) continue;
-      best = Math.max(best, a === b ? 1 : similarity(a, b));
-    }
-  }
-  return best;
+  for (const a of mineFull)
+    for (const b of theirFull) best = Math.max(best, a === b ? 1 : similarity(a, b));
+  if (best === 1) return 1;
+  const mineMain = new Set(mine.map((t) => titleCompareKey(mainOf(t))).filter(Boolean));
+  const theirMain = new Set(theirs.map((t) => titleCompareKey(mainOf(t))).filter(Boolean));
+  const mainHit =
+    [...mineMain].some((k) => theirFull.has(k) || theirMain.has(k)) ||
+    [...theirMain].some((k) => mineFull.has(k));
+  return mainHit ? Math.max(best, MAIN_TITLE_ONLY) : best;
 }
 
 /** Surname-level comparison: "H. G. Wells" agrees with "Wells, H.G." and "Herbert George Wells". */
@@ -183,15 +192,42 @@ export function scoreCandidate(f: MatchFacts, r: SourceRecord): ScoredCandidate 
 const round = (n: number) => Math.round(n * 1000) / 1000;
 
 /**
- * Two records with the same title and the same authors are one work entered twice at the
- * source (Open Library has many such duplicates). Choosing between them can't attach the
- * wrong book, so they aren't a tie: the better-documented record wins.
+ * Two records with the same title and an author in common are one work entered twice at the
+ * source (Open Library and Hardcover both have such duplicates). Choosing between them can't
+ * attach the wrong book, so they aren't a tie: the better-documented record wins.
+ *
+ * "The same title" also covers one record carrying the subtitle and the other not
+ * ("Title: Subtitle" and "Title"). Two different subtitles stay different works
+ * ("Title: Volume 1" and "Title: Volume 2").
  */
-function sameWork(a: SourceRecord, b: SourceRecord): boolean {
-  if (titleCompareKey(a.title) !== titleCompareKey(b.title)) return false;
-  const an = a.authors.map(normalizeForCompare).sort().join('|');
-  const bn = b.authors.map(normalizeForCompare).sort().join('|');
-  return an !== '' && an === bn;
+export function sameWork(a: SourceRecord, b: SourceRecord): boolean {
+  const full = (r: SourceRecord) => titleCompareKey(fullTitle(r));
+  const main = (r: SourceRecord) => titleCompareKey(fullTitle(r).split(/[:—–]| - /)[0]!);
+  const fa = full(a);
+  const fb = full(b);
+  const sameTitle = fa === fb || (main(a) === main(b) && (fa === main(a) || fb === main(b)));
+  if (!sameTitle) return false;
+  const surnames = (r: SourceRecord) =>
+    new Set(
+      r.authors.map((n) =>
+        normalizeForCompare(
+          n
+            .split(/[\s,]+/)
+            .filter(Boolean)
+            .at(-1) ?? '',
+        ),
+      ),
+    );
+  const sa = surnames(a);
+  return [...surnames(b)].some((x) => x !== '' && sa.has(x));
+}
+
+/** The title with its subtitle, unless the title already includes it. */
+function fullTitle(r: SourceRecord): string {
+  if (!r.subtitle) return r.title;
+  return normalizeForCompare(r.title).includes(normalizeForCompare(r.subtitle))
+    ? r.title
+    : `${r.title}: ${r.subtitle}`;
 }
 
 const weight = (r: SourceRecord) => (r.rating?.count ?? 0) + r.isbns.length;

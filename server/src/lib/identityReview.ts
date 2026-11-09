@@ -49,7 +49,7 @@ export function candidateView(m: Pick<MatchRow, 'record' | 'score' | 'evidence'>
     // Only http(s) links are ever shown (text from sources is untrusted, §6.3).
     url: r.url && /^https:\/\//.test(r.url) ? r.url : null,
     rating: r.rating
-      ? `${r.rating.scale === 100 ? Math.round(r.rating.value) : r.rating.value.toFixed(1)}/${r.rating.scale}${r.rating.count ? ` (${r.rating.count.toLocaleString('en-US')} ratings)` : ''}${r.rating.scope === 'series' ? ', whole series' : ''}`
+      ? `${r.rating.scale === 100 ? Math.round(r.rating.value) : r.rating.value.toFixed(1)}/${r.rating.scale}${r.rating.count ? ` (${r.rating.count.toLocaleString('en-US')} rating${r.rating.count === 1 ? '' : 's'})` : ''}${r.rating.scope === 'series' ? ', whole series' : ''}`
       : null,
   };
 }

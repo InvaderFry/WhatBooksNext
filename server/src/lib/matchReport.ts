@@ -18,6 +18,8 @@ export interface MatchReport {
     tie: number;
     unidentified: number;
     notLookedUp: number;
+    /** Comics and single issues: their sources (Metron, ComicVine) arrive in M4. */
+    noSourceYet: number;
   };
   byFormat: Record<string, { items: number; identified: number }>;
   byKind: Record<string, { items: number; identified: number }>;
@@ -30,10 +32,13 @@ export interface MatchReport {
   thresholds: { accept: number; review: number };
 }
 
-export function matchReport(db: DB): MatchReport {
+export function matchReport(
+  db: DB,
+  hasSource: (kind: string | null, issue: string | null) => boolean = () => true,
+): MatchReport {
   const items = db
     .prepare(
-      `SELECT i.id, i.identity, COALESCE(u.kind_override, i.kind, 'unknown') AS kind,
+      `SELECT i.id, i.identity, COALESCE(u.kind_override, i.kind, 'unknown') AS kind, i.issue_label,
          (SELECT f.format FROM item_files x JOIN files f ON f.id = x.file_id
           WHERE x.item_id = i.id AND x.is_primary = 1) AS format,
          EXISTS (SELECT 1 FROM lookup_state l WHERE l.item_id = i.id) AS looked
@@ -43,14 +48,23 @@ export function matchReport(db: DB): MatchReport {
     id: string;
     identity: string;
     kind: string;
+    issue_label: string | null;
     format: string | null;
     looked: number;
   }[];
-  const byBand = { accepted: 0, provisional: 0, tie: 0, unidentified: 0, notLookedUp: 0 };
+  const byBand = {
+    accepted: 0,
+    provisional: 0,
+    tie: 0,
+    unidentified: 0,
+    notLookedUp: 0,
+    noSourceYet: 0,
+  };
   const byFormat: MatchReport['byFormat'] = {};
   const byKind: MatchReport['byKind'] = {};
   for (const i of items) {
-    if (!i.looked) byBand.notLookedUp++;
+    if (!hasSource(i.kind === 'unknown' ? null : i.kind, i.issue_label)) byBand.noSourceYet++;
+    else if (!i.looked) byBand.notLookedUp++;
     else byBand[i.identity as keyof typeof byBand]++;
     const ok = i.identity === 'accepted' || i.identity === 'provisional';
     const f = (byFormat[i.format ?? 'none'] ??= { items: 0, identified: 0 });

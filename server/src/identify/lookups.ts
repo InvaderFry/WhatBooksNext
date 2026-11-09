@@ -397,22 +397,61 @@ export interface LookupStatus {
   error: string | null;
 }
 
+/**
+ * Drops candidates from sources that no longer apply to an item (the rules changed, or the
+ * owner changed its kind) and re-decides its identity. Owner decisions are kept.
+ */
+export function pruneInapplicable(db: DB, sources: Sources): number {
+  const rows = db
+    .prepare(
+      `SELECT DISTINCT l.item_id, l.source, COALESCE(u.kind_override, i.kind) AS kind, i.issue_label
+       FROM lookup_state l JOIN items i ON i.id = l.item_id
+       LEFT JOIN user_item u ON u.item_id = i.id`,
+    )
+    .all() as {
+    item_id: string;
+    source: string;
+    kind: string | null;
+    issue_label: string | null;
+  }[];
+  const touched = new Set<string>();
+  for (const r of rows) {
+    if (sources.forItem(r.kind, r.issue_label).some((s) => s.name === r.source)) continue;
+    db.prepare('DELETE FROM lookup_state WHERE item_id = ? AND source = ?').run(
+      r.item_id,
+      r.source,
+    );
+    db.prepare('DELETE FROM item_matches WHERE item_id = ? AND source = ?').run(
+      r.item_id,
+      r.source,
+    );
+    touched.add(r.item_id);
+  }
+  for (const id of touched) applyIdentity(db, id);
+  return touched.size;
+}
+
 /** Items that still need a lookup from at least one of their sources, most urgent first. */
 export function itemsNeedingLookup(db: DB, sources: Sources, refresh = false): string[] {
   const rows = db
     .prepare(
-      `SELECT i.id, COALESCE(u.kind_override, i.kind) AS kind, u.match_override,
+      `SELECT i.id, COALESCE(u.kind_override, i.kind) AS kind, i.issue_label, u.match_override,
          u.progress, u.shortlist_position
        FROM items i LEFT JOIN user_item u ON u.item_id = i.id
        ORDER BY (u.shortlist_position IS NULL), (COALESCE(u.progress, 'not_started') IN ('not_started', 'finished', 'dnf')), i.title`,
     )
-    .all() as { id: string; kind: string | null; match_override: string | null }[];
+    .all() as {
+    id: string;
+    kind: string | null;
+    issue_label: string | null;
+    match_override: string | null;
+  }[];
   const state = db.prepare(
     'SELECT version, query, outcome FROM lookup_state WHERE item_id = ? AND source = ?',
   );
   const out: string[] = [];
   for (const r of rows) {
-    const srcs = sources.forKind(r.kind);
+    const srcs = sources.forItem(r.kind, r.issue_label);
     if (srcs.length === 0) continue;
     if (refresh) {
       out.push(r.id);
@@ -450,7 +489,7 @@ export async function lookUpItem(
        looked_up_at = excluded.looked_up_at, outcome = excluded.outcome, error = excluded.error`,
   );
   const settled = await Promise.allSettled(
-    sources.forKind(facts.kind).map(async (s: SourceAdapter) => {
+    sources.forItem(facts.kind, facts.issue ?? null).map(async (s: SourceAdapter) => {
       let records = await s.search(query, opts);
       // A run-together filename title that found nothing: try the raw form too (§11.1).
       if (records.length === 0 && query.rawTitle)
@@ -528,6 +567,7 @@ export class LookupManager {
     if (this.isRunning()) throw new HttpError(409, 'Lookups are already running.');
     // A new run starts with every source un-paused: the connection may be back.
     this.sources.resetBreakers();
+    this.db.transaction(() => pruneInapplicable(this.db, this.sources))();
     const ids = opts.itemIds ?? itemsNeedingLookup(this.db, this.sources, opts.refresh);
     const status: LookupStatus = {
       runId: newId(),

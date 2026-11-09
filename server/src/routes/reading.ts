@@ -334,7 +334,12 @@ export function registerReadingRoutes(app: Express, d: ReadingDeps): void {
         // Text from sources: shown as text only (§6.3, scenario 23).
         description: used.find((m) => m.record.description)?.record.description ?? null,
         subjects: [...new Set(used.flatMap((m) => m.record.subjects))].slice(0, 12),
-        lookupAvailable: sources.forKind(i?.kind ?? null).length > 0,
+        lookupAvailable:
+          sources.forItem(
+            i?.kind ?? null,
+            db.prepare('SELECT issue_label FROM items WHERE id = ?').pluck().get(id) as
+              string | null,
+          ).length > 0,
       };
     }),
   );
@@ -421,7 +426,7 @@ export function registerReadingRoutes(app: Express, d: ReadingDeps): void {
   app.get(
     '/api/match-report',
     route(async () => ({
-      ...matchReport(db),
+      ...matchReport(db, (kind, issue) => sources.forItem(kind, issue).length > 0),
       coverage: coverageByKind(loadRankData(db, await d.reach()).items),
     })),
   );

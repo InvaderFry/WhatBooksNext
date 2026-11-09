@@ -95,7 +95,9 @@ export function parseHardcover(payload: unknown): SourceRecord[] {
       subjects: [...(d.genres ?? []), ...(d.tags ?? [])],
       url: d.slug ? `https://hardcover.app/books/${encodeURIComponent(d.slug)}` : undefined,
     };
-    if (d.subtitle) rec.subtitle = d.subtitle;
+    // Hardcover's titles sometimes already include the subtitle; don't show it twice.
+    if (d.subtitle && !d.title.toLowerCase().includes(d.subtitle.toLowerCase()))
+      rec.subtitle = d.subtitle;
     if (d.alternative_titles?.length) rec.alternativeTitles = d.alternative_titles;
     if (typeof d.release_year === 'number' && d.release_year > 0)
       rec.firstPublishYear = d.release_year;

@@ -136,6 +136,26 @@ describe('lookups', () => {
     expect((await api.get('/api/lookups')).body.pending).toBe(0);
   });
 
+  it('never asks book sources about a single comic or magazine issue', async () => {
+    olByTitle['copperline'] = fixture('ol-search-time-machine.json');
+    await addAndScan({ 'Copperline 048.pdf': 30_000 });
+    expect(requests.filter((u) => u.includes('openlibrary'))).toHaveLength(0);
+    const report = (await api.get('/api/match-report')).body;
+    expect(report.byBand).toMatchObject({ noSourceYet: 1, notLookedUp: 0 });
+  });
+
+  it('drops candidates from sources that no longer apply when the next run starts', async () => {
+    await addAndScan({ 'thetimemachine.epub': timeMachine() });
+    const id = itemIdOf('thetimemachine.epub');
+    // The owner says it's a comic: book sources don't apply any more.
+    await api.patch(`/api/items/${id}`, { kindOverride: 'comic' });
+    await api.post('/api/lookups', {});
+    await made.lookups.wait();
+    const online = (await api.get(`/api/items/${id}/online`)).body;
+    expect(online.identity).toBe('unidentified');
+    expect(online.candidates).toHaveLength(0);
+  });
+
   it('leaves a book unidentified, with neutral scores, when nothing matches', async () => {
     await addAndScan({
       'unknownbook.epub': makeEpub({ title: 'Nothing Like It', chapters: [900] }),
