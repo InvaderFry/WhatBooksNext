@@ -313,7 +313,7 @@ A sketch — refine as you build, but keep these distinctions.
 
 | Table | Holds |
 | --- | --- |
-| `folders` | Display path, **volume identity**, path relative to the volume, last-known drive letter, storage kind (`local` / `external` / `cloud`), last seen, **last complete scan**. |
+| `folders` | Display path, **volume identity**, path relative to the volume, last-known drive letter, storage kind (`local` / `external` / `cloud`), **also in iCloud** flag (§13.1), last seen, **last complete scan**. |
 | `directory_scans` | For each directory, when it was last **completely** listed. Drives the missing-file rule (§9.3). |
 | `files` | Folder, relative path, size, created and modified times, format, partial and (when computed) full hash, **availability** (`present` / `placeholder` / `unknown` / `missing`), a separate **`stale`** flag (its directory wasn't completely listed in the latest scan, §9.3), processing stage + version, last seen. **Edition details:** language, abridged flag, edition number, quality tag (e.g. HD), edition note, and the file's own word count / page count. |
 | `series` | A series with its own UUID: name, kind, **publication status** (finished / ongoing / unknown), number of installments when a source states it, source ids, which source supplied the order, `updated_at`. One series can hold collected editions *and* an issue run of the same story, so one-per-series treats them together. |
@@ -362,6 +362,11 @@ A sketch — refine as you build, but keep these distinctions.
 - **Deep-scanned:** `.epub`, `.pdf`, `.cbz`, `.cbr`.
 - **Light-scanned only:** `.mobi`, `.azw3`, `.cb7` — listed, parsed by filename, and grouped with
   same-named sibling files by the normal rules (§11.3). Their unknown language never blocks that.
+- **`.zip` and `.rar` are comic archives** (the owner confirmed that the zips and rars on the drive
+  are comics). The light pass treats them as CBZ and CBR. The deep pass confirms that the archive
+  is mostly images in page order. If it isn't (a bundle of other files, software, audio), it's
+  dropped from the library and listed in Library health as "archive that isn't a comic". It's
+  never extracted (§6.1).
 - Anything else is ignored; the scan summary reports counts by type.
 
 ### 9.2 Two passes
@@ -764,6 +769,13 @@ tech books whether or not they're reference).
 Kindle". These items **stay eligible**. The **Ready to read** filter keeps only items with a present
 file or a location the owner has confirmed they can read from. A store name alone doesn't prove the
 book is on the iPad.
+
+**Also in iCloud.** A library folder can be marked **"Also in iCloud"** in Settings: the owner keeps
+copies of that folder's books in iCloud and reads them on the iPhone and iPad. The owner asked for
+this after M0. Its books get the label "Also in iCloud" and count as Ready to read even while the
+drive is unplugged. The owner uploaded *most*, not all, so each item has an override:
+**Not in iCloud** / **In iCloud** / follow the folder (the default). The flag is owner data. It's
+included in backups, and scans never change it.
 
 ### 13.2 Time control
 
@@ -1258,14 +1270,12 @@ plainly at the start of your message, with what to do and roughly how long it ta
 ### Still to confirm (not blocking)
 
 - ~~The M0 probe report~~: done. iCloud placeholders couldn't be tested (no iCloud on the PC).
-  Left over from it: any of the owner's books in OneDrive? What do the drive's 124 `.zip` and 60
-  `.rar` files hold (comics or bundles)? Should a library folder be markable as
-  "also in iCloud" for Ready to read? Original item: real filenames (including any non-English titles), drive identity, iCloud
-  placeholder behaviour, how many copies exist across folders.
+  The owner's answers to its follow-up questions: no books in OneDrive; the `.zip`/`.rar` files are
+  comics (§9.1); a folder can be marked "Also in iCloud" (§13.1).
 - Later on the owner's Windows PC: drive letter changes, download transitions, Open / Show in folder.
-- **Other storage places.** The owner's copies are mainly on the external drive and in iCloud, maybe
-  elsewhere. OneDrive uses the same placeholder mechanism as iCloud and should work the same way;
-  Dropbox, a second external drive or a network drive each need checking when they come up.
+- **Other storage places.** The owner's books are all on one external drive (no OneDrive books).
+  For other users, OneDrive uses the same placeholder mechanism as iCloud and should work the same
+  way. Dropbox, a second external drive or a network drive each need checking when they come up.
 - Hardcover's suitability (§12.1) before it's labelled Recommended; other optional keys if the owner
   wants them (Metron, ComicVine).
 - The two owner quality sessions (§17.2).
