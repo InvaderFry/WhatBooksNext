@@ -358,6 +358,20 @@ describe('folder names that change only in case (Windows ignores case)', () => {
 });
 
 describe('title words are never mistaken for quality tags', () => {
+  it('keeps road_to_low_orbit and road_to_orbit in one folder as two books', async () => {
+    writeFiles(drive, { 'Novels/road_to_low_orbit.epub': 10, 'Novels/road_to_orbit.pdf': 20 });
+    await addFolder(db, platform, { path: drive });
+    await scan();
+    expect(itemCount()).toBe(2);
+  });
+
+  it('groups "Map Making optimized.pdf" with "Map Making.epub"', async () => {
+    writeFiles(drive, { 'Novels/Map Making optimized.pdf': 10, 'Novels/Map Making.epub': 20 });
+    await addFolder(db, platform, { path: drive });
+    await scan();
+    expect(itemCount()).toBe(1);
+  });
+
   it('keeps "The High Road" and "The Road" in one folder as two books', async () => {
     writeFiles(drive, { 'Novels/The High Road.epub': 10, 'Novels/The Road.pdf': 20 });
     await addFolder(db, platform, { path: drive });

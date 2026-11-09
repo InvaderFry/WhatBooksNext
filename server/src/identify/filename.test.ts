@@ -182,6 +182,23 @@ describe("display titles for patterns found in the owner's first scan (invented 
     expect(title('QUILLFEATHER Ada - The Widget Way.pdf')).toBe('The Widget Way');
   });
 
+  it('treats tag words in the middle of an underscored name as title words', () => {
+    expect(compareKeyFor('road_to_low_orbit.epub')).not.toBe(compareKeyFor('road_to_orbit.pdf'));
+    expect(title('road_to_high_ground.epub')).toMatch(/High Ground/);
+    // ...but a run of tags at the end is stripped, however many there are
+    expect(compareKeyFor('lanternfish_vol1_hd_1400000000.pdf')).toBe(
+      compareKeyFor('lanternfish_vol1.epub'),
+    );
+  });
+
+  it('strips a trailing size tag after a space the same way for titles and grouping', () => {
+    expect(compareKeyFor('Map Making optimized.pdf')).toBe(compareKeyFor('Map Making.epub'));
+    expect(compareKeyFor('Map Making downsampled.pdf')).toBe(compareKeyFor('Map Making.epub'));
+    expect(title('Map Making optimized.pdf')).toBe('Map Making');
+    expect(title('Going Digital.epub')).toBe('Going Digital');
+    expect(compareKeyFor('Going Digital.epub')).not.toBe(compareKeyFor('Going.pdf'));
+  });
+
   it('keeps title words that look like tags: "The High Road" is not "The Road" in HD', () => {
     expect(compareKeyFor('The High Road.epub')).not.toBe(compareKeyFor('The Road.pdf'));
     expect(title('Digital Widgetry.epub')).toBe('Digital Widgetry');

@@ -11,9 +11,10 @@ import { splitWords, wordRank } from './wordsplit.ts';
  * every file name again and refreshes titles taken from file names (owner corrections are kept).
  *   1 — M1.  2 — fixes from the owner's first real scan ("Series - 12", "Series - Subtitle",
  *   ranges, "Book 1 - Title", hyphens inside words, …).  3 — tags removed only where tags appear,
- *   never as title words ("The High Road" no longer matches "The Road").
+ *   never as title words ("The High Road" no longer matches "The Road").  4 — one shared
+ *   trailing-tag rule for titles and grouping (end of name only: "road_to_low_orbit" is a title).
  */
-export const PARSER_VERSION = 3;
+export const PARSER_VERSION = 4;
 
 export interface Part<T> {
   value: T;
@@ -57,16 +58,6 @@ export interface ParsedName {
 }
 
 const QUALITY_TOKENS = new Set(['hd', 'hq', 'hires', 'highres']);
-/** Size/source tags: recorded and ignored when comparing (M0 probe). */
-const SIZE_TOKENS = new Set([
-  'optimized',
-  'opt',
-  'downsampled',
-  'high',
-  'ebook',
-  'digital',
-  'lowres',
-]);
 const ORDINAL_WORDS: Record<string, number> = {
   first: 1,
   second: 2,
@@ -220,28 +211,11 @@ export function parseFilename(fileName: string): ParsedName {
   });
   base = base.replace(/\s+/g, ' ').trim();
 
-  // A Humble id after a dash ("...-1350084265"): a tag, never a date or an issue.
-  const hid = /[-_](\d{10})$/.exec(base);
-  if (hid) {
-    tags.push(`humble-id ${hid[1]}`);
-    base = base.slice(0, hid.index);
-    const d = /-d\d{1,2}$/.exec(base); // a short "-d9"-style marker that sometimes precedes it
-    if (d) base = base.slice(0, d.index);
-  }
-
-  // A quality/size suffix at the very end. Joined by "-" or "_" ("-high", "_hd", "-low",
-  // "-high_definition") it is always a tag. After a space only unmistakable tags count
-  // ("Saga 001 HD"), so title words stay: "Aim High" is a title, not "Aim" in high quality.
-  const qs =
-    /[-_](high[-_]?definition|high|hd|hq|hi-?res|high-?res|lowres|low)$/i.exec(base) ??
-    / (hd|hq|hi-?res|high-?res|lowres)$/i.exec(base);
-  if (qs) {
-    let t = qs[1]!.toLowerCase().replace(/[-_ ]/g, '');
-    if (t === 'highdefinition') t = 'hd';
-    if (QUALITY_TOKENS.has(t)) result.quality = t.toUpperCase();
-    else tags.push(t);
-    base = base.slice(0, qs.index);
-  }
+  // Quality/size tags and Humble ids at the end of the name (shared with compareKeyFor).
+  const trailing = stripTrailingTags(base);
+  base = trailing.base;
+  if (trailing.quality) result.quality = trailing.quality;
+  tags.push(...trailing.tags);
 
   const spaced =
     /\s/.test(base) ||
@@ -267,31 +241,13 @@ function parseSlug(base: string, r: Partial<ParsedName>, tags: string[]) {
   let markerIndex = -1;
 
   for (let i = 0; i < segs.length; i++) {
-    let seg = segs[i]!;
-    const lower = seg.toLowerCase();
-    // "-high", "-hd" suffixes on the last segment
-    const suffix = /^(.*?)-(high|hd|hq|hires|highres|lowres)$/.exec(lower);
-    if (suffix) {
-      if (QUALITY_TOKENS.has(suffix[2]!)) r.quality = suffix[2]!.toUpperCase();
-      else tags.push(suffix[2]!);
-      seg = seg.slice(0, suffix[1]!.length);
-    }
+    // Trailing tags were already removed (stripTrailingTags); a tag word in the middle of a
+    // name is a title word ("road_to_low_orbit").
+    const seg = segs[i]!;
     const s = seg.toLowerCase();
-    if (QUALITY_TOKENS.has(s)) {
-      r.quality = s.toUpperCase();
-      continue;
-    }
-    if (SIZE_TOKENS.has(s)) {
-      tags.push(s);
-      continue;
-    }
     // A trailing "_new" (Humble's marker for a newer edition) is an edition note, not a subtitle.
     if (s === 'new' && i === segs.length - 1 && i > 0) {
       r.editionNote = 'new edition';
-      continue;
-    }
-    if (/^\d{10}$/.test(s)) {
-      tags.push(`humble-id ${s}`); // looks like a Unix timestamp; never used as a date
       continue;
     }
     let m: RegExpExecArray | null;
@@ -420,18 +376,6 @@ function parseSpaced(base: string, ext: string, r: Partial<ParsedName>, tags: st
     r.rawTitle = m[1]!;
     return;
   }
-
-  // Trailing quality / size words only ("Saga 001 HD", "Saga 001 Digital"). Words earlier in
-  // the name are title words: "Digital Fortress", "The HD Guide".
-  const words = s.split(' ');
-  while (words.length > 1) {
-    const lw = words.at(-1)!.toLowerCase();
-    if (QUALITY_TOKENS.has(lw)) r.quality = lw.toUpperCase();
-    else if (SIZE_TOKENS.has(lw) && lw !== 'high') tags.push(lw);
-    else break;
-    words.pop();
-  }
-  s = words.join(' ');
 
   // A release date at the end: ", November 24, 2004"
   if ((m = new RegExp(`,? ((?:${MONTHS}) \\d{1,2}, ((?:19|20)\\d\\d))$`, 'i').exec(s))) {
@@ -597,21 +541,50 @@ export function compareKeyFor(fileName: string): string {
   const dot = fileName.lastIndexOf('.');
   let base = (dot > 0 ? fileName.slice(0, dot) : fileName).toLowerCase();
   base = base.replace(/\s?\(\d{1,2}\)$/, '');
-  // Tags are removed only where tags appear — in brackets, as an "_tag_" slug segment, or as a
-  // "-tag" / " HD" ending — never as words inside a title. Otherwise "The High Road" and
-  // "The Road" would share a key and be grouped as one book.
-  const tag =
-    '(?:hd|hq|hi-?res|high-?res|high[-_]?definition|optimized|opt|downsampled|high|low|ebook|lowres|digital|\\d{10})';
-  base = base.replace(new RegExp(`[([]\\s*${tag}\\s*[)\\]]`, 'g'), ' ');
-  let prev: string;
-  do {
-    prev = base;
-    base = base
-      .replace(new RegExp(`_${tag}(?=_|$)`, 'g'), '')
-      .replace(new RegExp(`-${tag}$`), '')
-      .replace(/ (?:hd|hq|hi-?res|high-?res|lowres)$/, '')
-      .trim();
-  } while (base !== prev);
-  const key = normalizeForCompare(base);
+  // A bracket holding only a tag, "(HQ)" / "[Digital]".
+  base = base.replace(new RegExp(`[([]\\s*(?:${JOINED_TAGS})\\s*[)\\]]`, 'g'), ' ').trim();
+  // Then the same trailing-tag rule the parser uses, so titles and grouping always agree.
+  const key = normalizeForCompare(stripTrailingTags(base).base);
   return key || normalizeForCompare(fileName);
+}
+
+/**
+ * Tags are recognised only at the END of a name, repeatedly ("unity_vol1_hd_1410891143" ->
+ * "unity_vol1"), never in the middle, where the same words are title words: "The High Road",
+ * "road_to_low_orbit", "Going Digital". Joined by "-" or "_" any known tag counts; after a space
+ * only words that are never ordinary title endings do ("Map Making optimized", "Saga 001 HD").
+ * Used by both the parser and compareKeyFor, so displayed titles and grouping can't disagree.
+ */
+const JOINED_TAGS =
+  'high[-_ ]?definition|hi-?res|high-?res|lowres|downsampled|optimized|ebook|digital|high|low|hd|hq|opt|\\d{10}';
+const SPACED_TAGS = 'hi-?res|high-?res|lowres|downsampled|optimized|hd|hq|opt';
+
+export function stripTrailingTags(input: string): {
+  base: string;
+  quality?: string;
+  tags: string[];
+} {
+  let base = input.trim();
+  let quality: string | undefined;
+  const tags: string[] = [];
+  const joined = new RegExp(`[-_](${JOINED_TAGS})$`, 'i');
+  const spaced = new RegExp(` (${SPACED_TAGS})$`, 'i');
+  for (;;) {
+    const m = joined.exec(base) ?? spaced.exec(base);
+    if (!m || m.index === 0) break; // never strip the whole name
+    const t = m[1]!.toLowerCase().replace(/[-_ ]/g, '');
+    if (/^\d{10}$/.test(t)) {
+      tags.push(`humble-id ${t}`); // looks like a Unix timestamp; never used as a date
+      base = base.slice(0, m.index);
+      const d = /-d\d{1,2}$/.exec(base); // a short "-d9"-style marker that sometimes precedes it
+      if (d && d.index > 0) base = base.slice(0, d.index);
+    } else {
+      const q = t === 'highdefinition' ? 'hd' : t;
+      if (QUALITY_TOKENS.has(q)) quality ??= q.toUpperCase();
+      else tags.push(q);
+      base = base.slice(0, m.index);
+    }
+    base = base.trim();
+  }
+  return { base, quality, tags };
 }
