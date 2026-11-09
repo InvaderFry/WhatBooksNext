@@ -128,7 +128,7 @@ export function App() {
         {view === 'shortlist' && <Shortlist key={dataVersion} />}
         {view === 'settings' && (
           <Settings
-            key={dataVersion}
+            dataVersion={dataVersion}
             scan={scan}
             onScanStarted={scanStarted}
             onLibraryChanged={libraryChanged}

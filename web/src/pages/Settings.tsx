@@ -3,10 +3,13 @@ import { api, daysAgo, formatDate, type Folder, type ScanStatus } from '../api.t
 import { Notice } from '../components.tsx';
 
 export function Settings({
+  dataVersion,
   scan,
   onScanStarted,
   onLibraryChanged,
 }: {
+  /** Bumped when the library changes; reloads folders without remounting (keeps messages). */
+  dataVersion: number;
   scan: ScanStatus | null;
   onScanStarted: () => void;
   onLibraryChanged: () => void;
@@ -16,7 +19,7 @@ export function Settings({
   const load = useCallback(async () => setFolders(await api.get<Folder[]>('/api/folders')), []);
   useEffect(() => {
     void load();
-  }, [load]);
+  }, [load, dataVersion]);
 
   const running = scan?.status === 'running';
   const startScan = async (folderIds?: string[]) => {
