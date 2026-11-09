@@ -237,7 +237,7 @@ function HardcoverCheck({ names }: { names: boolean }) {
             ? `${r.book}: error: ${r.error}`
             : `${r.book}: ${r.results} results; top: ${
                 r.top
-                  ? `${r.top.title ? `"${r.top.title}", ` : ''}rating ${r.top.rating} (${r.top.ratingsCount} ratings), pages ${r.top.pages ?? '-'}, series ${r.top.series ?? '-'}, year ${r.top.year ?? '-'}, ${r.top.genres} genres/tags`
+                  ? `${r.top.title ? `"${r.top.title}", ` : ''}rating ${r.top.rating} (${r.top.ratingsCount} rating${r.top.ratingsCount === 1 ? '' : 's'}), pages ${r.top.pages ?? '-'}, series ${r.top.series ?? '-'}, year ${r.top.year ?? '-'}, ${r.top.genres} genres/tags`
                   : 'none'
               }`,
         ),

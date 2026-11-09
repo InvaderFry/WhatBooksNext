@@ -93,7 +93,7 @@ export function OnlineSettings() {
       {hc && !demo && (
         <div className="card hardcover">
           <h3>
-            Hardcover <span className="tag">Optional</span>
+            Hardcover <span className="tag">Recommended, optional</span>
           </h3>
           <p className="small">
             Hardcover adds book ratings with vote counts, series order and genres. It needs a free
