@@ -97,6 +97,7 @@ export function LookupBanner({
           {s?.finishedAt ? ` Last run ${new Date(s.finishedAt).toLocaleString()}.` : ''}
         </p>
       )}
+      {s && !running && s.error && <p className="small warn">{s.error}</p>}
       {s && !running && s.errors.length > 0 && (
         <p className="small warn">Last run’s problems: {s.errors.join(' · ')}</p>
       )}

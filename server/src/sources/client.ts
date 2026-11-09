@@ -85,6 +85,12 @@ export class SourceClient {
     };
   }
 
+  /** A fresh start: a new run the owner asked for gets a real try, not a leftover pause. */
+  resetBreaker(): void {
+    this.failures = 0;
+    this.pausedUntil = 0;
+  }
+
   /** A cached response, if any (no request is made). */
   cached(key: string): unknown {
     if (!this.db) return undefined;

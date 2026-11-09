@@ -204,6 +204,13 @@ export const CIRCUIT_FAILURES = 5;
 /** How long a tripped source stays paused before one trial request. */
 export const CIRCUIT_PAUSE_MS = 10 * 60_000;
 
+/**
+ * A lookup run stops after this many books in a row couldn't reach any of their sources:
+ * the connection is down (Wi-Fi, a VPN switching over), and carrying on would only mark the
+ * rest of the library "failed". The next run carries on where it stopped.
+ */
+export const LOOKUP_STOP_AFTER_FAILED_ITEMS = 10;
+
 /** Search results considered per source. More rarely helps and costs rate limit. */
 export const SEARCH_RESULTS = 5;
 

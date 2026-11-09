@@ -116,6 +116,26 @@ describe('lookups', () => {
     expect((await api.get(`/api/items/${id}/online`)).body.identity).toBe('accepted');
   });
 
+  it('stops, and says why, when the connection drops instead of failing the whole library', async () => {
+    failing = true;
+    const books: Record<string, Buffer> = {};
+    for (let i = 0; i < 14; i++)
+      books[`book${i}.epub`] = makeEpub({ title: `Lost Signal ${i}`, chapters: [600] });
+    await addAndScan(books);
+    const status = (await api.get('/api/lookups')).body.status;
+    expect(status.status).toBe('failed');
+    expect(status.done).toBe(10);
+    expect(status.error).toMatch(/Couldn’t reach the online sources/);
+    // The books not reached were left alone, and every book still counts as waiting.
+    expect(db.prepare('SELECT COUNT(*) FROM lookup_state').pluck().get()).toBe(10);
+    expect((await api.get('/api/lookups')).body.pending).toBe(14);
+    // Back online, the next run carries on.
+    failing = false;
+    await api.post('/api/lookups', {});
+    await made.lookups.wait();
+    expect((await api.get('/api/lookups')).body.pending).toBe(0);
+  });
+
   it('leaves a book unidentified, with neutral scores, when nothing matches', async () => {
     await addAndScan({
       'unknownbook.epub': makeEpub({ title: 'Nothing Like It', chapters: [900] }),

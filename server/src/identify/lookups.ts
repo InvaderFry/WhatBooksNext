@@ -1,3 +1,4 @@
+import { LOOKUP_STOP_AFTER_FAILED_ITEMS } from '../config.ts';
 import type { DB } from '../db/database.ts';
 import type { EmbeddedMetadata } from '../scan/formats/types.ts';
 import type { Sources } from '../sources/index.ts';
@@ -390,6 +391,8 @@ export interface LookupStatus {
   outcomes: Record<string, number>;
   /** Plain-language problems, newest first, at most a few. */
   errors: string[];
+  /** Stopped because nothing could be reached (connection down). */
+  stoppedOffline?: boolean;
   estimateSeconds: number | null;
   error: string | null;
 }
@@ -523,6 +526,8 @@ export class LookupManager {
 
   start(opts: { itemIds?: string[]; refresh?: boolean } = {}): LookupStatus {
     if (this.isRunning()) throw new HttpError(409, 'Lookups are already running.');
+    // A new run starts with every source un-paused: the connection may be back.
+    this.sources.resetBreakers();
     const ids = opts.itemIds ?? itemsNeedingLookup(this.db, this.sources, opts.refresh);
     const status: LookupStatus = {
       runId: newId(),
@@ -563,15 +568,22 @@ export class LookupManager {
 
   private async run(ids: string[], status: LookupStatus, refresh: boolean): Promise<void> {
     const started = Date.now();
+    let failedInARow = 0;
     try {
       for (const id of ids) {
         if (this.cancelled) break;
+        if (failedInARow >= LOOKUP_STOP_AFTER_FAILED_ITEMS) {
+          status.stoppedOffline = true;
+          break;
+        }
         // The item may have been merged away or removed since the run started.
         if (!this.db.prepare('SELECT 1 FROM items WHERE id = ?').get(id)) {
           status.done++;
           continue;
         }
         const results = await lookUpItem(this.db, this.sources, id, { refresh });
+        failedInARow =
+          results.length > 0 && results.every((r) => r.outcome === 'failed') ? failedInARow + 1 : 0;
         for (const r of results) {
           status.outcomes[r.outcome] = (status.outcomes[r.outcome] ?? 0) + 1;
           if (r.error) {
@@ -585,7 +597,10 @@ export class LookupManager {
           status.estimateSeconds = Math.round((per * (status.total - status.done)) / 1000);
         }
       }
-      status.status = this.cancelled ? 'cancelled' : 'completed';
+      if (status.stoppedOffline) {
+        status.status = 'failed';
+        status.error = `Couldn’t reach the online sources for ${LOOKUP_STOP_AFTER_FAILED_ITEMS} books in a row, so the lookups stopped. Check the internet connection (or VPN), then press “Look them up now” to carry on where it stopped.`;
+      } else status.status = this.cancelled ? 'cancelled' : 'completed';
     } catch (err) {
       status.status = 'failed';
       status.error = (err as Error).message;

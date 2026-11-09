@@ -79,6 +79,11 @@ export class Sources {
     ];
   }
 
+  resetBreakers(): void {
+    for (const c of [this.openlibrary.client, this.anilist.client, this.hardcover.client])
+      c.resetBreaker();
+  }
+
   label(name: SourceName): string {
     return SOURCE_LABELS[name];
   }
