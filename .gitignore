@@ -1,0 +1,13 @@
+# The owner's library and taste never go in this public repo (PLAN.md section 5).
+fixtures/private/
+docs/private/
+whatbooks-probe-report-*.txt
+
+# App data: database, covers, snapshots.
+data/
+
+node_modules/
+dist/
+*.log
+.DS_Store
+Thumbs.db

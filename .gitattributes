@@ -1,0 +1,4 @@
+* text=auto
+# cmd.exe misreads labels and goto in LF-only batch files.
+*.bat text eol=crlf
+*.cmd text eol=crlf
