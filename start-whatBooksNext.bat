@@ -1,7 +1,8 @@
 @echo off
 rem Starts whatBooksNext. Double-click this file, or run it from a Command Prompt.
 rem It checks Node.js, installs and builds on first run (or after an update), then opens the app
-rem in your browser at http://localhost:4818 . Keep the window open while you use the app.
+rem in your browser at http://localhost:4818 . Keep the window open while you use the app;
+rem closing it stops the app.
 setlocal
 cd /d "%~dp0"
 title whatBooksNext
@@ -9,8 +10,10 @@ title whatBooksNext
 where node >nul 2>nul
 if errorlevel 1 (
   echo.
-  echo Node.js is not installed. Install the current LTS version from https://nodejs.org
-  echo ^(choose the "LTS" download^), then double-click this file again.
+  echo Node.js is not installed, or Windows can't find it yet.
+  echo  - Not installed? Get the "LTS" version from https://nodejs.org ^(see INSTALL.md^).
+  echo  - Just installed it? Close this window and double-click this file again.
+  echo    If that doesn't help, restart the PC.
   echo.
   pause
   exit /b 1

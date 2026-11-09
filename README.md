@@ -12,18 +12,24 @@ The full plan is in [`PLAN.md`](PLAN.md), and milestone notes are in
 
 ## Install and start (Windows)
 
-1. Install **Node.js 24 or newer** (the "LTS" download from <https://nodejs.org>).
-2. Download this repository (green **Code** button → **Download ZIP**, then unzip) or clone it.
-3. Double-click **`start-whatBooksNext.bat`**.
+**👉 Step-by-step guide with screens explained and fixes for common problems:
+[INSTALL.md](INSTALL.md).** No programming experience needed.
 
-The first start installs dependencies and builds the pages, which takes a minute. Later starts
-take a few seconds. The app opens in your browser at <http://localhost:4818>. Keep the window
-open while you use it, and close it (or press Ctrl+C) to stop.
+The short version:
 
-No accounts or API keys are needed.
+1. Install **Node.js** (the **LTS** version) from <https://nodejs.org>. Leave "Tools for Native
+   Modules" unticked; no build tools are needed.
+2. Download this repository (green **Code** button → **Download ZIP**) and unzip it somewhere
+   that OneDrive doesn't sync, such as `C:\Users\YourName\whatBooksNext`.
+3. Double-click **`start-whatBooksNext.bat`**. If Windows says "Windows protected your PC", click
+   **More info → Run anyway**.
 
-**To try it without your own books**, run `npm run demo` from a Command Prompt in this folder.
-It opens a clearly labelled demo library where every title is invented.
+The first start takes 1–3 minutes, and later starts take a few seconds. The app opens in your
+browser at <http://localhost:4818>. Keep the black window open while you use it; closing it stops
+the app. No accounts or API keys are needed.
+
+**To try it without your own books**, double-click **`start-demo.bat`**. It opens a clearly
+labelled demo library of invented books at <http://localhost:4819>.
 
 ## What it does and doesn't do with your files
 
@@ -62,13 +68,9 @@ between that check and the open, and that gap is accepted.
 
 ## If it won't start
 
-- **"Node.js is not installed" or "needs Node.js 24 or newer":** install the LTS version from
-  <https://nodejs.org> and try again.
-- **"Port 4818 is already in use":** the app is probably already running in another window. If
-  something else uses that port, run `set PORT=4819` and then `start-whatBooksNext.bat` in a
-  Command Prompt.
-- **"The database couldn't be updated":** nothing was changed. The message names the snapshot
-  saved just before the update and says how to put it back.
+See **[INSTALL.md → If something goes wrong](INSTALL.md#if-something-goes-wrong)**. It covers
+Node.js not being found, install errors ("EPERM"), the port being in use, and a failed database
+update. Updating and uninstalling are covered in [INSTALL.md](INSTALL.md) too.
 
 ## For developers
 

@@ -34,11 +34,37 @@ function portFree(port: number): Promise<boolean> {
   });
 }
 
+function openBrowser(url: string) {
+  if (process.argv.includes('--no-browser')) return;
+  const opener =
+    process.platform === 'win32'
+      ? 'explorer.exe'
+      : process.platform === 'darwin'
+        ? 'open'
+        : 'xdg-open';
+  spawn(opener, [url], { detached: true, stdio: 'ignore' })
+    .on('error', () => {})
+    .unref();
+}
+
+const url = `http://localhost:${PORT}`;
+
 if (!(await portFree(PORT))) {
-  console.error(
-    `\nPort ${PORT} is already in use. Is whatBooksNext already running in another window?`,
-  );
-  console.error(`If something else uses that port, set another one first, e.g.:  set PORT=4819\n`);
+  // Double-clicking the start file again while the app runs just opens it.
+  let alreadyRunning = false;
+  try {
+    const state = (await (await fetch(`${url}/api/state`)).json()) as { demo?: unknown };
+    alreadyRunning = typeof state.demo === 'boolean';
+  } catch {
+    /* something else is on the port */
+  }
+  if (alreadyRunning) {
+    console.log(`\nwhatBooksNext is already running in another window. Opening ${url} ...\n`);
+    openBrowser(url);
+    process.exit(0);
+  }
+  console.error(`\nPort ${PORT} is used by another program, so whatBooksNext can't start.`);
+  console.error('Close that program, or start whatBooksNext on another port (see INSTALL.md).\n');
   process.exit(1);
 }
 
@@ -89,23 +115,12 @@ const server = spawn(process.execPath, ['server/src/main.ts'], {
 });
 
 // Open the browser once the app answers.
-const url = `http://localhost:${PORT}`;
 for (let i = 0; i < 50; i++) {
   await new Promise((r) => setTimeout(r, 200));
   if (server.exitCode !== null) break;
   try {
     if ((await fetch(`${url}/api/state`)).ok) {
-      if (!process.argv.includes('--no-browser')) {
-        const opener =
-          process.platform === 'win32'
-            ? 'explorer.exe'
-            : process.platform === 'darwin'
-              ? 'open'
-              : 'xdg-open';
-        spawn(opener, [url], { detached: true, stdio: 'ignore' })
-          .on('error', () => {})
-          .unref();
-      }
+      openBrowser(url);
       break;
     }
   } catch {
