@@ -153,6 +153,18 @@ describe('Hardcover', () => {
     );
   });
 
+  it('remembers today’s request count across a restart of the app', async () => {
+    const db = await memoryDb();
+    const { fetcher } = fakeFetch(payload);
+    const first = new Hardcover(db, () => 'token', fetcher);
+    await first.search({ title: 'One' });
+    await first.search({ title: 'Two' });
+    // A cached answer costs nothing.
+    await first.search({ title: 'Two' });
+    const afterRestart = new Hardcover(db, () => 'token', fetcher);
+    expect(afterRestart.usageToday()).toBe(2);
+  });
+
   it('refuses to look anything up without a token', async () => {
     const hc = new Hardcover(null, () => null);
     await expect(hc.search({ title: 'x' })).rejects.toThrow(/No Hardcover token/);

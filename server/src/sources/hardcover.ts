@@ -139,10 +139,10 @@ export class Hardcover implements SourceAdapter {
   readonly name = 'hardcover' as const;
   readonly client: SourceClient;
   private readonly getToken: () => string | null;
-  private usageDay = '';
-  private usage = 0;
+  private readonly db: DB | null;
 
   constructor(db: DB | null, getToken: () => string | null, fetcher?: Fetcher) {
+    this.db = db;
     this.getToken = getToken;
     this.client = new SourceClient({
       name: 'hardcover',
@@ -156,9 +156,44 @@ export class Hardcover implements SourceAdapter {
     return !!this.getToken();
   }
 
-  /** Requests made today by this app run, against the free daily allowance. */
+  /**
+   * Requests made today, against the free daily allowance. Kept in the database, so restarting
+   * the app doesn't forget them (it did at first: the owner saw 402 drop back to 4). Without a
+   * database (tests), it's kept in memory.
+   */
+  private memoryUsage = { day: '', count: 0 };
+
   usageToday(): number {
-    return this.usageDay === todayLocal() ? this.usage : 0;
+    const u = this.readUsage();
+    return u.day === todayLocal() ? u.count : 0;
+  }
+
+  private readUsage(): { day: string; count: number } {
+    if (!this.db) return this.memoryUsage;
+    const v = this.db
+      .prepare("SELECT value FROM settings WHERE key = 'hardcoverUsage'")
+      .pluck()
+      .get() as string | undefined;
+    const u = v ? (JSON.parse(v) as { day?: unknown; count?: unknown }) : {};
+    return {
+      day: typeof u.day === 'string' ? u.day : '',
+      count: typeof u.count === 'number' ? u.count : 0,
+    };
+  }
+
+  private countRequest(): number {
+    const today = todayLocal();
+    const u = this.readUsage();
+    const next = { day: today, count: u.day === today ? u.count + 1 : 1 };
+    if (!this.db) this.memoryUsage = next;
+    else
+      this.db
+        .prepare(
+          `INSERT INTO settings (key, value, updated_at) VALUES ('hardcoverUsage', ?, ?)
+           ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+        )
+        .run(JSON.stringify(next), new Date().toISOString());
+    return next.count;
   }
 
   async search(q: SourceQuery, opts: { refresh?: boolean } = {}): Promise<SourceRecord[]> {
@@ -171,19 +206,15 @@ export class Hardcover implements SourceAdapter {
       const hit = this.client.cached(key);
       if (hit !== undefined && !graphqlError(hit)) return parseHardcover(hit);
     }
-    if (this.usageDay !== todayLocal()) {
-      this.usageDay = todayLocal();
-      this.usage = 0;
-    }
     // Stop a little short of the daily allowance, so the owner's own use of Hardcover isn't
     // locked out for the rest of the day.
-    if (this.usage >= HARDCOVER_DAILY_LIMIT - 200)
+    if (this.usageToday() >= HARDCOVER_DAILY_LIMIT - 200)
       throw new SourceError(
         'hardcover',
         'Reached today’s Hardcover allowance; carrying on tomorrow.',
         true,
       );
-    this.usage++;
+    this.countRequest();
     const payload = await this.client.json(
       HARDCOVER_URL,
       {

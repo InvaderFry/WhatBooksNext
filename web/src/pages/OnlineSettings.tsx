@@ -53,7 +53,7 @@ export function OnlineSettings() {
         whatBooksNext looks your books up online for ratings, first publication years, subjects and
         series. Only titles and authors are sent — never files or your reading history.
       </p>
-      <LookupBanner always onFinished={() => void load()} />
+      <LookupBanner always onFinished={() => void load()} onProgress={() => void load()} />
       {lookups && (
         <>
           <label className="check">

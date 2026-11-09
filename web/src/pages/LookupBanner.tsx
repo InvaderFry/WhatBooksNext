@@ -8,9 +8,12 @@ import { Notice } from '../components.tsx';
  */
 export function LookupBanner({
   onFinished,
+  onProgress,
   always = false,
 }: {
   onFinished?: () => void;
+  /** Called on each refresh while lookups run (Settings refreshes its source list). */
+  onProgress?: () => void;
   /** Show even when nothing is pending (Settings). */
   always?: boolean;
 }) {
@@ -19,15 +22,18 @@ export function LookupBanner({
   const wasRunning = useRef(false);
   // The latest callback, without making `load` change on every render.
   const finished = useRef(onFinished);
+  const progress = useRef(onProgress);
   useEffect(() => {
     finished.current = onFinished;
-  }, [onFinished]);
+    progress.current = onProgress;
+  }, [onFinished, onProgress]);
 
   const load = useCallback(async () => {
     try {
       const d = await api.get<Lookups>('/api/lookups');
       setData(d);
       const running = d.status?.status === 'running';
+      if (running) progress.current?.();
       if (wasRunning.current && !running) finished.current?.();
       wasRunning.current = running;
     } catch (e) {
