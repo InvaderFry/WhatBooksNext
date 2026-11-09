@@ -29,6 +29,7 @@ let pdfjsPromise: Promise<PdfJs> | null = null;
 const loadPdfJs = () => (pdfjsPromise ??= import('pdfjs-dist/legacy/build/pdf.mjs'));
 
 const pkgDir = path.dirname(createRequire(import.meta.url).resolve('pdfjs-dist/package.json'));
+const dataDir = (name: string) => path.join(pkgDir, name).split(path.sep).join('/') + '/';
 
 async function openPdf(file: string) {
   const pdfjs = await loadPdfJs();
@@ -41,8 +42,9 @@ async function openPdf(file: string) {
     useSystemFonts: false,
     // Images over the pixel limit are skipped by pdf.js instead of decoded (§20).
     maxImageSize: MAX_IMAGE_PIXELS,
-    standardFontDataUrl: path.join(pkgDir, 'standard_fonts') + path.sep,
-    cMapUrl: path.join(pkgDir, 'cmaps') + path.sep,
+    // pdf.js insists these end in "/" (a backslash fails on Windows); Windows accepts "/".
+    standardFontDataUrl: dataDir('standard_fonts'),
+    cMapUrl: dataDir('cmaps'),
     cMapPacked: true,
     verbosity: 0,
   });
