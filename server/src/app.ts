@@ -4,7 +4,7 @@ import path from 'node:path';
 import { MAX_JSON_BODY, SCAN_REMINDER_DAYS, SCAN_REMINDER_SNOOZE_DAYS } from './config.ts';
 import { schemaVersion, type DB } from './db/database.ts';
 import { listSnapshots } from './db/snapshots.ts';
-import { refreshFactsOfItems, removeOrphanItems } from './identify/items.ts';
+import { refreshFactsOfItems, refreshPrimary, removeOrphanItems } from './identify/items.ts';
 import { healthProblemCount, libraryHealth } from './lib/health.ts';
 import { actOnReview, listReview, openReviewCount } from './lib/review.ts';
 import { coverPath } from './scan/deepPass.ts';
@@ -447,7 +447,11 @@ export function createApp(ctx: AppContext) {
     route((req) => {
       const id = itemIdOr404(String(req.params.id));
       const patch = validatePatch(req.body);
-      db.transaction(() => applyUserPatch(db, id, patch, todayLocal()))();
+      db.transaction(() => {
+        applyUserPatch(db, id, patch, todayLocal());
+        // Comics and books open different formats first: a kind correction re-picks the file.
+        if (patch.kindOverride !== undefined) refreshPrimary(db, id);
+      })();
       return { ok: true };
     }),
   );

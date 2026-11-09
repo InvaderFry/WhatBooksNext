@@ -76,13 +76,16 @@ const PROSE_FORMAT_RANK: Record<string, number> = {
   cbr: 5,
   cb7: 6,
 };
-/** Comics open as PDF first, then CBZ: the owner's choice after M3 (the plan said CBZ first). */
+/**
+ * Comics open as PDF first, then CBZ, then EPUB, then anything else: the owner's choice after M3
+ * (the plan said CBZ first).
+ */
 const COMIC_FORMAT_RANK: Record<string, number> = {
   pdf: 0,
   cbz: 1,
-  cbr: 2,
-  cb7: 3,
-  epub: 4,
+  epub: 2,
+  cbr: 3,
+  cb7: 4,
   mobi: 5,
   azw3: 6,
 };
@@ -149,8 +152,13 @@ export function filesOfItem(db: DB, itemId: string): FileFacts[] {
 
 /** Re-chooses the item's primary file. Returns true when it changed. */
 export function refreshPrimary(db: DB, itemId: string): boolean {
-  const item = db.prepare('SELECT kind FROM items WHERE id = ?').get(itemId) as
-    { kind: string | null } | undefined;
+  // The owner's kind correction decides, like everywhere else (owner corrections win).
+  const item = db
+    .prepare(
+      `SELECT COALESCE(u.kind_override, i.kind) AS kind FROM items i
+       LEFT JOIN user_item u ON u.item_id = i.id WHERE i.id = ?`,
+    )
+    .get(itemId) as { kind: string | null } | undefined;
   if (!item) return false;
   const primary = choosePrimary(filesOfItem(db, itemId), item.kind);
   const before = db

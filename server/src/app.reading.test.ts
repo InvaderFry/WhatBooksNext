@@ -330,6 +330,26 @@ describe('which file a book opens with', () => {
     expect(comic.title).toBe('Tidecaller #1');
     expect(comic.creators[0].name).toBe('Jun Arden');
   });
+
+  it('opens a comic as EPUB when it has no PDF or CBZ', async () => {
+    await addAndScan({
+      'Comics/glimmerkeep_vol2.epub': makeEpub({ title: 'Glimmerkeep Vol. 2', chapters: [300] }),
+      'Comics/glimmerkeep_vol2.cbr': 50_000,
+      'Comics/glimmerkeep_vol2.cb7': 50_000,
+    });
+    const id = itemIdOf('glimmerkeep_vol2.epub');
+    // Saying it's a comic re-picks the file at once, no scan needed.
+    await api.patch(`/api/items/${id}`, { kindOverride: 'comic' });
+    expect(
+      db
+        .prepare(
+          `SELECT f.format FROM item_files x JOIN files f ON f.id = x.file_id
+           WHERE x.item_id = ? AND x.is_primary = 1`,
+        )
+        .pluck()
+        .get(id),
+    ).toBe('epub');
+  });
 });
 
 describe('Read next and its cards', () => {
