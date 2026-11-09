@@ -280,7 +280,7 @@ export function factsFromPrimary(p: PrimaryRow): ItemFacts {
   return f;
 }
 
-/** Kind sources the deep pass may revise; anything else (a source lookup, M3) it leaves alone. */
+/** Kind sources that come from the file itself; the deep pass revises these. */
 const FILE_KIND_SOURCES = new Set(['format', 'pdf_type', 'comicinfo']);
 
 /**
@@ -322,8 +322,10 @@ export function refreshFactsOfItems(db: DB, itemIds: string[]): number {
     const cur = current.get(id) as { kind: string | null; kind_source: string | null } | undefined;
     if (!p || !cur) continue;
     const f = factsFromPrimary(p);
-    // A kind from somewhere other than the file itself is kept.
-    const keepKind = cur.kind_source !== null && !FILE_KIND_SOURCES.has(cur.kind_source);
+    // When the file says nothing about its kind, a kind guessed from online sources (M3) is
+    // kept. When the file does say (a comic archive, ComicInfo manga), the file wins.
+    const keepKind =
+      f.kind === null && cur.kind_source !== null && !FILE_KIND_SOURCES.has(cur.kind_source);
     changed += update.run({
       id,
       now,

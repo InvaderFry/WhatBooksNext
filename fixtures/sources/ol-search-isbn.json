@@ -1,0 +1,43 @@
+{
+  "numFound": 1,
+  "start": 0,
+  "numFoundExact": true,
+  "num_found": 1,
+  "documentation_url": "https://openlibrary.org/dev/docs/api/search",
+  "q": "",
+  "offset": null,
+  "docs": [
+    {
+      "author_name": ["Jane Austen"],
+      "cover_i": 14348537,
+      "edition_count": 4042,
+      "first_publish_year": 1813,
+      "isbn": [
+        "9781090339799",
+        "1511413182",
+        "1561036455",
+        "1977774768",
+        "9798737216955",
+        "9798470682239",
+        "9781518878152",
+        "9798542130934"
+      ],
+      "key": "/works/OL66554W",
+      "language": ["ger", "pol", "srp", "mul", "rus", "cze", "fre", "cor"],
+      "number_of_pages_median": 351,
+      "title": "Pride and Prejudice",
+      "subject": [
+        "Fiction, Romance, Historical, Regency",
+        "British and Irish fiction (fictional works by one author)",
+        "Brothers and sisters",
+        "Courtship",
+        "Drama",
+        "English fiction",
+        "English literature",
+        "Families"
+      ],
+      "ratings_average": 4.199519,
+      "ratings_count": 416
+    }
+  ]
+}

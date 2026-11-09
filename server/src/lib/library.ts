@@ -49,6 +49,8 @@ export interface UserData {
   kindOverride: string | null;
   referenceOverride: boolean | null;
   icloudOverride: 'in' | 'not_in' | null;
+  triage: 'want' | 'maybe' | 'never' | null;
+  effortOverride: 'light' | 'medium' | 'heavy' | null;
   updatedAt: string | null;
 }
 
@@ -99,6 +101,8 @@ const DEFAULT_USER: UserData = {
   kindOverride: null,
   referenceOverride: null,
   icloudOverride: null,
+  triage: null,
+  effortOverride: null,
   updatedAt: null,
 };
 
@@ -120,6 +124,8 @@ interface UserRow {
   kind_override: string | null;
   reference_override: number | null;
   icloud_override: 'in' | 'not_in' | null;
+  triage: 'want' | 'maybe' | 'never' | null;
+  effort_override: 'light' | 'medium' | 'heavy' | null;
   updated_at: string;
 }
 
@@ -142,6 +148,8 @@ export function userFromRow(r: UserRow | undefined): UserData {
     kindOverride: r.kind_override,
     referenceOverride: r.reference_override === null ? null : r.reference_override === 1,
     icloudOverride: r.icloud_override,
+    triage: r.triage,
+    effortOverride: r.effort_override,
     updatedAt: r.updated_at,
   };
 }
