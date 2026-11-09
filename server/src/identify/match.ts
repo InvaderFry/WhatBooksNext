@@ -15,7 +15,7 @@ import { normalizeForCompare, titleCompareKey } from './filename.ts';
  */
 
 /** Bump when the scoring changes: the next lookup re-scores from the cache (no new requests). */
-export const MATCH_VERSION = 4;
+export const MATCH_VERSION = 5;
 
 export interface MatchFacts {
   title: string;
@@ -132,6 +132,23 @@ function withoutNumber(t: string): string {
  */
 const MAIN_TITLE_ONLY = 0.85;
 
+/**
+ * A comic volume against a record with no number that doesn't say it's a comic: at most this,
+ * which keeps it below "provisional" even with no author to check (0.85 × 0.7 < 0.6).
+ */
+const NAME_ONLY_NOT_COMIC = 0.7;
+
+const isVisual = (f: MatchFacts) => f.kind === 'comic' || f.kind === 'manga';
+
+/** Does the source say this record is a comic, graphic novel or manga? */
+export function comicLike(r: SourceRecord): boolean {
+  return (
+    r.format === 'MANGA' ||
+    r.source === 'anilist' ||
+    r.subjects.some((x) => /comic|graphic novel|manga|superhero|cartoons? and comics/i.test(x))
+  );
+}
+
 function titleScore(f: MatchFacts, r: SourceRecord): number {
   const mainOf = (t: string) => t.split(/[:—–]| - /)[0]!;
   const mine = [searchTitle(f), f.rawTitle ?? ''].filter(Boolean);
@@ -145,22 +162,30 @@ function titleScore(f: MatchFacts, r: SourceRecord): number {
       ])
       .filter(Boolean),
   );
+  // Numbered volumes: compare the series part, also before a story-arc subtitle ("Series
+  // Vol. 2: Arc Name"); scoreCandidate checks the numbers themselves.
+  const series = (t: string) => [withoutNumber(t), withoutNumber(mainOf(t))];
+  const mine0 = new Set(mine.flatMap(series).map(titleCompareKey).filter(Boolean));
+  const their0 = new Set(theirs.flatMap(series).map(titleCompareKey).filter(Boolean));
+  const a = ourNumber(f);
+  const b = numberIn(fullTitleOf(r));
+  if ((a || b) && [...mine0].some((k) => their0.has(k))) {
+    if (a && b) return 1;
+    // A volume against a record with no number is only the series' name: never certain,
+    // except on AniList, whose records are whole series by design (scope "series"). For a comic
+    // or manga, a record that doesn't say it's a comic is most likely a prose book that shares
+    // the name (a novel called "Arrowsmith" against the comic "Arrowsmith Vol. 1").
+    if (a && !b) {
+      if (r.source === 'anilist') return 1;
+      if (isVisual(f) && !comicLike(r)) return NAME_ONLY_NOT_COMIC;
+      return MAIN_TITLE_ONLY;
+    }
+    if (!a && b) return MAIN_TITLE_ONLY;
+  }
   let best = 0;
   for (const a of mineFull)
     for (const b of theirFull) best = Math.max(best, a === b ? 1 : similarity(a, b));
   if (best === 1) return 1;
-  // Numbered volumes: compare the series part; scoreCandidate checks the numbers themselves.
-  const mine0 = new Set(mine.map((t) => titleCompareKey(withoutNumber(t))).filter(Boolean));
-  const their0 = new Set(theirs.map((t) => titleCompareKey(withoutNumber(t))).filter(Boolean));
-  if ([...mine0].some((k) => their0.has(k))) {
-    const a = ourNumber(f);
-    const b = numberIn(fullTitleOf(r));
-    // A volume against a record with no number is only the series' name: never certain,
-    // except on AniList, whose records are whole series by design (scope "series").
-    if (a && b) return 1;
-    if (a && !b) return r.source === 'anilist' ? 1 : MAIN_TITLE_ONLY;
-    if (!a && b) return MAIN_TITLE_ONLY;
-  }
   const mineMain = new Set(mine.map((t) => titleCompareKey(mainOf(t))).filter(Boolean));
   const theirMain = new Set(theirs.map((t) => titleCompareKey(mainOf(t))).filter(Boolean));
   const mainHit =
@@ -255,7 +280,8 @@ export function sameWork(a: SourceRecord, b: SourceRecord): boolean {
   const main = (r: SourceRecord) => titleCompareKey(fullTitle(r).split(/[:—–]| - /)[0]!);
   const fa = full(a);
   const fb = full(b);
-  const sameTitle = fa === fb || (main(a) === main(b) && (fa === main(a) || fb === main(b)));
+  const sameTitle =
+    fa === fb || (main(a) === main(b) && (fa === main(a) || fb === main(b))) || sameVolume(a, b);
   if (!sameTitle) return false;
   const surnames = (r: SourceRecord) =>
     new Set(
@@ -270,8 +296,19 @@ export function sameWork(a: SourceRecord, b: SourceRecord): boolean {
     );
   const sa = surnames(a);
   if ([...surnames(b)].some((x) => x !== '' && sa.has(x))) return true;
+  // One volume entered twice ("Series Vol. 2: Arc" and "Series - 2"), one record with no author.
+  if (sameVolume(a, b) && (a.authors.length === 0 || b.authors.length === 0)) return true;
   // The same full title, and one record has no author at all: one book entered twice.
   return fa === fb && (a.authors.length === 0 || b.authors.length === 0);
+}
+
+/** The same series and the same volume number ("Series, Vol. 2: Arc" and "Series - 2"). */
+function sameVolume(a: SourceRecord, b: SourceRecord): boolean {
+  const na = numberIn(fullTitleOf(a));
+  if (!na || na !== numberIn(fullTitleOf(b))) return false;
+  const seriesKey = (r: SourceRecord) =>
+    titleCompareKey(withoutNumber(fullTitleOf(r).split(/[:—–]| - (?!\d)/)[0]!));
+  return seriesKey(a) !== '' && seriesKey(a) === seriesKey(b);
 }
 
 /** The title with its subtitle, unless the title already includes it. */

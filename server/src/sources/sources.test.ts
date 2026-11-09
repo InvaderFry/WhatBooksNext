@@ -329,6 +329,74 @@ describe('matching (§11.2)', () => {
     expect(r.decision).not.toBe('tie');
   });
 
+  it('prefers the comic over a novel of the same name for a numbered comic volume', () => {
+    const base = { ...tm[0]!, isbns: [], rating: undefined };
+    const r = decide(
+      facts({
+        title: 'Bellwright Vol. 1',
+        titleSource: 'filename',
+        kind: 'comic',
+        seriesHint: 'Bellwright',
+        volume: '1',
+      }),
+      [
+        {
+          ...base,
+          sourceId: 'novel',
+          title: 'Bellwright',
+          authors: ['Ada Novelist'],
+          subjects: ['Fiction'],
+        },
+        {
+          ...base,
+          sourceId: 'novel2',
+          title: 'Bellwright',
+          authors: ['Ada Novelist', 'Ed Itor'],
+          subjects: ['Medical fiction'],
+        },
+        {
+          ...base,
+          sourceId: 'comic',
+          title: 'Bellwright',
+          authors: ['Cal Inker'],
+          subjects: ['Comic books, strips, etc.'],
+        },
+      ],
+    );
+    expect(r.decision).not.toBe('tie');
+    expect(r.best?.record.sourceId ?? null).not.toMatch(/novel/);
+  });
+
+  it('treats one comic volume entered twice, with and without its arc name, as one book', () => {
+    const base = { ...tm[0]!, isbns: [], rating: undefined };
+    const r = decide(
+      facts({
+        title: 'Star Borough Vol. 2',
+        titleSource: 'filename',
+        kind: 'comic',
+        seriesHint: 'Star Borough',
+        volume: '2',
+      }),
+      [
+        {
+          ...base,
+          sourceId: 'a',
+          title: 'Star Borough Vol. 2: Confession',
+          authors: ['Kit Bayle'],
+        },
+        { ...base, sourceId: 'b', title: 'Star Borough - 2', authors: [] },
+        {
+          ...base,
+          sourceId: 'c',
+          title: 'Star Borough, Vol. 2: Confession',
+          authors: ['Kit Bayle'],
+        },
+      ],
+    );
+    expect(r.decision).not.toBe('tie');
+    expect(r.decision).not.toBe('unidentified');
+  });
+
   it('never accepts a candidate the owner rejected', () => {
     const r = decide(
       facts({ title: 'The Time Machine', authors: ['H. G. Wells'] }),
