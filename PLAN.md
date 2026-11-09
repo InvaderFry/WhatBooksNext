@@ -15,6 +15,21 @@ tunable number lives in **§20 Starting values**, labelled as an assumption with
 
 ## 1. What changed
 
+### From the M0 probe report (November 2026)
+
+The owner ran the Milestone 0 probe. Title-free findings are in `docs/milestones/M0.md`. The
+plan changes below are corrections that follow from those facts.
+
+| Area | Change | Why (probe finding) |
+| --- | --- | --- |
+| **Storage** | The library is one external USB drive. **iCloud isn't installed on the PC.** The owner uploads copies to iCloud to read on the iPhone and iPad, so to this app iCloud is a *place to read*, not a folder to scan (§3). | No iCloud process, no iCloud folder, and no placeholder bits on any book file. |
+| **Placeholders** | §9.5 stays, built and tested with fakes, because OneDrive and other users' iCloud need it. It's unconfirmed on real files and not on the owner's main path. | Nothing to test on the owner's PC. |
+| **Drive kind** | "External" comes from the disk's **bus type** (USB), not the drive type (§9.4). | Windows reports the USB drive as *Fixed*. |
+| **Copies** | Copies are mostly *within* the one drive. Rule 1 (§11.3) applies to any two directories, including two in the same folder. | 262 name+size groups in several directories, 22 of them with 3+ copies. |
+| **Bulk-copy dates** | Bulk-copy detection runs on the whole library folder, not on each subdirectory (§13.7, §20). | In 114 of 115 large directories most files share one modified day: one bundle, one download day. That date is real. Created dates reset on copy (99% are later than modified). |
+| **Filename parser** | New rules: download-duplicate `(1)`, size/source tags, Humble numeric ids, a trailing "the", `V1 17` series-volume + issue, issue files naming their trade volume, edition words (§11.1). | Patterns seen in the owner's sample. |
+| **Stores** | `google_play` added to store locations (§7). | The owner buys from Apple, Amazon and Google Play. |
+
 ### From v4 to v5
 
 From a fourth review, all approved by the owner. Mostly contradictions fixed and gaps closed.
@@ -93,9 +108,11 @@ depends on it. This project is its own thing; the habits worth keeping are writt
   PocketBook, the Kindle app and others. No e-reader.
 - **A few thousand files**: fiction, nonfiction, self-help, tech books, Western comics, manga,
   reference books. Many from Humble Bundle, so filenames are often run-together lowercase slugs.
-- **Storage:** an external drive that isn't always connected, and **iCloud Drive for Windows**
-  (some files downloaded, some online-only). **The same files often exist in both places**, and
-  sometimes in more. Often a book comes as an EPUB and a PDF with the same name; rarely there's also
+- **Storage:** one external USB drive that isn't always connected (about 8,000 files, about 3,800 of
+  them books). **iCloud is not installed on the PC.** The owner uploads most local books to iCloud
+  and reads them on the iPhone and iPad, so iCloud is somewhere books are *read*, not a folder
+  the app scans (M0 probe). The same file often exists in several directories on the drive. OneDrive is set up on the PC. Often a
+  book comes as an EPUB and a PDF with the same name; rarely there's also
   an HD version.
 - **A handful of store-locked titles** in Kindle, Kobo and GlobalComix.
 - **No reading history to import** — but Goodreads and StoryGraph import must exist for other users.
@@ -304,7 +321,7 @@ A sketch — refine as you build, but keep these distinctions.
 | `item_files` | Which files belong to an item, and which one is primary. |
 | `issues` | For a series run: issue **label** (string — "1", "1.5", "Annual 1", "0") and a separate **sort key**, per-issue read state and date, files. |
 | `collection_coverage` | For a collected edition: the series run it collects and issue ranges, with state `suggested` or `confirmed`. |
-| `locations` | Where an item can be read: a file, a store (`kindle`, `kobo`, `globalcomix`, `apple_books`, `other`), or `history` (read, not owned). |
+| `locations` | Where an item can be read: a file, a store (`kindle`, `kobo`, `globalcomix`, `apple_books`, `google_play`, `other`), or `history` (read, not owned). |
 | `source_cache` | Raw responses: source, the source's id, fetched date, payload. Re-derive item fields from here when matching logic changes. |
 | `user_item` | Progress bucket, next / last-completed issue, DNF reason, dates (with precision: exact / approximate / unknown), triage + date, rating 1–10, note, takeaway, hidden, shortlist position, overrides (title, kind, effort, reference, coverage), optional acquisition date, `updated_at`. |
 | `operations` | Merge/split undo stack: the before-state of affected records (JSON), newest first, last 20 kept. |
@@ -388,7 +405,13 @@ parser improves.
 
 Store each folder as volume identity + relative path + last-known letter. On scan, if the expected
 letter doesn't hold that volume, look for it on other letters (Windows adapter, e.g. PowerShell
-`Get-Volume`). Offer **"Reconnect this folder"** for manual repair. **Needs checking on the owner's
+`Get-Volume`). Offer **"Reconnect this folder"** for manual repair.
+
+**M0 probe (owner's PC):** `Get-Volume`, `Get-Partition`/`Get-Disk` and `Win32_Volume` all work
+without admin rights. Use the volume GUID path (`\\?\Volume{…}\`) as the identity, with the volume
+serial as a fallback. Windows reports the USB drive as **Fixed**, so set the folder's storage kind
+from the disk's **bus type** (`USB` → external), never from the drive type. Letter changes are still
+untested. **Needs checking on the owner's
 machine.**
 
 ### 9.5 iCloud placeholders
@@ -411,6 +434,9 @@ any failure to read attributes as **unknown**.
   The remaining gap between check and read is milliseconds; accept it, and note it in the README.
 - **Open on a placeholder asks first:** "This file is in iCloud and will download when opened. Open
   anyway?"
+- **M0 probe:** the owner's PC has no iCloud and no placeholder files: every book file is plain
+  `Archive` (0x20). This section is still built, with fakes, for OneDrive and for other users.
+  It can't be confirmed on the owner's machine unless they test an online-only OneDrive file.
 - **Needs checking on the owner's machine** with a real online-only file, including what happens when
   a file is downloaded or freed up between scans. Windows is the supported platform; other platforms
   need their own validation.
@@ -465,6 +491,26 @@ folder.
   (the / a / an)** on both sides — otherwise `boatofamillionyears` never matches
   "theboatofamillionyears". Test this rule explicitly.
 - Folder names are low-confidence hints (`Comics/Image/Saga/` → publisher Image, series Saga).
+- **Rules from the owner's real filenames (M0 probe):**
+  - **Download duplicates:** a trailing `(1)` / ` (1)` (a browser's "file already exists" suffix)
+    is stripped when comparing names. The raw name is kept.
+  - **Size and source tags** are treated like quality tags (recorded, ignored when comparing):
+    `optimized` / `opt`, `downsampled`, `high`, `ebook`, `digital`, and a trailing 10-digit
+    number after `_` (a Humble id, which looks like a Unix timestamp; never used as a date).
+  - **A trailing article** (`…breakthroughsthe`, the library-sort form) is moved back to the
+    front, or stripped, like a leading one.
+  - **`V1 17`**: a `vN` followed by another number is a *series volume* plus an *issue*, not a
+    book volume. A lone `v01` is still a book volume.
+  - **Issue files that name their trade:** `Series 012 Vol. 3 Arc Name, May 2, 2006` is issue 12.
+    The `Vol. 3` names the collected edition containing it, which is a *suggested* coverage hint
+    (§12.5), never the file's own volume.
+  - **Issue and volume words:** `_issue1`, `_issue_2`, `issue0`, `freeissue1`, `special_1`,
+    `#14`, `vol04`, `vol1_5`, `book1`, `part2`, `tp`, `S2Vol5` (a season). A year joined to a series
+    name (`series1992_issue5`) is the series' start year (§8).
+  - **Edition words:** `2ndedition`, `fourthedition`, `30thanniversaryedition`, `updatededition`
+    → edition number or note. `deluxeedition`, `completecoloredition`, `omnibusedition` → edition
+    note, and a hint towards a collected edition.
+  - Hyphens or underscores can stand in for spaces (`Series-Name-124`).
 - Output each part with how confident it is, and keep the raw name.
 
 Fixture table to grow (add the owner's samples after M1):
@@ -477,6 +523,20 @@ Fixture table to grow (add the owner's samples after M1):
 | `Berserk v01 (2003).cbz` | series "Berserk", volume 1, year 2003 |
 | `Clean Code - Robert C. Martin.pdf` | title "Clean Code", author "Robert C. Martin" |
 | `saga_vol1_hd.cbz` | series "saga", volume 1, quality HD |
+
+Invented look-alikes of the owner's patterns (M0). The real names stay in `fixtures/private/`:
+
+| Filename | Expected |
+| --- | --- |
+| `starlanterns_vol3_thelongdark.pdf` | series "star lanterns", volume 3, subtitle "the long dark" |
+| `Copperline V2 14.cbr` | series "Copperline", series volume 2, issue 14 |
+| `Copperline 012 Vol. 3 Low Tide, May 2, 2006.cbr` | series "Copperline", issue 12; suggested trade "Vol. 3 Low Tide" |
+| `Copperline #7.pdf` | series "Copperline", issue 7 |
+| `ironharbor1994_issue2.pdf` | series "iron harbor", start year 1994, issue 2 |
+| `quietgardens_vol1_optimized_1400000000.pdf` | series "quiet gardens", volume 1; tags `optimized` and a Humble id |
+| `pythonrecipes_fourthedition.pdf` | title "python recipes", edition 4 |
+| `artofwaitingthe.epub` | title "the art of waiting" |
+| `fieldnotes(1).epub` | title "field notes"; compares equal to `fieldnotes.epub` |
 
 Keep some examples **held out** from tuning, so the match report measures real accuracy. Further real
 filenames from the owner go in `fixtures/private/`, never in this committed table (§5).
@@ -777,7 +837,10 @@ A weighted blend of components, each 0–1, **unknown = neutral** (weights in §
 **Acquired date**, in order of preference: a date the owner entered; else the **file date** (the
 earlier of created and modified — Windows resets the created date when a file is copied, but keeps
 the modified date), labelled "from file date"; else first-seen. If most of a folder shares one
-day's file date (a bulk copy), those dates are treated as unknown. First-seen dates from the first
+day's file date (a bulk copy), those dates are treated as unknown. "Folder" here is the **library
+folder** added in Settings, not each subdirectory: a subdirectory usually holds one bundle
+downloaded on one day, so a shared date there is a real date (M0 probe: 114 of 115 large
+directories). First-seen dates from the first
 scan never count as recent.
 
 **When ratings are missing**, the rating component is neutral, so among unrated items the order comes
@@ -1162,7 +1225,7 @@ use. Keep them in one config module, each with its reason in a comment.
 | Ranking weights | rating 0.35, time fit 0.20, taste 0.15, momentum 0.15, triage 0.10, recency 0.05 | Ratings lead; recency stays a nudge. Adjustable under Tune. |
 | Taste threshold | 10 explicit outcomes (rated, finished, or DNF "Not for me"), counted **after** the series cap, from at least 3 different authors or series | Fewer is mostly noise, and ten books by one author teach one thing, not ten. |
 | Match tie margin | 0.05 | Closer than this, the "winner" is a coin flip. |
-| Recency boost | Acquired within the last 60 days; a folder where over 50% of files share one day's file date is treated as a bulk copy (dates unknown) | New purchases get a look; a bulk copy isn't a purchase date. |
+| Recency boost | Acquired within the last 60 days; a library folder (as added in Settings, not each subdirectory) where over 50% of files share one day's file date is treated as a bulk copy (dates unknown) | New purchases get a look; a bulk copy isn't a purchase date. One bundle downloaded on one day is a real date, not a bulk copy. |
 | Surprise me | Random from the top 50 of Read next, probability ∝ score² | Favours good picks while still surprising. |
 | Worker pool | CPU cores − 1, at most 4 workers; each with a 1 GB JavaScript heap cap, sharp cache off and concurrency 1 | Keeps the PC usable during a deep scan; large PDFs need headroom. The heap cap alone doesn't limit native memory (§6.1). |
 | Taste series cap | A series counts as at most 2 items of evidence | Stops one long series dominating. |
@@ -1194,7 +1257,10 @@ plainly at the start of your message, with what to do and roughly how long it ta
 
 ### Still to confirm (not blocking)
 
-- The M0 probe report: real filenames (including any non-English titles), drive identity, iCloud
+- ~~The M0 probe report~~: done. iCloud placeholders couldn't be tested (no iCloud on the PC).
+  Left over from it: any of the owner's books in OneDrive? What do the drive's 124 `.zip` and 60
+  `.rar` files hold (comics or bundles)? Should a library folder be markable as
+  "also in iCloud" for Ready to read? Original item: real filenames (including any non-English titles), drive identity, iCloud
   placeholder behaviour, how many copies exist across folders.
 - Later on the owner's Windows PC: drive letter changes, download transitions, Open / Show in folder.
 - **Other storage places.** The owner's copies are mainly on the external drive and in iCloud, maybe
