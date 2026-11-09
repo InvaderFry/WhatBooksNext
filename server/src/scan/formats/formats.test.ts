@@ -14,7 +14,7 @@ import { tempDir } from '../../testing/helpers.ts';
 import { comicInfoMetadata, notAComicReason } from './comic.ts';
 import { imageInfo } from './images.ts';
 import { runTask } from './index.ts';
-import { classifyPdf, samplePages } from './pdf.ts';
+import { classifyPdf, pdfReadStats, readPdf, samplePages } from './pdf.ts';
 import { countWords, findIsbns, htmlToText } from './text.ts';
 import { findAll, parseXml, textOf } from './xml.ts';
 import { checkArchiveLimits } from './zip.ts';
@@ -27,8 +27,8 @@ const put = (name: string, data: Buffer) => {
   return p;
 };
 const meta = async (file: string, format: string, ext = format) => {
-  const r = await runTask({ kind: 'meta', file, format, ext });
-  if (r.kind !== 'meta') throw new Error('wrong result');
+  const r = await runTask({ kind: 'read', file, format, ext, wantCover: false });
+  if (r.kind !== 'read') throw new Error('wrong result');
   return r;
 };
 const thumb = async (file: string, format: string) => {
@@ -110,12 +110,29 @@ describe('archive limits', () => {
     ).toThrow(/4 GB/);
   });
 
-  it('reports a real zip bomb as a limit problem', async () => {
+  it('reports a real zip bomb as a limit problem, before inflating it', async () => {
     const bomb = put(
-      'bomb.zip',
-      makeZip([{ name: 'zeros.jpg', data: Buffer.alloc(30 * 1024 * 1024) }]),
+      'bomb.cbz',
+      makeZip([
+        { name: '1.jpg', data: Buffer.alloc(30 * 1024 * 1024) },
+        { name: '2.jpg', data: Buffer.alloc(30 * 1024 * 1024) },
+      ]),
     );
-    await expect(meta(bomb, 'cbz', 'zip')).rejects.toThrow(/100:1/);
+    await expect(meta(bomb, 'cbz')).rejects.toThrow(/100:1/);
+  });
+
+  it('calls a .zip that holds no pages "not a comic" before any size limit, saying what it holds', async () => {
+    const f = put(
+      'audiobook.zip',
+      makeZip([
+        { name: 'part1.mp3', data: Buffer.alloc(30 * 1024 * 1024) },
+        { name: 'part2.mp3', data: Buffer.alloc(30 * 1024 * 1024) },
+        { name: 'cover.jpg', data: makeImage(20, 20) },
+      ]),
+    );
+    expect((await meta(f, 'cbz', 'zip')).meta.notComic).toBe(
+      'It holds only one image; it has 2 .mp3.',
+    );
   });
 });
 
@@ -289,6 +306,26 @@ describe('PDF', () => {
     });
     expect(r.meta.pdfType?.type).toBe('text');
     expect(imageInfo((await thumb(f, 'pdf'))!)?.type).toBe('jpeg');
+  });
+
+  it('reads a comic PDF’s details and cover without reading the whole file', async () => {
+    const { createCanvas } = await import('@napi-rs/canvas');
+    const c = createCanvas(700, 1075);
+    const g = c.getContext('2d');
+    const img = g.createImageData(700, 1075);
+    for (let i = 0; i < img.data.length; i++) img.data[i] = ((i * 2654435761) >>> 24) | 0;
+    g.putImageData(img, 0, 0);
+    const page = { image: c.toBuffer('image/jpeg', 85) }; // noise: a big, honest page image
+    const f = put(
+      'bigcomic.pdf',
+      makePdf({ pages: Array(40).fill(page), width: 700, height: 1075 }),
+    );
+    pdfReadStats.bytes = 0;
+    const r = await readPdf(f, true);
+    expect(r.pdfType?.type).toBe('comic');
+    expect(r.jpeg).toBeTruthy();
+    expect(r.wordCount).toBeNull(); // no text layer: unknown, not zero
+    expect(pdfReadStats.bytes / fs.statSync(f).size).toBeLessThan(0.4);
   });
 
   it('ignores junk titles written by PDF tools', async () => {

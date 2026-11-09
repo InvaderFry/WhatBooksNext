@@ -3,6 +3,7 @@ import path from 'node:path';
 import {
   DEEP_FORMATS,
   ESTIMATE_AFTER_FILES,
+  EXTERNAL_READ_CONCURRENCY,
   FILE_TIME_LIMIT_MS,
   FULL_HASH_CONCURRENCY,
   LARGE_FILE_BYTES,
@@ -202,54 +203,81 @@ export async function runDeepPass(o: DeepPassOptions): Promise<DeepPassResult> {
     large: f.size >= LARGE_FILE_BYTES,
   });
 
-  // ---- Reading: metadata, counts, PDF type, partial hash; then the thumbnail. -----------------
-  report();
-  await eachLimited(toRead, runner.size, cancel, async (f) => {
-    let metaOk = !needs(f, 'meta');
-    if (!metaOk) {
-      const task: Task = { kind: 'meta', file: f.abs, format: f.format, ext: f.ext };
-      try {
+  // ---- Reading: details, counts, PDF type, partial hash and the cover, in one read per file. --
+  const saveCover = (id: string, jpeg: Uint8Array | null) => {
+    if (!coversDir) return;
+    if (jpeg) fs.writeFileSync(coverPath(coversDir, id), jpeg);
+    db.prepare('UPDATE files SET has_thumbnail = ? WHERE id = ?').run(jpeg ? 1 : 0, id);
+    markStage.run('thumb', STAGE_VERSIONS.thumb, id);
+  };
+  const saveFullHash = (id: string, hash: string) => {
+    db.prepare('UPDATE files SET full_hash = ? WHERE id = ?').run(hash, id);
+    markStage.run('full_hash', STAGE_VERSIONS.full_hash, id);
+    hashedEarly.add(id);
+  };
+  const hashedEarly = new Set<string>();
+  const wantsCover = (f: Target) => coversDir !== null && (needs(f, 'thumb') || coverMissing(f));
+
+  const readOne = async (f: Target) => {
+    try {
+      if (needs(f, 'meta')) {
+        // One guard check, then one read for details and cover (§9.5: the check comes
+        // immediately before the read it authorises).
+        const task: Task = {
+          kind: 'read',
+          file: f.abs,
+          format: f.format,
+          ext: f.ext,
+          wantCover: wantsCover(f),
+        };
         const out = await guardedRead(db, platform, runner, f, task, timeLimit(f));
         if (!out.ok) progress.refused++;
-        else if (out.result.kind === 'meta') {
-          writeMeta(db, f.id, out.result.meta, out.result.partialHash);
+        else if (out.result.kind === 'read') {
+          const r = out.result;
+          writeMeta(db, f.id, r.meta, r.partialHash);
           markStage.run('meta', STAGE_VERSIONS.meta, f.id);
           changed.add(f.id);
-          metaOk = !out.result.meta.notComic;
+          if (r.jpeg !== undefined && !r.meta.notComic) saveCover(f.id, r.jpeg);
+          if (r.fullHash) saveFullHash(f.id, r.fullHash);
         }
-      } catch (err) {
-        recordProblem(f.id, err);
-      }
-    }
-    if (metaOk && coversDir && !cancel.cancelled && (needs(f, 'thumb') || coverMissing(f))) {
-      // Re-checked again: the thumbnail is a separate read (§9.5).
-      const task: Task = { kind: 'thumb', file: f.abs, format: f.format };
-      try {
-        const out = await guardedRead(db, platform, runner, f, task, timeLimit(f));
+      } else if (wantsCover(f)) {
+        // Details are known; only the cover is missing (e.g. after a restore).
+        const out = await guardedRead(
+          db,
+          platform,
+          runner,
+          f,
+          { kind: 'thumb', file: f.abs, format: f.format },
+          timeLimit(f),
+        );
         if (!out.ok) progress.refused++;
-        else if (out.result.kind === 'thumb') {
-          if (out.result.jpeg) fs.writeFileSync(coverPath(coversDir, f.id), out.result.jpeg);
-          db.prepare('UPDATE files SET has_thumbnail = ? WHERE id = ?').run(
-            out.result.jpeg ? 1 : 0,
-            f.id,
-          );
-          markStage.run('thumb', STAGE_VERSIONS.thumb, f.id);
-        }
-      } catch (err) {
-        // A cover that can't be drawn isn't a damaged book: no cover, no health entry —
-        // unless the reader timed out or hit a limit, which is worth knowing about.
-        const p = problemFor(err);
-        if (p && p.problem !== 'corrupt') recordProblem(f.id, err);
-        else if (p) {
-          db.prepare('UPDATE files SET has_thumbnail = 0 WHERE id = ?').run(f.id);
-          markStage.run('thumb', STAGE_VERSIONS.thumb, f.id);
-        }
+        else if (out.result.kind === 'thumb') saveCover(f.id, out.result.jpeg);
       }
+    } catch (err) {
+      recordProblem(f.id, err);
     }
     progress.read++;
     progress.bytesRead += f.size;
     report();
-  });
+  };
+
+  report();
+  // External drives one file at a time (they seek); other folders use the whole pool.
+  const external = new Set(
+    db.prepare("SELECT id FROM folders WHERE storage_kind = 'external'").pluck().all() as string[],
+  );
+  await eachLimited(
+    toRead.filter((f) => external.has(f.folder_id)),
+    Math.min(runner.size, EXTERNAL_READ_CONCURRENCY),
+    cancel,
+    readOne,
+  );
+  await eachLimited(
+    toRead.filter((f) => !external.has(f.folder_id)),
+    runner.size,
+    cancel,
+    readOne,
+  );
 
   // ---- Full hashes: last, one file at a time, no time limit but cancellable (§20). -------------
   if (!cancel.cancelled) {
@@ -260,6 +288,12 @@ export async function runDeepPass(o: DeepPassOptions): Promise<DeepPassResult> {
     const stillIn = db.prepare('SELECT excluded FROM files WHERE id = ?').pluck();
     await eachLimited(toHash, FULL_HASH_CONCURRENCY, cancel, async (f) => {
       if (stillIn.get(f.id) === 1) return;
+      if (hashedEarly.has(f.id)) {
+        // Fingerprinted from the reading pass's own read (RAR): nothing more to read.
+        progress.hashed++;
+        progress.bytesHashed += f.size;
+        return;
+      }
       try {
         const out = await guardedRead(
           db,

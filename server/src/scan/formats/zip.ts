@@ -58,7 +58,11 @@ export class ZipReader {
     }));
   }
 
-  static open(file: string): Promise<ZipReader> {
+  /**
+   * Opens a ZIP and reads its central directory. Limits are checked here unless the caller
+   * checks them itself (comic archives first ask whether they're comics at all).
+   */
+  static open(file: string, opts: { checkLimits?: boolean } = {}): Promise<ZipReader> {
     return new Promise((resolve, reject) => {
       // strictFileNames off: real archives contain backslashes; names are never used as paths.
       yauzl.open(
@@ -74,7 +78,7 @@ export class ZipReader {
           zip.on('end', () => {
             const r = new ZipReader(zip, entries);
             try {
-              checkArchiveLimits(r.entries);
+              if (opts.checkLimits !== false) checkArchiveLimits(r.entries);
             } catch (e) {
               zip.close();
               return reject(e);

@@ -144,3 +144,18 @@ export const MIN_SUGGESTION_KEY_LENGTH = 6;
  * a spinning USB drive reads fastest sequentially; one stream also leaves the PC responsive.
  */
 export const FULL_HASH_CONCURRENCY = 1;
+
+/**
+ * PDFs are read in ranges of this size, straight from the file, never whole. pdf.js visits every
+ * page object when it opens a file, one range each, so this sets the cost of opening: 64 KB × a
+ * 200-page comic ≈ 13 MB instead of the whole file. Text pages' content usually fits in one.
+ */
+export const PDF_RANGE_CHUNK = 64 * 1024;
+
+/**
+ * Files read at once from an external drive. The owner's first scan was disk-bound (USB hard
+ * drive 100% busy, CPU about 2%), and several readers at once make a spinning drive seek
+ * between files. Internal drives (usually SSDs) use the whole pool. Assumption, measure on the
+ * owner's drive.
+ */
+export const EXTERNAL_READ_CONCURRENCY = 1;

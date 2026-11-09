@@ -79,7 +79,8 @@ any web page you visit. **Settings → Diagnostics** gives a copyable report. Fo
 left out unless you tick the box.
 
 A file's online-only state is checked again just before it's opened, and just before every read
-during a scan (details, cover and fingerprint each check separately). A few milliseconds remain
+during a scan (details and cover come from one read; the fingerprint, which comes later, is
+checked again). A few milliseconds remain
 between that check and the read, and that gap is accepted.
 
 Text from files (titles, descriptions) is shown as plain text, never as web page code.

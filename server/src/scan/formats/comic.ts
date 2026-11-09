@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import { COMIC_ARCHIVE_IMAGE_SHARE, MAX_RAR_BYTES } from '../../config.ts';
 import { isImageName } from './images.ts';
@@ -14,12 +15,14 @@ import { checkArchiveLimits, LimitError, ZipReader, type ArchiveEntry } from './
 
 interface Archive {
   entries: ArchiveEntry[];
+  /** The full SHA-256, when the whole file was read anyway (RAR): no second pass to hash it. */
+  fullHash?: string;
   read(name: string): Promise<Uint8Array>;
   close(): void;
 }
 
 async function openZip(file: string): Promise<Archive> {
-  const z = await ZipReader.open(file);
+  const z = await ZipReader.open(file, { checkLimits: false });
   return { entries: z.entries, read: (n) => z.read(n), close: () => z.close() };
 }
 
@@ -48,9 +51,9 @@ async function openRar(file: string): Promise<Archive> {
     if (h.flags.encrypted) throw new LimitError('encrypted', 'The archive is password-protected.');
     entries.push({ name: h.name, size: h.unpSize, compressedSize: h.packSize });
   }
-  checkArchiveLimits(entries);
   return {
     entries,
+    fullHash: createHash('sha256').update(data).digest('hex'),
     async read(name) {
       const out = extractor.extract({ files: [name] });
       for (const f of out.files) if (f.extraction) return f.extraction;
@@ -109,10 +112,29 @@ export function pageImages(entries: ArchiveEntry[]): string[] {
 export function notAComicReason(entries: ArchiveEntry[]): string | null {
   const relevant = entries.filter((e) => !SIDECAR.test(e.name));
   const images = pageImages(entries).length;
-  if (images < 2) return `It holds ${images === 0 ? 'no' : 'only one'} image.`;
+  // Say what it does hold, so the owner can tell an audiobook from a comic packed oddly.
+  const holds = describeContents(relevant);
+  if (images < 2)
+    return `It holds ${images === 0 ? 'no' : 'only one'} image${holds ? `; it has ${holds}` : ''}.`;
   if (images / relevant.length < COMIC_ARCHIVE_IMAGE_SHARE)
-    return `Only ${images} of its ${relevant.length} files are images.`;
+    return `Only ${images} of its ${relevant.length} files are images; it has ${holds}.`;
   return null;
+}
+
+/** "12 .mp3, 1 .rar" — the most common file types in an archive. */
+export function describeContents(entries: ArchiveEntry[]): string {
+  const counts = new Map<string, number>();
+  for (const e of entries) {
+    if (isImageName(e.name)) continue;
+    const base = e.name.split(/[\\/]/).pop() ?? e.name;
+    const dot = base.lastIndexOf('.');
+    const ext = dot > 0 ? base.slice(dot).toLowerCase() : 'files without a type';
+    counts.set(ext, (counts.get(ext) ?? 0) + 1);
+  }
+  const top = [...counts].sort((a, b) => b[1] - a[1]);
+  const shown = top.slice(0, 4).map(([ext, n]) => `${n} ${ext}`);
+  if (top.length > 4) shown.push('more');
+  return shown.join(', ');
 }
 
 export function comicInfoMetadata(xml: string): EmbeddedMetadata {
@@ -164,24 +186,56 @@ export function comicInfoMetadata(xml: string): EmbeddedMetadata {
   return m;
 }
 
+/**
+ * Details, and the cover when asked, from one open of the archive. A RAR is read whole anyway,
+ * so its fingerprint comes from that same read.
+ */
 export async function readComic(
   file: string,
   format: string,
   isZipOrRar: boolean,
-): Promise<MetaResult> {
+  wantCover = false,
+): Promise<MetaResult & { jpeg?: Buffer | null; fullHash?: string }> {
   const a = await openComicArchive(file, format);
   if (!a) return { metadata: {}, wordCount: null, pageCount: null };
   try {
+    // "Is it a comic?" comes before the size limits: a 3 GB audiobook zip is not a comic,
+    // which is the more useful thing to say about it.
     const reason = notAComicReason(a.entries);
     if (reason && isZipOrRar)
-      return { metadata: {}, wordCount: null, pageCount: null, notComic: reason };
+      return {
+        metadata: {},
+        wordCount: null,
+        pageCount: null,
+        notComic: reason,
+        fullHash: a.fullHash,
+      };
+    checkArchiveLimits(a.entries);
     const info = a.entries.find((e) => /(^|[\\/])comicinfo\.xml$/i.test(e.name));
     let metadata: EmbeddedMetadata = {};
     if (info) metadata = comicInfoMetadata(Buffer.from(await a.read(info.name)).toString('utf8'));
-    const pages = pageImages(a.entries).length;
-    return { metadata, wordCount: null, pageCount: pages > 0 ? pages : null };
+    const pages = pageImages(a.entries);
+    let jpeg: Buffer | null | undefined;
+    if (wantCover) jpeg = pages[0] ? await coverFrom(a, pages[0]) : null;
+    return {
+      metadata,
+      wordCount: null,
+      pageCount: pages.length > 0 ? pages.length : null,
+      jpeg,
+      fullHash: a.fullHash,
+    };
   } finally {
     a.close();
+  }
+}
+
+/** A cover that can't be drawn is no cover, not a damaged comic; a limit still counts. */
+async function coverFrom(a: Archive, name: string): Promise<Buffer | null> {
+  try {
+    return await thumbnailFromImage(await a.read(name));
+  } catch (err) {
+    if (err instanceof LimitError) throw err;
+    return null;
   }
 }
 
@@ -189,6 +243,7 @@ export async function comicThumbnail(file: string, format: string): Promise<Buff
   const a = await openComicArchive(file, format);
   if (!a) return null;
   try {
+    checkArchiveLimits(a.entries);
     const first = pageImages(a.entries)[0];
     return first ? await thumbnailFromImage(await a.read(first)) : null;
   } finally {

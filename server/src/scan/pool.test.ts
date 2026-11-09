@@ -19,18 +19,27 @@ describe('worker pool', () => {
     fs.writeFileSync(cbz, makeCbz({ pages: 3 }));
     fs.writeFileSync(cbr, makeCbr({ pages: 4 }));
     const [a, b] = await Promise.all([
-      pool.run({ kind: 'meta', file: cbz, format: 'cbz', ext: 'cbz' }, { timeoutMs: 60_000 }),
-      pool.run({ kind: 'meta', file: cbr, format: 'cbr', ext: 'cbr' }, { timeoutMs: 60_000 }),
+      pool.run(
+        { kind: 'read', file: cbz, format: 'cbz', ext: 'cbz', wantCover: false },
+        { timeoutMs: 60_000 },
+      ),
+      pool.run(
+        { kind: 'read', file: cbr, format: 'cbr', ext: 'cbr', wantCover: false },
+        { timeoutMs: 60_000 },
+      ),
     ]);
-    expect(a.kind === 'meta' && a.meta.pageCount).toBe(3);
-    expect(b.kind === 'meta' && b.meta.pageCount).toBe(4);
+    expect(a.kind === 'read' && a.meta.pageCount).toBe(3);
+    expect(b.kind === 'read' && b.meta.pageCount).toBe(4);
   });
 
   it('reports a reader error without losing the worker', async () => {
     const bad = path.join(dir, 'bad.cbz');
     fs.writeFileSync(bad, 'nope');
     await expect(
-      pool.run({ kind: 'meta', file: bad, format: 'cbz', ext: 'cbz' }, { timeoutMs: 60_000 }),
+      pool.run(
+        { kind: 'read', file: bad, format: 'cbz', ext: 'cbz', wantCover: false },
+        { timeoutMs: 60_000 },
+      ),
     ).rejects.toBeInstanceOf(TaskError);
     const r = await pool.run({ kind: 'full_hash', file: bad }, { timeoutMs: null });
     expect(r.kind === 'full_hash' && r.hash).toMatch(/^[0-9a-f]{64}$/);

@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -6,7 +7,7 @@ import { loadLibrary } from '../lib/library.ts';
 import { applyUserPatch } from '../lib/progress.ts';
 import type { FakePlatform } from '../platform/fake.ts';
 import { ATTR_OFFLINE, ATTR_RECALL_ON_DATA_ACCESS } from '../platform/types.ts';
-import { makeCbz, makeEpub, makePdf, makeZip, textLines } from '../testing/fixtures.ts';
+import { makeCbr, makeCbz, makeEpub, makePdf, makeZip, textLines } from '../testing/fixtures.ts';
 import { fakePlatformWithDrives, memoryDb, tempDir, writeFiles } from '../testing/helpers.ts';
 import { addFolder } from './folders.ts';
 import type { Task } from './formats/index.ts';
@@ -160,6 +161,18 @@ describe('deep pass', () => {
     expect(item('sa01.cbz')).toMatchObject({ kind: 'manga', title: 'Starfall Academy #1' });
   });
 
+  it('reads a CBR once, taking its fingerprint from that same read', async () => {
+    writeFiles(drive, { 'Comics/copperline_issue3.cbr': makeCbr({ pages: 4 }) });
+    await addFolder(db, platform, { path: drive });
+    await scan();
+    expect(runner.readsOf('copperline_issue3.cbr')).toEqual(['read']);
+    const bytes = fs.readFileSync(path.join(drive, 'Comics', 'copperline_issue3.cbr'));
+    expect(file('copperline_issue3.cbr')).toMatchObject({
+      full_hash: createHash('sha256').update(bytes).digest('hex'),
+      has_thumbnail: 1,
+    });
+  });
+
   it('drops a .zip that is not a comic from the library and lists it as a problem', async () => {
     writeFiles(drive, {
       'Comics/installer.zip': makeZip([
@@ -184,7 +197,7 @@ describe('deep pass', () => {
     expect(itemOf('broken.epub')).toBeDefined(); // still in the library, by its name
     runner.tasks.length = 0;
     await scan();
-    expect(runner.readsOf('broken.epub')).toEqual(['meta']);
+    expect(runner.readsOf('broken.epub')).toEqual(['read']);
   });
 
   it('skips completed stages on the next scan (resume)', async () => {
@@ -195,7 +208,7 @@ describe('deep pass', () => {
     });
     await addFolder(db, platform, { path: drive });
     await scan();
-    expect(runner.readsOf('a.epub')).toEqual(['meta', 'thumb', 'full_hash']);
+    expect(runner.readsOf('a.epub')).toEqual(['read', 'full_hash']);
     expect(runner.readsOf('c.mobi')).toEqual(['full_hash']); // light formats: hashed only
     runner.tasks.length = 0;
     await scan();
@@ -209,7 +222,7 @@ describe('deep pass', () => {
     );
     await addFolder(db, platform, { path: drive });
     runner.before = (t) => {
-      if (path.basename(t.file) === 'b2.epub' && t.kind === 'thumb') scans.requestCancel();
+      if (path.basename(t.file) === 'b2.epub' && t.kind === 'read') scans.requestCancel();
     };
     const s = await scan();
     expect(s.status).toBe('cancelled');
@@ -220,8 +233,8 @@ describe('deep pass', () => {
     await scan();
     // b1 and b2 were read; only their full hashes and the other three files remain.
     expect(runner.readsOf('b1.epub')).toEqual(['full_hash']);
-    expect(runner.readsOf('b3.epub')).toEqual(['meta', 'thumb', 'full_hash']);
-    expect(first).toBe(4);
+    expect(runner.readsOf('b3.epub')).toEqual(['read', 'full_hash']);
+    expect(first).toBe(2); // b1 and b2, one read each
   });
 
   it('reads a file again after it changes', async () => {
@@ -231,7 +244,7 @@ describe('deep pass', () => {
     writeFiles(drive, { 'a.epub': makeEpub({ title: 'After', chapters: [3000] }) });
     runner.tasks.length = 0;
     await scan();
-    expect(runner.readsOf('a.epub')).toEqual(['meta', 'thumb', 'full_hash']);
+    expect(runner.readsOf('a.epub')).toEqual(['read', 'full_hash']);
     expect(item('a.epub').title).toBe('After');
   });
 });
@@ -249,7 +262,7 @@ describe('scenario 12: placeholder and unknown files never reach a content reade
     await scan();
     expect(runner.readsOf('online.epub')).toEqual([]);
     expect(runner.readsOf('mystery.epub')).toEqual([]);
-    expect(runner.readsOf('local.epub')).toEqual(['meta', 'thumb', 'full_hash']);
+    expect(runner.readsOf('local.epub')).toEqual(['read', 'full_hash']);
   });
 
   it('re-checks each file just before reading: one that went online-only after listing is never read', async () => {
@@ -257,7 +270,7 @@ describe('scenario 12: placeholder and unknown files never reach a content reade
     await addFolder(db, platform, { path: drive });
     // After the listing, while a.epub is being read, b.epub is freed up to the cloud.
     runner.before = (t) => {
-      if (path.basename(t.file) === 'a.epub' && t.kind === 'meta') placeholder(drive, 'b.epub');
+      if (path.basename(t.file) === 'a.epub' && t.kind === 'read') placeholder(drive, 'b.epub');
     };
     await scan();
     expect(runner.readsOf('b.epub')).toEqual([]);
@@ -268,10 +281,11 @@ describe('scenario 12: placeholder and unknown files never reach a content reade
     writeFiles(drive, { 'a.epub': makeEpub({ title: 'A' }) });
     await addFolder(db, platform, { path: drive });
     runner.before = (t) => {
-      if (t.kind === 'thumb') placeholder(drive, 'a.epub');
+      // Freed up while its details are being read: the read already passed its check.
+      if (t.kind === 'read') placeholder(drive, 'a.epub');
     };
     await scan();
-    expect(runner.readsOf('a.epub')).toEqual(['meta', 'thumb']);
+    expect(runner.readsOf('a.epub')).toEqual(['read']);
     expect(file('a.epub')).toMatchObject({ availability: 'placeholder', full_hash: null });
   });
 
@@ -283,7 +297,7 @@ describe('scenario 12: placeholder and unknown files never reach a content reade
     expect(runner.readsOf('later.epub')).toEqual([]);
     platform.attributes.delete(path.join(cloud, 'Books', 'later.epub'));
     await scan();
-    expect(runner.readsOf('later.epub')).toEqual(['meta', 'thumb', 'full_hash']);
+    expect(runner.readsOf('later.epub')).toEqual(['read', 'full_hash']);
   });
 });
 

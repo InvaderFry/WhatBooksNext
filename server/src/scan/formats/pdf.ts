@@ -6,6 +6,7 @@ import {
   COMIC_ASPECT_MAX,
   COMIC_ASPECT_MIN,
   MAX_IMAGE_PIXELS,
+  PDF_RANGE_CHUNK,
   PDF_FULL_PAGE_IMAGE,
   PDF_ISBN_PAGES,
   PDF_TEXT_PAGE_CHARS,
@@ -31,11 +32,47 @@ const loadPdfJs = () => (pdfjsPromise ??= import('pdfjs-dist/legacy/build/pdf.mj
 const pkgDir = path.dirname(createRequire(import.meta.url).resolve('pdfjs-dist/package.json'));
 const dataDir = (name: string) => path.join(pkgDir, name).split(path.sep).join('/') + '/';
 
+/** Bytes the PDF reader fetched from disk in this worker (for the benchmark and tests). */
+export const pdfReadStats = { bytes: 0 };
+
+/**
+ * pdf.js fetches byte ranges as it needs them, read straight from the file. It never loads
+ * the whole PDF: a 300 MB comic gives up its details without being read off the drive in
+ * full, and files over 2 GB (Node's limit for one read) work (owner's first scan: 6 omnibus
+ * PDFs of 2–4 GB failed the old whole-file read).
+ */
 async function openPdf(file: string) {
   const pdfjs = await loadPdfJs();
-  const data = new Uint8Array(fs.readFileSync(file));
+  const fd = fs.openSync(file, 'r');
+  const size = fs.fstatSync(fd).size;
+  if (size === 0) {
+    fs.closeSync(fd);
+    throw new Error('The file is empty (0 bytes).');
+  }
+  const read = (begin: number, end: number) => {
+    const b = Buffer.alloc(Math.max(0, Math.min(end, size) - begin));
+    let done = 0;
+    while (done < b.length) {
+      const n = fs.readSync(fd, b, done, b.length - done, begin + done);
+      if (n === 0) break;
+      done += n;
+    }
+    pdfReadStats.bytes += done;
+    return new Uint8Array(b.buffer, b.byteOffset, done);
+  };
+  class FileRange extends pdfjs.PDFDataRangeTransport {
+    override requestDataRange(begin: number, end: number) {
+      this.onDataRange(begin, read(begin, end));
+    }
+  }
+  // The start of the file up front: the header, and for small files everything.
+  const range = new FileRange(size, read(0, Math.min(size, PDF_RANGE_CHUNK)));
   const task = pdfjs.getDocument({
-    data,
+    range,
+    rangeChunkSize: PDF_RANGE_CHUNK,
+    // Fetch only what is asked for: no background download of the rest of the file.
+    disableAutoFetch: true,
+    disableStream: true,
     // Untrusted input (§6.3): no font loading into the system. (pdf.js 6 no longer evaluates
     // font programs as code, so the old isEvalSupported switch is gone.)
     disableFontFace: true,
@@ -48,10 +85,14 @@ async function openPdf(file: string) {
     cMapPacked: true,
     verbosity: 0,
   });
-  try {
-    return { pdfjs, doc: await task.promise, task };
-  } catch (err) {
+  const close = async () => {
     await task.destroy();
+    fs.closeSync(fd);
+  };
+  try {
+    return { pdfjs, doc: await task.promise, task: { destroy: close } };
+  } catch (err) {
+    await close();
     if ((err as Error).name === 'PasswordException')
       throw new LimitError('encrypted', 'The PDF is password-protected.');
     throw err;
@@ -242,7 +283,10 @@ export function classifyPdf(
   };
 }
 
-export async function readPdf(file: string): Promise<MetaResult> {
+export async function readPdf(
+  file: string,
+  wantCover = false,
+): Promise<MetaResult & { jpeg?: Buffer | null }> {
   const { pdfjs, doc, task } = await openPdf(file);
   try {
     let info: InfoDict = {};
@@ -256,34 +300,64 @@ export async function readPdf(file: string): Promise<MetaResult> {
     }
     const metadata = pdfMetadata(info, xmp);
     const numPages = doc.numPages;
-    const sample = new Set(samplePages(numPages));
-    let words = 0;
-    let isbnText = '';
-    const sampled: { chars: number; images: PageImage[]; aspect: number }[] = [];
-    for (let n = 1; n <= numPages; n++) {
-      const page = await doc.getPage(n);
+    const pageText = async (page: Awaited<ReturnType<PdfDoc['getPage']>>) => {
       const tc = await page.getTextContent();
       let text = '';
       for (const it of tc.items) if ('str' in it) text += it.str + (it.hasEOL ? '\n' : ' ');
-      words += countWords(text);
-      if (n <= PDF_ISBN_PAGES) isbnText += text + '\n';
-      if (sample.has(n)) {
-        const vp = page.getViewport({ scale: 1 });
-        sampled.push({
-          chars: text.replace(/\s+/g, '').length,
-          images: await pageImages(pdfjs, page),
-          aspect: vp.width > 0 ? vp.height / vp.width : 0,
-        });
-      }
+      return text;
+    };
+    // 1. The sampled pages: type, shape, colour and whether there's a text layer at all.
+    const sampleNumbers = samplePages(numPages);
+    const sampled: { chars: number; images: PageImage[]; aspect: number }[] = [];
+    const sampledText = new Map<number, string>();
+    for (const n of sampleNumbers) {
+      const page = await doc.getPage(n);
+      const text = await pageText(page);
+      sampledText.set(n, text);
+      const vp = page.getViewport({ scale: 1 });
+      sampled.push({
+        chars: text.replace(/\s+/g, '').length,
+        images: await pageImages(pdfjs, page),
+        aspect: vp.width > 0 ? vp.height / vp.width : 0,
+      });
       page.cleanup();
+    }
+    const pdfType = classifyPdf(sampled);
+    // 2. Every page's text — but only if the samples found any. Extracting a page's text makes
+    // pdf.js fetch its images too, so for a comic or an un-OCR'd scan this would read the whole
+    // file off the drive to count no words. Its word count is then unknown, not zero.
+    const hasTextLayer = sampled.some((p) => p.chars >= PDF_TEXT_PAGE_CHARS);
+    let words = 0;
+    let isbnText = '';
+    if (hasTextLayer) {
+      for (let n = 1; n <= numPages; n++) {
+        let text = sampledText.get(n);
+        if (text === undefined) {
+          const page = await doc.getPage(n);
+          text = await pageText(page);
+          page.cleanup();
+        }
+        words += countWords(text);
+        if (n <= PDF_ISBN_PAGES) isbnText += text + '\n';
+      }
     }
     const isbns = findIsbns(isbnText);
     if (isbns.length) metadata.isbnCandidates = isbns.slice(0, 20);
+    // The cover from the same open document: no second pass over the file.
+    let jpeg: Buffer | null | undefined;
+    if (wantCover) {
+      try {
+        jpeg = await renderFirstPage(doc);
+      } catch {
+        jpeg = null; // a page that can't be drawn is no cover, not a damaged book
+      }
+    }
     return {
       metadata,
       wordCount: words > 0 ? words : null,
       pageCount: numPages,
-      pdfType: classifyPdf(sampled),
+      pdfType,
+      jpeg,
     };
   } finally {
     await task.destroy();
@@ -293,24 +367,26 @@ export async function readPdf(file: string): Promise<MetaResult> {
 export async function pdfThumbnail(file: string): Promise<Buffer | null> {
   const { doc, task } = await openPdf(file);
   try {
-    if (doc.numPages < 1) return null;
-    const page = await doc.getPage(1);
-    const vp1 = page.getViewport({ scale: 1 });
-    const scale = THUMBNAIL_MAX_SIDE / Math.max(vp1.width, vp1.height, 1);
-    const vp = page.getViewport({ scale });
-    const canvas = createCanvas(
-      Math.max(1, Math.ceil(vp.width)),
-      Math.max(1, Math.ceil(vp.height)),
-    );
-    const ctx = canvas.getContext('2d');
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    // @napi-rs/canvas stands in for the browser canvas pdf.js's types describe.
-    await page.render({ canvas: canvas as never, canvasContext: ctx as never, viewport: vp })
-      .promise;
-    page.cleanup();
-    return canvas.toBuffer('image/jpeg', THUMBNAIL_QUALITY);
+    return await renderFirstPage(doc);
   } finally {
     await task.destroy();
   }
+}
+
+type PdfDoc = Awaited<ReturnType<typeof openPdf>>['doc'];
+
+async function renderFirstPage(doc: PdfDoc): Promise<Buffer | null> {
+  if (doc.numPages < 1) return null;
+  const page = await doc.getPage(1);
+  const vp1 = page.getViewport({ scale: 1 });
+  const scale = THUMBNAIL_MAX_SIDE / Math.max(vp1.width, vp1.height, 1);
+  const vp = page.getViewport({ scale });
+  const canvas = createCanvas(Math.max(1, Math.ceil(vp.width)), Math.max(1, Math.ceil(vp.height)));
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  // @napi-rs/canvas stands in for the browser canvas pdf.js's types describe.
+  await page.render({ canvas: canvas as never, canvasContext: ctx as never, viewport: vp }).promise;
+  page.cleanup();
+  return canvas.toBuffer('image/jpeg', THUMBNAIL_QUALITY);
 }
