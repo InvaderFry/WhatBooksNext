@@ -76,11 +76,12 @@ const PROSE_FORMAT_RANK: Record<string, number> = {
   cbr: 5,
   cb7: 6,
 };
+/** Comics open as PDF first, then CBZ: the owner's choice after M3 (the plan said CBZ first). */
 const COMIC_FORMAT_RANK: Record<string, number> = {
-  cbz: 0,
-  cbr: 1,
-  cb7: 2,
-  pdf: 3,
+  pdf: 0,
+  cbz: 1,
+  cbr: 2,
+  cb7: 3,
   epub: 4,
   mobi: 5,
   azw3: 6,
@@ -89,6 +90,7 @@ const COMIC_FORMAT_RANK: Record<string, number> = {
 /**
  * Primary file (what Open uses and whose length counts, §11.3): a present file before a
  * placeholder before a missing one; then EPUB for prose, the HD version for comics, then other
+ * (for comics: PDF, then CBZ, as the owner chose)
  * formats. Ties break on the shortest path so the choice is stable.
  */
 export function choosePrimary(files: FileFacts[], kind: string | null): FileFacts | undefined {
@@ -145,19 +147,26 @@ export function filesOfItem(db: DB, itemId: string): FileFacts[] {
     .all(itemId) as FileFacts[];
 }
 
-export function refreshPrimary(db: DB, itemId: string): void {
+/** Re-chooses the item's primary file. Returns true when it changed. */
+export function refreshPrimary(db: DB, itemId: string): boolean {
   const item = db.prepare('SELECT kind FROM items WHERE id = ?').get(itemId) as
     { kind: string | null } | undefined;
-  if (!item) return;
+  if (!item) return false;
   const primary = choosePrimary(filesOfItem(db, itemId), item.kind);
+  const before = db
+    .prepare('SELECT file_id FROM item_files WHERE item_id = ? AND is_primary = 1')
+    .pluck()
+    .get(itemId) as string | undefined;
   db.prepare(
     'UPDATE item_files SET is_primary = CASE WHEN file_id = ? THEN 1 ELSE 0 END WHERE item_id = ?',
   ).run(primary?.id ?? null, itemId);
+  return (before ?? null) !== (primary?.id ?? null);
 }
 
-export function refreshAllPrimaries(db: DB): void {
+/** Re-chooses every item's primary file; returns the items whose primary changed. */
+export function refreshAllPrimaries(db: DB): string[] {
   const ids = db.prepare('SELECT id FROM items').pluck().all() as string[];
-  for (const id of ids) refreshPrimary(db, id);
+  return ids.filter((id) => refreshPrimary(db, id));
 }
 
 /** Does the owner have anything recorded on this item? (Then it is never silently deleted.) */
@@ -301,10 +310,12 @@ export function refreshItemFacts(db: DB, fileIds: string[]): number {
 }
 
 export function refreshFactsOfItems(db: DB, itemIds: string[]): number {
-  const primary = db.prepare(
+  // Every file of the item, the primary first. Facts come from the primary unless another copy
+  // knows more: a comic opens as PDF (the owner's choice) but its CBZ copy may carry ComicInfo.
+  const filesOf = db.prepare(
     `SELECT f.name, f.format, f.parsed, f.metadata, f.pdf_type, u.pdf_type_override
      FROM item_files x JOIN files f ON f.id = x.file_id LEFT JOIN file_user u ON u.file_id = f.id
-     WHERE x.item_id = ? AND x.is_primary = 1`,
+     WHERE x.item_id = ? ORDER BY x.is_primary DESC, f.rel_path`,
   );
   const current = db.prepare('SELECT kind, kind_source FROM items WHERE id = ?');
   const update = db.prepare(
@@ -318,10 +329,12 @@ export function refreshFactsOfItems(db: DB, itemIds: string[]): number {
   let changed = 0;
   const now = nowIso();
   for (const id of itemIds) {
-    const p = primary.get(id) as PrimaryRow | undefined;
+    const rows = filesOf.all(id) as PrimaryRow[];
     const cur = current.get(id) as { kind: string | null; kind_source: string | null } | undefined;
-    if (!p || !cur) continue;
-    const f = factsFromPrimary(p);
+    if (rows.length === 0 || !cur) continue;
+    const all = rows.map(factsFromPrimary);
+    const f = all.find((x) => x.titleSource === 'embedded') ?? all[0]!;
+    if (!f.creators.length) f.creators = all.find((x) => x.creators.length)?.creators ?? [];
     // When the file says nothing about its kind, a kind guessed from online sources (M3) is
     // kept. When the file does say (a comic archive, ComicInfo manga), the file wins.
     const keepKind =

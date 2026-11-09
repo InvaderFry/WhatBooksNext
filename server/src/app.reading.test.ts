@@ -6,7 +6,7 @@ import { createApp } from './app.ts';
 import type { DB } from './db/database.ts';
 import { createBackup } from './lib/backup.ts';
 import type { Fetcher } from './sources/types.ts';
-import { makeEpub } from './testing/fixtures.ts';
+import { makeCbz, makeEpub, makeImage, makePdf } from './testing/fixtures.ts';
 import { fakePlatformWithDrives, memoryDb, tempDir, writeFiles } from './testing/helpers.ts';
 
 /** Routes added with lookups and recommendations (M3), against recorded source responses. */
@@ -297,6 +297,38 @@ describe('Needs review: identities (§11.4)', () => {
     ).body;
     expect(done.done).toBe(2);
     expect(itemIdOf('fieldnotes.epub')).toBe(itemIdOf('fieldnotes.pdf'));
+  });
+});
+
+describe('which file a book opens with', () => {
+  it('opens books as EPUB, and comics as PDF before CBZ while keeping the CBZ’s details', async () => {
+    await addAndScan({
+      'Comics/tidecaller_vol1.cbz': makeCbz({
+        pages: 6,
+        comicInfo: { Series: 'Tidecaller', Number: '1', Writer: 'Jun Arden' },
+      }),
+      'Comics/tidecaller_vol1.pdf': makePdf({
+        pages: Array.from({ length: 6 }, () => ({ image: makeImage(400, 615, 'jpeg', '#357') })),
+        width: 400,
+        height: 615,
+      }),
+      'Books/quietshore.epub': makeEpub({ title: 'Quiet Shore', chapters: [600] }),
+      'Books/quietshore.pdf': 20_000,
+    });
+    const primary = (name: string) =>
+      db
+        .prepare(
+          `SELECT f.format FROM item_files x JOIN files f ON f.id = x.file_id
+           WHERE x.item_id = ? AND x.is_primary = 1`,
+        )
+        .pluck()
+        .get(itemIdOf(name));
+    expect(itemIdOf('tidecaller_vol1.cbz')).toBe(itemIdOf('tidecaller_vol1.pdf'));
+    expect(primary('tidecaller_vol1.cbz')).toBe('pdf');
+    expect(primary('quietshore.epub')).toBe('epub');
+    const comic = (await api.get(`/api/items/${itemIdOf('tidecaller_vol1.cbz')}`)).body;
+    expect(comic.title).toBe('Tidecaller #1');
+    expect(comic.creators[0].name).toBe('Jun Arden');
   });
 });
 

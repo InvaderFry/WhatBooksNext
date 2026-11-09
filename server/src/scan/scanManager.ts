@@ -180,9 +180,10 @@ export class ScanManager {
       const identity = this.db.transaction(() => {
         const r = reconcileIdentity(this.db, changed);
         groupUnassignedFiles(this.db);
-        refreshAllPrimaries(this.db);
+        // A changed primary (new rules, a file gone) brings its item's facts and cover with it.
+        const newPrimary = refreshAllPrimaries(this.db);
         const itemOf = this.db.prepare('SELECT item_id FROM item_files WHERE file_id = ?').pluck();
-        const items = new Set(r.touchedItems);
+        const items = new Set([...r.touchedItems, ...newPrimary]);
         for (const f of [...changed, ...reparsed]) {
           const i = itemOf.get(f) as string | undefined;
           if (i) items.add(i);
