@@ -271,7 +271,7 @@ function parseSlug(base: string, r: Partial<ParsedName>, tags: string[]) {
         continue;
       }
     }
-    if ((m = /^special$/.exec(s)) && segs[i + 1] && /^\d+$/.test(segs[i + 1]!)) {
+    if (s === 'special' && segs[i + 1] && /^\d+$/.test(segs[i + 1]!)) {
       r.issue = { value: `Special ${segs[++i]}`, confidence: 0.7 };
       markerIndex = markerIndex < 0 ? i : markerIndex;
       continue;

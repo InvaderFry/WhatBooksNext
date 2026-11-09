@@ -24,18 +24,27 @@ export interface FileFacts {
 
 const COMIC_FORMATS = new Set(['cbz', 'cbr', 'cb7']);
 
-/** Display title from the filename parse. All-lowercase slugs get title case for display only. */
+/** Display title from the filename parse. Lowercase slug text gets title case for display only. */
 export function displayTitle(p: ParsedName): string {
+  const tc = (t: string) => (t === t.toLowerCase() ? titleCase(t) : t);
+  const series = p.series ? tc(p.series.value) : undefined;
+  const subtitle = p.subtitle ? tc(p.subtitle.value) : undefined;
   let t: string;
-  const series = p.series?.value;
   if (series && p.issue) {
-    t = `${series}${p.seriesVolume && !p.seriesVolume.value.startsWith('season') ? ` v${p.seriesVolume.value}` : ''} #${p.issue.value}`;
+    const sv = p.seriesVolume && !p.seriesVolume.value.startsWith('season') ? ` v${p.seriesVolume.value}` : '';
+    t = `${series}${sv} #${p.issue.value}`;
   } else if (series && p.volume) {
-    t = `${series} Vol. ${p.volume.value}${p.subtitle ? `: ${p.subtitle.value}` : ''}`;
+    t = `${series} Vol. ${p.volume.value}${subtitle ? `: ${subtitle}` : ''}`;
   } else {
-    t = p.title.value + (p.subtitle && !series ? `: ${p.subtitle.value}` : '');
+    t = tc(p.title.value) + (subtitle && !series ? `: ${subtitle}` : '');
   }
-  return t === t.toLowerCase() ? titleCase(t) : t;
+  if (p.editionNumber) t += ` (${ordinal(p.editionNumber)} edition)`;
+  return t;
+}
+
+function ordinal(n: number): string {
+  const s = n % 100 >= 11 && n % 100 <= 13 ? 'th' : (['th', 'st', 'nd', 'rd'][n % 10] ?? 'th');
+  return `${n}${s}`;
 }
 
 /**

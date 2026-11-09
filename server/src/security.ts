@@ -30,7 +30,10 @@ export function requestGuard(opts: { port: number; devPorts?: number[] }) {
         res.status(403).json({ error: 'Request refused: it came from another website.' });
         return;
       }
-      if (!req.is('application/json')) {
+      // Check the declared type itself (req.is() ignores it when there is no body, e.g. DELETE):
+      // a cross-site request can only set application/json after a preflight we never answer.
+      const type = (req.headers['content-type'] ?? '').split(';')[0]!.trim().toLowerCase();
+      if (type !== 'application/json') {
         res.status(415).json({ error: 'Requests that change data must be sent as JSON.' });
         return;
       }
