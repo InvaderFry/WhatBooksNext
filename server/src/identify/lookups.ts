@@ -498,11 +498,61 @@ export function itemsNeedingLookup(db: DB, sources: Sources, refresh = false): s
 }
 
 /** Looks one item up in every source for its kind. Returns each source's outcome. */
+/**
+ * Looks one item up in every source for it. What a lookup finds can change the item's guessed
+ * kind (a "book" whose subjects say graphic novel becomes a comic), and the kind changes how it
+ * is searched (series + volume number) and which sources apply (manga adds AniList). So when the
+ * search changed, the item is looked up again at once — at most MAX_PASSES times — and then
+ * marked settled with its current search, so it can never come back run after run. (Seen on the
+ * owner's PC: 131, then 76, books "not looked up" after runs with no failures.)
+ */
+const MAX_PASSES = 2;
+
 export async function lookUpItem(
   db: DB,
   sources: Sources,
   itemId: string,
   opts: { refresh?: boolean } = {},
+): Promise<{ source: SourceName; outcome: string; error?: string }[]> {
+  let results: { source: SourceName; outcome: string; error?: string }[] = [];
+  for (let pass = 0; pass < MAX_PASSES; pass++) {
+    results = await lookUpOnce(db, sources, itemId, opts);
+    if (results.some((r) => r.outcome === 'failed')) return results;
+    if (!searchChanged(db, sources, itemId)) return results;
+  }
+  // Still changing: settle on the current search, so the next run doesn't ask again.
+  const facts = matchFactsFor(db, itemId);
+  if (facts) {
+    const qKey = JSON.stringify(buildQuery(facts));
+    const now = nowIso();
+    for (const s of sources.forItem(facts.kind, facts.issue ?? null))
+      db.prepare(
+        `INSERT INTO lookup_state (item_id, source, version, query, looked_up_at, outcome, error)
+         VALUES (?, ?, ?, ?, ?, 'none', NULL)
+         ON CONFLICT (item_id, source) DO UPDATE SET version = excluded.version,
+           query = excluded.query`,
+      ).run(itemId, s.name, MATCH_VERSION, qKey, now);
+  }
+  return results;
+}
+
+/** Would the item be searched differently now, or by a source not asked yet? */
+function searchChanged(db: DB, sources: Sources, itemId: string): boolean {
+  const facts = matchFactsFor(db, itemId);
+  if (!facts) return false;
+  const qKey = JSON.stringify(buildQuery(facts));
+  const state = db.prepare('SELECT query FROM lookup_state WHERE item_id = ? AND source = ?');
+  return sources.forItem(facts.kind, facts.issue ?? null).some((s) => {
+    const st = state.get(itemId, s.name) as { query: string } | undefined;
+    return !st || st.query !== qKey;
+  });
+}
+
+async function lookUpOnce(
+  db: DB,
+  sources: Sources,
+  itemId: string,
+  opts: { refresh?: boolean },
 ): Promise<{ source: SourceName; outcome: string; error?: string }[]> {
   const facts = matchFactsFor(db, itemId);
   if (!facts) return [];

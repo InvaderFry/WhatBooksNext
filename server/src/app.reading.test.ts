@@ -170,6 +170,26 @@ describe('lookups', () => {
     expect(online.candidates.every((c: { source: string }) => c.source !== 'hardcover')).toBe(true);
   });
 
+  it('settles a book whose kind changes once it is looked up, in the same run', async () => {
+    // Found as a book, its subjects say graphic novel: now a comic, searched by series + volume.
+    const answer = JSON.stringify({
+      docs: [
+        {
+          key: '/works/OL77W',
+          title: 'Harbor Giants, Vol. 2',
+          author_name: ['Rin Okabe'],
+          subject: ['Graphic novels', 'Comics & graphic novels'],
+        },
+      ],
+    });
+    olByTitle['harbor giants vol. 2'] = answer;
+    olByTitle['harbor giants 2'] = answer;
+    await addAndScan({ 'harborgiants_vol2.epub': makeEpub({ chapters: [600] }) });
+    const id = itemIdOf('harborgiants_vol2.epub');
+    expect((await api.get(`/api/items/${id}`)).body.kind).toBe('comic');
+    expect((await api.get('/api/lookups')).body.pending).toBe(0);
+  });
+
   it('leaves a book unidentified, with neutral scores, when nothing matches', async () => {
     await addAndScan({
       'unknownbook.epub': makeEpub({ title: 'Nothing Like It', chapters: [900] }),
