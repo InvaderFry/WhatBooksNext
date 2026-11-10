@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, EFFORT_LABELS, formatRange, type Candidate, type ItemOnline } from '../api.ts';
 import { Notice } from '../components.tsx';
 import { CandidateRow } from './Review.tsx';
@@ -21,7 +21,7 @@ export function OnlineCard({ itemId, onChanged }: { itemId: string; onChanged: (
   const [data, setData] = useState<ItemOnline | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [showMatches, setShowMatches] = useState(false);
+  const matchesRef = useRef<HTMLDetailsElement>(null);
   const [query, setQuery] = useState<string | null>(null);
   const [results, setResults] = useState<Candidate[] | null>(null);
 
@@ -77,11 +77,17 @@ export function OnlineCard({ itemId, onChanged }: { itemId: string; onChanged: (
         <dt>Community rating</dt>
         <dd>
           {c
-            ? `${c.raw}/${c.scale}${c.votes !== null ? ` from ${c.votes.toLocaleString()} ratings` : ' · number of ratings unknown'} on ${data.sources.find((s) => s.source === c.source)?.sourceLabel ?? c.source}${c.scope === 'series' ? ' — for the whole series' : ''}${c.highlyRated ? ' · highly rated there' : ''}`
+            ? `${c.raw.toFixed(c.scale >= 100 ? 0 : 1)}/${c.scale}${c.votes !== null ? ` from ${c.votes.toLocaleString()} ratings` : ' · number of ratings unknown'} on ${data.sources.find((s) => s.source === c.source)?.sourceLabel ?? c.source}${c.scope === 'series' ? ' — for the whole series' : ''}${c.highlyRated ? ' · highly rated there' : ''}`
             : 'Unknown'}
           {c?.label && <div className="muted small">{c.label}</div>}
           {c?.match === 'provisional' && (
-            <a href="#possible-matches" onClick={() => setShowMatches(true)}>
+            <a
+              href="#possible-matches"
+              onClick={() => {
+                // Open it imperatively, so the link works again after the list was collapsed.
+                if (matchesRef.current) matchesRef.current.open = true;
+              }}
+            >
               Check and confirm this match
             </a>
           )}
@@ -151,7 +157,7 @@ export function OnlineCard({ itemId, onChanged }: { itemId: string; onChanged: (
       )}
 
       {data.candidates.length > 0 && (
-        <details id="possible-matches" open={showMatches || data.identity === 'tie'}>
+        <details ref={matchesRef} id="possible-matches" open={data.identity === 'tie'}>
           <summary>Possible matches ({data.candidates.length})</summary>
           <ul className="plain candidates">
             {data.candidates.map((x) => (

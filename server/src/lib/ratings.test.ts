@@ -164,9 +164,34 @@ describe('rating selection, Stage 1', () => {
     expect(runMode('hidden_gems', [manga], situation(), page).cards).toEqual([]);
   });
 
-  it('shows the source’s raw value and scale without rounding or inventing a five-star scale', () => {
+  it('shows the source’s own scale, rounded for reading, without inventing a five-star scale', () => {
     const i = item({ community: select([rating({ value: 9.125, scale: 10 })]).chosen });
-    expect(buildCard(i, [i], situation()).reasons.join(' ')).toContain('Rated 9.125/10');
+    expect(buildCard(i, [i], situation()).reasons.join(' ')).toContain('Rated 9.1/10');
+    const ol = item({ community: select([rating({ value: 4.199519, count: 300 })]).chosen });
+    expect(buildCard(ol, [ol], situation()).reasons.join(' ')).toContain('Rated 4.2/5');
+    const al = item({
+      series: series('invented-series', 1),
+      community: select([rating({ value: 87.6, scale: 100, scope: 'series', count: 300 })], true)
+        .chosen,
+    });
+    expect(buildCard(al, [al], situation()).reasons.join(' ')).toContain('Series rated 88/100');
+  });
+
+  it('gives a series rating one note on the card, not two', () => {
+    const trusted = item({
+      series: series('invented-series', 1),
+      community: select(
+        [
+          rating({ scope: 'series', count: 300 }),
+          rating({ source: 'hardcover', sourceId: 'hc-1', count: 3 }),
+        ],
+        true,
+      ).chosen,
+    });
+    const limits = buildCard(trusted, [trusted], situation()).limitations;
+    expect(limits.filter((l) => /whole series/i.test(l))).toEqual([
+      'whole series; this volume has few ratings',
+    ]);
   });
 
   it('leaves invalid and ineligible ratings unknown and neutral, and a personal rating still overrides', () => {

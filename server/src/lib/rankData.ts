@@ -63,6 +63,8 @@ export interface RankData {
   stats: RatingStats;
   details: Map<string, ItemDetails>;
   ratings: Map<string, RatingSelection>;
+  /** Every stored rating with its own match status, for the before/after report. */
+  evidence: Map<string, RatedFrom[]>;
   /** Everything the library view has, by id (for detail views). */
   library: Map<string, ItemSummary>;
   used: Map<string, MatchRow[]>;
@@ -258,6 +260,7 @@ export function loadRankData(db: DB, reach: FolderReachability): RankData {
     stats,
     details,
     ratings,
+    evidence,
     library: new Map(items.map((i) => [i.id, i])),
     used,
     arrivals,

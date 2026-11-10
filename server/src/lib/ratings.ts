@@ -49,6 +49,14 @@ export type RatingStats = Map<SourceName, SourceStats>;
 
 export const PREFERENCE: SourceName[] = ['hardcover', 'anilist', 'openlibrary', 'demo'];
 
+/**
+ * A source's own value on its own scale, rounded for reading: whole numbers on 100-point scales,
+ * one decimal otherwise ("4.2/5", "9.1/10", "88/100"). Never rescaled or shrunk.
+ */
+export function displayRaw(raw: number, scale: number): string {
+  return `${raw.toFixed(scale >= 100 ? 0 : 1)}/${scale}`;
+}
+
 export const normalise = (r: SourceRating): number => (r.value / r.scale) * 100;
 
 function median(xs: number[]): number {
@@ -235,9 +243,11 @@ export function communityRating(
   const fewVotes =
     pick.count !== null && pick.count >= HIDDEN_GEM_MIN_VOTES && pick.count <= (s?.fewVotes ?? -1);
   const trustedOthers = others.filter((r) => r.match !== 'provisional' && r.count !== null);
-  const fewElsewhere =
-    trustedOthers.some((r) => r.source !== pick.source) &&
-    trustedOthers.every((r) => r.count! <= (stats.get(r.source)?.fewVotes ?? -1));
+  // Every other trusted count is few for its own source: unknown counts make no claim.
+  const fewEverywhere = trustedOthers.every(
+    (r) => r.count! <= (stats.get(r.source)?.fewVotes ?? -1),
+  );
+  const fewElsewhere = fewEverywhere && trustedOthers.some((r) => r.source !== pick.source);
   const highlyRated = score >= (s?.highlyRated ?? HIGHLY_RATED_FALLBACK);
   const label =
     tier === 5
@@ -273,7 +283,7 @@ export function communityRating(
         fewVotes &&
         pick.scope !== 'series' &&
         pick.match !== 'provisional' &&
-        trustedOthers.every((r) => r.count! <= (stats.get(r.source)?.fewVotes ?? -1)),
+        fewEverywhere,
     },
     others,
     excluded,
