@@ -1,6 +1,6 @@
 # Online ratings, best details and automatic refreshes
 
-Status: Stage 1 implemented; stages 2–4 remain planned. Researched 2026-11-10 and revised the
+Status: Stages 1–2 implemented; stages 3–4 remain planned. Researched 2026-11-10 and revised the
 same day: against `main` after M6, to drop Google Books (see the end), and after two independent
 reviews whose corrections are folded in.
 

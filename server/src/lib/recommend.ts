@@ -32,6 +32,9 @@ import {
 export interface RankItem {
   id: string;
   title: string;
+  /** Display choices are separate so taste and topic inputs stay unchanged. */
+  displayTitle?: string;
+  displayCreators?: { name: string; role?: string }[];
   kind: string | null;
   isReference: boolean;
   creators: { name: string; role?: string }[];
@@ -552,9 +555,9 @@ export function buildCard(i: RankItem, all: RankItem[], s: Situation): Card {
 
   return {
     id: i.id,
-    title: i.title,
+    title: i.displayTitle ?? i.title,
     kind: i.kind,
-    creators: i.creators,
+    creators: i.displayCreators ?? i.creators,
     coverFileId: i.coverFileId,
     formats: i.formats,
     availability: i.availability,
@@ -595,9 +598,16 @@ function moodReason(i: RankItem, mood: Mood): string {
  * SAME_AUTHOR_PENALTY for every card already placed that shares an author. The score itself is
  * unchanged (it's what the reasons explain); only the order moves.
  */
-export function diversify(sorted: Card[]): Card[] {
+export function diversify(
+  sorted: Card[],
+  creatorsOf: (c: Card) => RankItem['creators'] = (c) => c.creators,
+): Card[] {
   const authorsOf = (c: Card) =>
-    new Set(c.creators.map((x) => x.name.toLowerCase().replace(/[^\p{L}]+/gu, '')).filter(Boolean));
+    new Set(
+      creatorsOf(c)
+        .map((x) => x.name.toLowerCase().replace(/[^\p{L}]+/gu, ''))
+        .filter(Boolean),
+    );
   const seen = new Map<string, number>();
   const left = [...sorted];
   const out: Card[] = [];

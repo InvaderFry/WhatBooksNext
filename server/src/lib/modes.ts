@@ -210,7 +210,9 @@ function blended(all: RankItem[], s: Situation, o: ModeOptions): ModeResult {
       .sort(byScore)
       .slice(0, o.limit);
   }
-  main = diversify(main.sort(byScore));
+  // Display bylines can change independently; author variety keeps the original ranking input.
+  const byId = new Map(p.items.map((i) => [i.id, i]));
+  main = diversify(main.sort(byScore), (c) => byId.get(c.id)!.creators);
   return {
     cards: paged(main, o),
     mightFit,

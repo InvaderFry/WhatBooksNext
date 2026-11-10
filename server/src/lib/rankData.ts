@@ -20,6 +20,7 @@ import {
   type RatingSelection,
 } from './ratings.ts';
 import { ratingEvidence } from './ratingEvidence.ts';
+import type { ItemDetails } from './details.ts';
 import { holdingOf, type RankItem } from './recommend.ts';
 import { loadCoverage, viaStates } from './coverage.ts';
 import { positionLabel, type Coverage } from './series.ts';
@@ -61,6 +62,7 @@ interface ItemFactRow {
 export interface RankData {
   items: RankItem[];
   stats: RatingStats;
+  details: Map<string, ItemDetails>;
   ratings: Map<string, RatingSelection>;
   /** Every stored rating with its own match status, for the before/after report. */
   evidence: Map<string, RatedFrom[]>;
@@ -96,7 +98,7 @@ function bulkCopyFolders(db: DB): Set<string> {
 }
 
 export function loadRankData(db: DB, reach: FolderReachability): RankData {
-  const { items, folders } = loadLibrary(db, reach);
+  const { items, folders, details, rankingFacts } = loadLibrary(db, reach);
   const facts = new Map(
     (
       db
@@ -160,7 +162,18 @@ export function loadRankData(db: DB, reach: FolderReachability): RankData {
     const selection = communityRating(evidence.get(i.id) ?? [], stats, !!f?.series_id);
     ratings.set(i.id, selection);
     const pdfType = f?.pdf_override ?? f?.pdf_type ?? null;
-    const sourcePages = u.find((m) => m.record.pages)?.record;
+    const chosenDetails = details.get(i.id)!;
+    // Source pages for the length: the chosen trusted page count (so the shown pages and the
+    // estimate agree), else any used match's as before, provisional included, so no book loses
+    // a length it had.
+    const chosenPages = chosenDetails.pages?.measured ? null : chosenDetails.pages;
+    const fallbackPages = u.find((m) => m.record.pages)?.record;
+    const sourcePages = chosenPages
+      ? { pages: chosenPages.value, label: chosenPages.label }
+      : fallbackPages
+        ? { pages: fallbackPages.pages!, label: SOURCE_LABELS[fallbackPages.source] }
+        : null;
+    const ranking = rankingFacts.get(i.id)!;
     const dates = fileDates.get(i.id) ?? [];
     const realDates = dates.filter((d) => !bulk.has(d.folderId));
     let acquired: RankItem['acquired'];
@@ -185,12 +198,14 @@ export function loadRankData(db: DB, reach: FolderReachability): RankData {
 
     return {
       id: i.id,
-      title: i.title,
+      title: ranking.title,
+      displayTitle: i.title,
+      displayCreators: i.creators,
       kind: i.kind,
       isReference: i.isReference,
       subjects,
       publisher: md?.comic?.publisher ?? md?.publisher ?? null,
-      creators: i.creators,
+      creators: ranking.creators,
       coverFileId: i.coverFileId,
       formats: i.formats,
       availability: i.availability,
@@ -236,12 +251,12 @@ export function loadRankData(db: DB, reach: FolderReachability): RankData {
           pages: f?.pages ?? f?.any_pages ?? null,
           pdfType,
           sourcePages: sourcePages?.pages ?? null,
-          sourceName: sourcePages ? SOURCE_LABELS[sourcePages.source] : null,
+          sourceName: sourcePages?.label ?? null,
         },
         unitFor(i.kind, f?.volume_label ?? null, f?.issue_label ?? null),
       ),
       community: selection.chosen,
-      firstPublishYear: f?.publication_year ?? null,
+      firstPublishYear: chosenDetails.firstPublishYear?.value ?? null,
       acquired,
       effort: i.user.effortOverride ?? estimateEffort(i.kind, i.isReference),
     };
@@ -253,6 +268,7 @@ export function loadRankData(db: DB, reach: FolderReachability): RankData {
   return {
     items: rankItems,
     stats,
+    details,
     ratings,
     evidence,
     library: new Map(items.map((i) => [i.id, i])),
@@ -291,7 +307,7 @@ export function attachCoverage(db: DB, items: RankItem[]): void {
     const c: Coverage = {
       id: r.id,
       itemId: r.item_id,
-      title: r.title,
+      title: col.displayTitle ?? col.title,
       first: r.first_num,
       last: r.last_num,
       state: r.state as Coverage['state'],

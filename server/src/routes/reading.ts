@@ -42,6 +42,9 @@ import { SourceError, SOURCE_LABELS } from '../sources/types.ts';
 import { HttpError, newId, nowIso, parseJson, todayLocal } from '../util.ts';
 import { route } from './route.ts';
 
+/** The book page lists at most this many subjects, as before Stage 2. */
+const SUBJECTS_SHOWN = 12;
+
 /**
  * Milestone 3 routes: lookups, Read next, "Not this, because…", triage, identity review and
  * the Hardcover token. GET requests never change anything (§6.3).
@@ -268,8 +271,7 @@ export function registerReadingRoutes(app: Express, d: ReadingDeps): void {
         items: queue.slice(0, limit).map((i) => ({
           ...buildCard(i, data.items, s),
           kindIsGuess: data.library.get(i.id)?.kindIsGuess ?? false,
-          description:
-            data.used.get(i.id)?.find((m) => m.record.description)?.record.description ?? null,
+          description: data.details.get(i.id)?.description?.value ?? null,
           firstPublishYear: i.firstPublishYear,
         })),
       };
@@ -512,7 +514,9 @@ export function registerReadingRoutes(app: Express, d: ReadingDeps): void {
         today: todayLocal(),
         recentDays: RECENT_DAYS,
       };
-      const used = data.used.get(id) ?? [];
+      // Shown subjects stay short: sources such as Open Library list dozens.
+      const chosen = data.details.get(id) ?? null;
+      const details = chosen && { ...chosen, subjects: chosen.subjects.slice(0, SUBJECTS_SHOWN) };
       return {
         identity: i?.identity ?? 'unidentified',
         matchConfirmed: i?.matchConfirmed ?? false,
@@ -525,8 +529,9 @@ export function registerReadingRoutes(app: Express, d: ReadingDeps): void {
         eligibleBecause: i ? ineligibleBecause(i) : null,
         card: i ? buildCard(i, data.items, s) : null,
         // Text from sources: shown as text only (§6.3, scenario 23).
-        description: used.find((m) => m.record.description)?.record.description ?? null,
-        subjects: [...new Set(used.flatMap((m) => m.record.subjects))].slice(0, 12),
+        details,
+        description: details?.description?.value ?? null,
+        subjects: details?.subjects.map((s) => s.value) ?? [],
         lookupAvailable:
           sources.forItem(
             i?.kind ?? null,

@@ -212,6 +212,45 @@ try {
       },
     ],
     [
+      'item-detail-disagreement',
+      '/?view=library&q=glass',
+      async (p) => {
+        // UI-only invented response; selection and stored facts are covered by app.details.test.ts.
+        await p.route('**/api/items/*/online', async (route) => {
+          const response = await route.fetch();
+          const data = await response.json();
+          const years = [1990, 1994].map((year, n) => ({
+            value: year,
+            source: 'demo',
+            sourceId: `invented-year-${n}`,
+            label: `Invented source ${n + 1}`,
+            reason: 'earliest_trusted_year',
+          }));
+          data.firstPublishYear = 1990;
+          data.details.firstPublishYear = years[0];
+          data.details.years = years;
+          data.details.yearDisagreement = true;
+          data.description =
+            'An invented description shown as plain text after removing formatting.';
+          data.details.description = {
+            value: data.description,
+            source: 'demo',
+            sourceId: 'invented-description',
+            label: 'Invented source 1',
+            reason: 'longest_description',
+          };
+          await route.fulfill({ response, json: data });
+        });
+        await p
+          .getByRole('link', { name: /^Glass Harbor$/ })
+          .first()
+          .click();
+        await p.getByText(/Sources disagree: 1990/).waitFor();
+        await p.getByText('Description', { exact: true }).click();
+        await p.unroute('**/api/items/*/online');
+      },
+    ],
+    [
       'item-online-only',
       '/?view=library',
       async (p) => {

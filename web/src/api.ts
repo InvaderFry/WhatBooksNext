@@ -1,3 +1,4 @@
+import type { ItemDetails } from '../../server/src/lib/details.ts';
 // Thin fetch wrapper. Every request that changes data is sent as JSON, which the server
 // requires: it makes the browser preflight any cross-site attempt (PLAN.md §6.3).
 
@@ -143,6 +144,7 @@ export interface EmbeddedMetadata {
 }
 
 export interface ItemDetail extends ItemSummary {
+  details: ItemDetails;
   files: FileDetail[];
   parse: Record<string, unknown> | null;
   titleSource: 'embedded' | 'filename' | null;
@@ -576,6 +578,8 @@ export interface Duration {
 }
 
 export interface ItemOnline {
+  /** Null only if the book isn't in the ranking data; the card then shows what it has. */
+  details: ItemDetails | null;
   identity: 'accepted' | 'provisional' | 'tie' | 'unidentified';
   matchConfirmed: boolean;
   override: string | null;

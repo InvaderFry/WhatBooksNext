@@ -144,7 +144,7 @@ export function seriesView(db: DB, reach: FolderReachability, id: string): Serie
     return {
       id: r.id,
       itemId: r.item_id,
-      title: r.title,
+      title: col?.title ?? r.title,
       first: r.first_num,
       last: r.last_num,
       state: r.state as Coverage['state'],

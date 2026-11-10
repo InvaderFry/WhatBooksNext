@@ -719,8 +719,15 @@ keys.
   counts once in source statistics, even when its series score appears on several volumes.
   **A series score is never shown as a volume's score.** Unconfirmed ratings are labelled and
   never make Hidden gems. The [ratings and refresh plan](docs/plans/online-ratings-and-refreshes.md)
-  specifies this Stage 1; best details, the full source-by-source book page and refreshes follow
-  in stages 2–4.
+  specifies this Stage 1 and the later per-field details, source-by-source book page and refreshes.
+- Display details are selected per field from stored data: owner's title, then Calibre, then
+  embedded metadata, then the strongest trusted match, then a filename title. Creators use
+  Calibre, the files, then trusted sources. Publication years use the earliest trusted year;
+  single issues use cover/store years, never their series' start. Measured pages win, then a
+  trusted match to a file ISBN, then the strongest trusted source. Descriptions are compared
+  as plain text, preferring a useful Hardcover description (§20). Displayed subjects retain
+  trusted/file provenance. This selection never writes matching facts; kind, taste and topic
+  inputs remain as before. The full source-by-source page and refreshes follow in stages 3–4.
 - Unknown rating: neutral in the blend; **fails** any "highly rated" filter.
 
 ### 12.3 Duration
@@ -1275,6 +1282,7 @@ use. Keep them in one config module, each with its reason in a comment.
 | Copy match | Full hashes match; or, when full hashes can't be compared, same filename (extension included, ignoring case) + exact byte size. Any disagreeing hash blocks it. | Owner-approved: an identical name and size is the same file when nothing contradicts it. Placeholders can't be hashed. |
 | Rating shrinkage | Prior weight = **median vote count for that source in this library**; prior mean = that source's mean in this library; one sample per eligible `source:sourceId` target | Adapts to each source's audience size instead of guessing a constant. |
 | "Highly rated" | At or above the **70th percentile** of that source's shrunk scores in this library; with fewer than 30 rated items from that source, ≥ 80 / 100 instead | Star averages cluster near 4 / 5, so a fixed cut-off passes most books from one source and few from another. The fallback covers small libraries. |
+| Useful description (`DESCRIPTION_USEFUL_CHARS`) | 200 plain-text characters | Assumption: prefer a useful Hardcover description; shorter ones compete by visible-text length after stripping formatting. |
 | Supported rating (`RATING_SUPPORTED_VOTES`) | 20 ratings | Assumption: separates noisy item scores from supported series fallbacks; calibrate against the owner’s library. |
 | Hidden gems | Trusted book/volume rating, "highly rated" (above), at least 5 votes and in the bottom 25% for its source; every other trusted known count is also in its source’s bottom 25% | Too few votes is noise, not a gem. |
 | Read next list size | 10 cards, "Show more" adds 10 | Enough choice without becoming the Library. |
@@ -1310,7 +1318,7 @@ plainly at the start of your message, with what to do and roughly how long it ta
 | **After M1** | Send more real filenames — especially HD versions and EPUB/PDF pairs. |
 | **Start of M3** | **Create a free Hardcover account** and generate an API token (about 5 minutes). Once the adapter is built, enter the token in the app's Settings (never in chat), run Diagnostics → Test Hardcover, and share the copied report. Decides whether Hardcover can be labelled Recommended. |
 | **End of M3** | First ~20-minute recommendation quality session (§17.2). |
-| **During M1–M6, as they come up** | Check the "needs checking on the owner's machine" items on the Windows PC. For ratings Stage 1, open the CSV in Excel to check the appended scope/match columns, accents and formula text; inspect Diagnostics tier counts. No new accounts or keys. |
+| **During M1–M6, as they come up** | Check the "needs checking on the owner's machine" items on the Windows PC. For ratings Stage 1, open the CSV in Excel to check the appended scope/match columns, accents and formula text; inspect Diagnostics tier counts. For Stage 2, spot-check chosen titles/creators, page provenance and conflicting years, including Unicode and Calibre-formatted descriptions. No new accounts or keys. |
 | **End of M6** | Try installing from the README as a stranger would. The second quality session moves to after stage 3 of the [ratings and refresh plan](docs/plans/online-ratings-and-refreshes.md), so it judges the new ratings and details. |
 
 ### Still to confirm (not blocking)

@@ -245,6 +245,7 @@ export function Diagnostics() {
           <section className="section" aria-labelledby="ratings-h">
             <h2 id="ratings-h">Rating evidence</h2>
             <p className="muted">All library items, including finished and read elsewhere.</p>
+            <p className="muted">{DETAIL_POLICY}</p>
             <ul className="plain">
               {Object.entries(diag.ratings.tiers).map(([tier, count]) => (
                 <li key={tier}>
@@ -317,6 +318,9 @@ export function Diagnostics() {
   );
 }
 
+const DETAIL_POLICY =
+  'Online details use confirmed or accepted matches. Unconfirmed matches stay under Possible matches. Details are chosen from stored data, without new requests.';
+
 const RATING_TIERS: Record<string, string> = {
   1: 'trusted book or volume, supported',
   2: 'trusted whole series, supported',
@@ -352,6 +356,7 @@ function toReport(d: Diag): string {
       ([tier, count]) => `Rating tier ${tier} (${RATING_TIERS[tier]}): ${count}`,
     ),
     `Rating unknown: ${d.ratings.unknown}`,
+    DETAIL_POLICY,
     `Default What next picks on tier 5: ${d.ratings.whatNext.provisional} of ${d.ratings.whatNext.total}`,
     ...d.sources.map(
       (s) =>

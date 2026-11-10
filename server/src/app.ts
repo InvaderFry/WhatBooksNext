@@ -386,6 +386,7 @@ export function createApp(ctx: AppContext) {
       const r = await reach.get();
       return {
         ...item,
+        details: lib.details.get(id),
         redirectedFrom: id !== req.params.id ? req.params.id : undefined,
         parse: itemParse(db, id),
         titleSource: db.prepare('SELECT title_source FROM items WHERE id = ?').pluck().get(id),

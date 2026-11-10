@@ -137,6 +137,16 @@ and few on every other trusted source with a known count. Unknown counts don't p
 **Diagnostics → Rating evidence** shows the five tier counts and how many default What next
 picks use an unconfirmed rating. CSV export appends `community_scope` and `community_match`.
 
+**Details from stored matches.** Your title wins, then Calibre's, then the file's own title,
+then a trusted online match, then the filename. Creators use Calibre, the file, then a trusted
+source. The app uses the earliest trusted publication year; a single issue keeps its own cover
+or store year. The book page names sources when years disagree by more than a year. Measured
+pages beat source estimates, and a match to the file's ISBN beats other source page counts.
+Descriptions lose HTML/formatting before comparison: a useful Hardcover description wins,
+otherwise the longest trusted one. Displayed subjects list their trusted/file sources.
+Unconfirmed matches never supply these facts; they remain under Possible matches. These choices
+need no new lookups or rescan and don't change matching, kind guesses or taste/topic inputs.
+
 Everything works without a key. Lookups run after each scan (you can turn that off in
 **Settings → Online lookups**), about one book a second, and pick up where they stopped. **Sources
 fail soft:** if one is down or refuses requests, it's paused for ten minutes after five failures

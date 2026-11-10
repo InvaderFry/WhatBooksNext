@@ -2,6 +2,16 @@ import type { DB } from '../db/database.ts';
 import type { FolderRow } from '../scan/folders.ts';
 import { normalizeForCompare } from '../identify/filename.ts';
 import { HttpError, parseJson } from '../util.ts';
+import { allMatchInputs, chooseUsed, decisionsFor } from '../identify/lookups.ts';
+import { factsFromPrimary } from '../identify/items.ts';
+import {
+  chooseDetails,
+  displayDetailTitle,
+  type DetailFile,
+  type DetailInput,
+  type ItemDetails,
+} from './details.ts';
+import type { EmbeddedMetadata } from '../scan/formats/types.ts';
 
 /**
  * Library views: items with their owner data and availability, built from the facts tables
@@ -193,11 +203,17 @@ interface ItemRow {
   creators: string;
   created_at: string;
   online_title: string | null;
+  title_source: string | null;
+  issue_label: string | null;
 }
 
 interface FileJoinRow {
   item_id: string;
   is_primary: number;
+  metadata: string | null;
+  parsed: string;
+  page_count: number | null;
+  pdf_type: string | null;
   id: string;
   folder_id: string;
   rel_path: string;
@@ -269,6 +285,10 @@ export function availabilityFor(
 export interface LibraryData {
   items: ItemSummary[];
   folders: Map<string, FolderRow>;
+  details: Map<string, ItemDetails>;
+  /** Original title/creators used by taste and topic rules; display choices must not change them. */
+  rankingFacts: Map<string, { title: string; creators: ItemSummary['creators'] }>;
+  detailInputs: Map<string, DetailInput>;
 }
 
 /** Loads every item with files and owner data. A few thousand items take milliseconds. */
@@ -277,9 +297,8 @@ export function loadLibrary(db: DB, reach: FolderReachability, onlyIds?: string[
     (db.prepare('SELECT * FROM folders').all() as FolderRow[]).map((f) => [f.id, f]),
   );
   const filter = onlyIds ? `WHERE i.id IN (${onlyIds.map(() => '?').join(',')})` : '';
-  // A title guessed from a filename gives way to the title of a certain online match
-  // ("rickandmorty_presents_vol2" → the source's own title). The file's title stays the fact;
-  // the owner's own title wins over both.
+  // Preserve the Stage 1 title only as a ranking/topic input. Display titles are chosen
+  // independently below; changing display facts must not change learned taste or topics.
   const items = db
     .prepare(
       `SELECT i.*, CASE WHEN i.identity = 'accepted' AND COALESCE(i.title_source, 'filename') NOT IN ('embedded', 'owner')
@@ -293,12 +312,13 @@ export function loadLibrary(db: DB, reach: FolderReachability, onlyIds?: string[
     (db.prepare('SELECT * FROM user_item').all() as UserRow[]).map((u) => [u.item_id, u]),
   );
   const files = new Map<string, FileView[]>();
+  const detailFiles = new Map<string, DetailFile[]>();
   for (const r of db
     .prepare(
       `SELECT x.item_id, x.is_primary, f.id, f.folder_id, f.rel_path, f.name, f.format, f.size,
          f.availability, f.stale, f.quality_tag, f.edition_number, f.edition_note, f.language,
-         f.modified_ms, f.first_seen_at, f.has_thumbnail
-       FROM item_files x JOIN files f ON f.id = x.file_id`,
+         f.modified_ms, f.first_seen_at, f.has_thumbnail, f.metadata, f.parsed, f.page_count, f.pdf_type
+       FROM item_files x JOIN files f ON f.id = x.file_id ORDER BY x.item_id, x.is_primary DESC, f.id`,
     )
     .all() as FileJoinRow[]) {
     const folder = folders.get(r.folder_id);
@@ -325,6 +345,24 @@ export function loadLibrary(db: DB, reach: FolderReachability, onlyIds?: string[
     };
     if (!files.has(r.item_id)) files.set(r.item_id, []);
     files.get(r.item_id)!.push(view);
+    if (!detailFiles.has(r.item_id)) detailFiles.set(r.item_id, []);
+    const facts = factsFromPrimary({
+      name: r.name,
+      format: r.format,
+      parsed: r.parsed,
+      metadata: r.metadata,
+      pdf_type: r.pdf_type,
+      pdf_type_override: null,
+    });
+    const df: DetailFile = {
+      id: r.id,
+      metadata: parseJson<EmbeddedMetadata | null>(r.metadata, null),
+      title: facts.titleSource === 'embedded' ? facts.title : null,
+      creators: facts.creators,
+      pages: r.page_count,
+    };
+    if (r.is_primary) detailFiles.get(r.item_id)!.unshift(df);
+    else detailFiles.get(r.item_id)!.push(df);
   }
   const locations = new Map<
     string,
@@ -342,15 +380,46 @@ export function loadLibrary(db: DB, reach: FolderReachability, onlyIds?: string[
     locations.get(l.item_id)!.push(l);
   }
 
+  const { matches, rejected, overrides } = allMatchInputs(db);
+  const details = new Map<string, ItemDetails>();
+  const detailInputs = new Map<string, DetailInput>();
+  const rankingFacts = new Map<string, { title: string; creators: ItemSummary['creators'] }>();
   const out: ItemSummary[] = items.map((i) => {
     const user = userFromRow(users.get(i.id));
     const fs = (files.get(i.id) ?? []).sort((a, b) => Number(b.isPrimary) - Number(a.isPrimary));
     const locs = locations.get(i.id) ?? [];
     const stores = locs.filter((l) => l.kind === 'store');
     const kind = user.kindOverride ?? i.kind;
+    const candidates = matches.get(i.id) ?? [];
+    const no = rejected.get(i.id) ?? new Set<string>();
+    const override = overrides.get(i.id) ?? null;
+    const decisions = decisionsFor(candidates, no);
+    const input: DetailInput = {
+      fallbackTitle: i.title,
+      ownerTitle: user.titleOverride ?? (i.title_source === 'owner' ? i.title : null),
+      files: detailFiles.get(i.id) ?? [],
+      storedCreators: fs.length === 0 ? parseJson(i.creators, []) : [],
+      issue: !!i.issue_label,
+      matches: chooseUsed(candidates, override, no).map((m) => ({
+        record: m.record,
+        decision:
+          override === `${m.source}:${m.sourceId}`
+            ? 'confirmed'
+            : (decisions.get(m.source)!.decision as 'accepted' | 'provisional'),
+        strongIsbn: m.evidence.isbn === 'strong',
+        score: m.score,
+      })),
+    };
+    const d = chooseDetails(input);
+    details.set(i.id, d);
+    detailInputs.set(i.id, input);
+    rankingFacts.set(i.id, {
+      title: user.titleOverride ?? i.online_title ?? i.title,
+      creators: parseJson(i.creators, []),
+    });
     return {
       id: i.id,
-      title: user.titleOverride ?? i.online_title ?? i.title,
+      title: displayDetailTitle(d),
       factTitle: i.title,
       kind,
       kindIsGuess: !user.kindOverride && i.kind !== null,
@@ -365,7 +434,7 @@ export function loadLibrary(db: DB, reach: FolderReachability, onlyIds?: string[
               unit: i.series_unit ?? 'volume',
             }
           : null,
-      creators: parseJson<{ name: string; role?: string }[]>(i.creators, []),
+      creators: d.creators?.value ?? [],
       // The primary file's cover first (files are sorted primary-first).
       coverFileId: fs.find((f) => f.hasThumbnail)?.id ?? null,
       formats: [...new Set(fs.map((f) => f.format))],
@@ -382,7 +451,7 @@ export function loadLibrary(db: DB, reach: FolderReachability, onlyIds?: string[
       firstSeenAt: fs.map((f) => f.firstSeenAt).sort()[0] ?? i.created_at,
     };
   });
-  return { items: out, folders };
+  return { items: out, folders, details, rankingFacts, detailInputs };
 }
 
 export interface LibraryQuery {

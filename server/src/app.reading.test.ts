@@ -478,7 +478,7 @@ describe('Read next and its cards', () => {
     expect(db.prepare('SELECT reason FROM pick_feedback').pluck().all()).toEqual(['already_read']);
   });
 
-  it('returns a source’s description as plain text, exactly as received (scenario 23)', async () => {
+  it('strips source HTML and scripts before returning a plain-text description (scenario 23)', async () => {
     olByTitle['the time machine'] = JSON.stringify({
       docs: [{ key: '/works/OL9W', title: 'The Time Machine', author_name: ['H. G. Wells'] }],
     });
@@ -488,7 +488,7 @@ describe('Read next and its cards', () => {
       "UPDATE item_matches SET data = json_set(data, '$.description', ?) WHERE item_id = ?",
     ).run('<p>Hi</p><script>alert(1)</script>', id);
     const online = (await api.get(`/api/items/${id}/online`)).body;
-    expect(online.description).toBe('<p>Hi</p><script>alert(1)</script>');
+    expect(online.description).toBe('Hi');
   });
 
   it('never renders HTML from files or sources in the web UI (scenario 23)', () => {

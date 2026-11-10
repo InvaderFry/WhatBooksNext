@@ -88,7 +88,9 @@ export function exportCsv(db: DB, items: RankItem[]): string {
 
   const sorted = [...items].sort(
     (a, b) =>
-      a.title.localeCompare(b.title, 'en', { sensitivity: 'base' }) || a.id.localeCompare(b.id),
+      (a.displayTitle ?? a.title).localeCompare(b.displayTitle ?? b.title, 'en', {
+        sensitivity: 'base',
+      }) || a.id.localeCompare(b.id),
   );
   const lines = [
     // A first line a spreadsheet shows as a note above the header.
@@ -101,8 +103,8 @@ export function exportCsv(db: DB, items: RankItem[]): string {
     const u = i.user;
     const c = i.community;
     const row: Record<(typeof EXPORT_COLUMNS)[number], unknown> = {
-      title: i.title,
-      author: i.creators
+      title: i.displayTitle ?? i.title,
+      author: (i.displayCreators ?? i.creators)
         .map((x) => (x.role && !/author|writer/i.test(x.role) ? `${x.name} (${x.role})` : x.name))
         .join('; '),
       kind: i.kind ?? '',
