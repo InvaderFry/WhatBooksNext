@@ -27,6 +27,7 @@ import {
   type MatchFacts,
   type ScoredCandidate,
 } from './match.ts';
+import { addSameMatchSuggestions } from './reconcile.ts';
 import { syncSeries } from './series.ts';
 
 /**
@@ -801,6 +802,8 @@ export class LookupManager {
       // What the run learned about series (names, order, finished or ongoing) takes effect.
       try {
         syncSeries(this.db);
+        // Two entries matched to the same book are probably one book (§11.3 rule 4).
+        addSameMatchSuggestions(this.db);
       } catch (err) {
         status.errors = [`Series: ${(err as Error).message}`, ...status.errors].slice(0, 5);
       }

@@ -1,6 +1,7 @@
 import { MIN_SUGGESTION_KEY_LENGTH } from '../config.ts';
 import type { DB } from '../db/database.ts';
 import { newId, nowIso, parseJson } from '../util.ts';
+import { SOURCE_LABELS, type SourceName } from '../sources/types.ts';
 import { groupUnassignedFiles, hashesDisagree, knownConflict } from './grouping.ts';
 import {
   filesOfItem,
@@ -339,4 +340,56 @@ export function markObsoleteReviews(db: DB): void {
     else obsolete ||= fileItems[0] === fileItems[1];
     if (obsolete) mark.run(now, r.id);
   }
+}
+
+/**
+ * §11.3 rule 4: two items that the lookups matched to the same record at a source ("March Book
+ * Two" and "March: Book Two") are probably one book under two names. Unless that match is
+ * corroborated by an identifier on both, it's a suggestion (tier 4), never a silent merge.
+ * A known edition or language conflict between them means separate works: no suggestion.
+ */
+export function addSameMatchSuggestions(db: DB): number {
+  const rows = db
+    .prepare(
+      `SELECT i.id AS item_id, i.match_source, i.match_source_id, f.*
+       FROM items i JOIN item_files x ON x.item_id = i.id AND x.is_primary = 1
+       JOIN files f ON f.id = x.file_id
+       WHERE i.identity IN ('accepted', 'provisional') AND i.match_source IS NOT NULL
+         AND (i.match_source || ':' || i.match_source_id) IN (
+           SELECT match_source || ':' || match_source_id FROM items
+           WHERE identity IN ('accepted', 'provisional') AND match_source IS NOT NULL
+           GROUP BY match_source, match_source_id HAVING COUNT(*) > 1)
+       ORDER BY i.match_source, i.match_source_id`,
+    )
+    .all() as (Row & { match_source: string; match_source_id: string })[];
+  const byWork = new Map<string, typeof rows>();
+  for (const r of rows) {
+    const k = `${r.match_source}:${r.match_source_id}`;
+    if (!byWork.has(k)) byWork.set(k, []);
+    byWork.get(k)!.push(r);
+  }
+  let added = 0;
+  for (const [work, files] of byWork) {
+    for (let i = 0; i < files.length; i++)
+      for (let j = i + 1; j < files.length; j++) {
+        const a = files[i]!;
+        const b = files[j]!;
+        if (knownConflict(a, b)) continue;
+        const key = `same_match:${pairKey(a.item_id!, b.item_id!)}`;
+        if (
+          addReview(db, {
+            kind: 'cross_folder',
+            tier: 4,
+            key,
+            itemIds: [a.item_id!, b.item_id!].sort(),
+            fileIds: [a.id, b.id],
+            detail: {
+              why: `Both were matched to the same book on ${SOURCE_LABELS[work.split(':')[0] as SourceName] ?? 'an online source'}, under different names.`,
+            },
+          })
+        )
+          added++;
+      }
+  }
+  return added;
 }

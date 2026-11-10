@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createApp } from './app.ts';
+import { addSameMatchSuggestions } from './identify/reconcile.ts';
 import type { DB } from './db/database.ts';
 import { makeEpub } from './testing/fixtures.ts';
 import { fakePlatformWithDrives, memoryDb, tempDir, writeFiles } from './testing/helpers.ts';
@@ -233,5 +234,30 @@ describe('series (§12.5)', () => {
     expect(
       (await api.post('/api/series/nope/read-elsewhere', { unit: 'volume', from: 3 })).status,
     ).toBe(404);
+  });
+
+  it('asks whether two entries matched to the same book are one book, and shows it once meanwhile', async () => {
+    await addAndScan({
+      'A/emberroads1.epub': volume(1),
+      'B/Ember Roads Book One.epub': volume(1, 'The Ember Roads: Book One'),
+    });
+    const a = itemIdOf('emberroads1.epub');
+    const b = itemIdOf('Ember Roads Book One.epub');
+    expect(a).not.toBe(b);
+    db.prepare(
+      "UPDATE items SET identity = 'provisional', match_source = 'hardcover', match_source_id = '77' WHERE id IN (?, ?)",
+    ).run(a, b);
+    expect(addSameMatchSuggestions(db)).toBe(1);
+    expect(addSameMatchSuggestions(db)).toBe(0); // asked once
+    const review = (await api.get('/api/review')).body;
+    const row = JSON.stringify(review);
+    expect(row).toContain('Both were matched to the same book on Hardcover');
+    const cards = (await api.get('/api/next')).body.cards.filter((c: { id: string }) =>
+      [a, b].includes(c.id),
+    );
+    expect(cards).toHaveLength(1);
+    expect(cards[0].limitations).toContain(
+      'also in your library under another name — see Needs review',
+    );
   });
 });

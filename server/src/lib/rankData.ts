@@ -34,6 +34,7 @@ interface ItemFactRow {
   publication_year: number | null;
   identity: RankItem['identity'];
   match_source: string | null;
+  match_source_id: string | null;
   acquired_on: string | null;
   words: number | null;
   pages: number | null;
@@ -83,7 +84,7 @@ export function loadRankData(db: DB, reach: FolderReachability): RankData {
           `SELECT i.id, i.series_id, i.series_position, i.series_unit, s.name AS series_name,
              s.publication_status AS series_status, s.installments AS series_total,
              i.series_hint, i.volume_label, i.issue_label, i.publication_year, i.identity,
-             i.match_source, u.acquired_on, f.word_count AS words, f.page_count AS pages,
+             i.match_source, i.match_source_id, u.acquired_on, f.word_count AS words, f.page_count AS pages,
              f.pdf_type, fu.pdf_type_override AS pdf_override, f.format, f.size,
              (SELECT MAX(g.page_count) FROM item_files y JOIN files g ON g.id = y.file_id
               WHERE y.item_id = i.id) AS any_pages
@@ -163,6 +164,12 @@ export function loadRankData(db: DB, reach: FolderReachability): RankData {
       matchConfirmed:
         Boolean(override && override !== 'none') || u.some((m) => m.evidence.isbn === 'strong'),
       historyOnly: historyOnly.has(i.id),
+      work:
+        f?.match_source &&
+        f.match_source_id &&
+        (f.identity === 'accepted' || f.identity === 'provisional')
+          ? `${f.match_source}:${f.match_source_id}`
+          : null,
       series:
         f?.series_id && f.series_name
           ? {

@@ -16,7 +16,7 @@ import { splitWords, wordRank } from './wordsplit.ts';
  *   5 — a stray single letter from the word splitter joins the word before it
  *   ("rickandmorty" was "Rick and Mort Y").
  */
-export const PARSER_VERSION = 5;
+export const PARSER_VERSION = 6;
 
 export interface Part<T> {
   value: T;
@@ -407,6 +407,26 @@ function parseSpaced(base: string, ext: string, r: Partial<ParsedName>, tags: st
     return;
   }
 
+  // "Book" with a number, spelled or not: "March Book Two", "March - Book 2", "Saga, Book One -
+  // Arc". The series name comes first; "Book Two" alone (no name before it) isn't a series.
+  if (
+    (m = new RegExp(
+      `^(.+?)[ ,:-]+Book (\\d{1,3}|${BOOK_NUMBER_WORDS.join('|')})(?:[ :-]+(.+))?$`,
+      'i',
+    ).exec(s)) &&
+    !/^(the|a|an)$/i.test(m[1]!.trim())
+  ) {
+    const n = /^\d+$/.test(m[2]!)
+      ? m[2]!.replace(/^0+(?=\d)/, '')
+      : String(BOOK_NUMBER_WORDS.indexOf(m[2]!.toLowerCase()) + 1);
+    r.series = { value: cleanSeries(m[1]!), confidence: 0.7 };
+    r.volume = { value: n, confidence: 0.7 };
+    if (m[3]) r.subtitle = { value: m[3].replace(/^- /, ''), confidence: 0.6 };
+    r.title = { value: r.series.value, confidence: 0.6 };
+    r.rawTitle = m[1]!;
+    return;
+  }
+
   // Book volume: "Berserk v01", "Series Vol. 2 Subtitle"
   if ((m = /^(.+?) (?:[Vv](\d{1,3})|[Vv]ol(?:ume)?\.? ?(\d{1,3}))(?: (.+))?$/.exec(s))) {
     r.series = { value: cleanSeries(m[1]!), confidence: 0.8 };
@@ -501,6 +521,22 @@ const NAME_STOPWORDS = new Set(
     ' ',
   ),
 );
+
+/** Spelled-out installment numbers seen in names ("Book Two"). */
+const BOOK_NUMBER_WORDS = [
+  'one',
+  'two',
+  'three',
+  'four',
+  'five',
+  'six',
+  'seven',
+  'eight',
+  'nine',
+  'ten',
+  'eleven',
+  'twelve',
+];
 
 function cleanSeries(s: string): string {
   return s.replace(/[\s-]+$/, '').trim();

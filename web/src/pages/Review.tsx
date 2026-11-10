@@ -30,7 +30,7 @@ const KIND_TITLES: Record<ReviewRow['kind'], string> = {
   move: 'Did this file move?',
   group_conflict: 'These files may not be the same book',
   copy_conflict: 'The same file is on two books',
-  cross_folder: 'The same book in two folders?',
+  cross_folder: 'The same book twice?',
   pdf_type: 'What kind of PDF is this?',
   tie: 'Two possible matches',
   wrong_match: 'You said this was the wrong book',

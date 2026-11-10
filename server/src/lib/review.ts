@@ -10,6 +10,7 @@ import {
 import { markObsoleteReviews } from '../identify/reconcile.ts';
 import { hiddenReviewKeys, identityRows, type CandidateView } from './identityReview.ts';
 import { HttpError, nowIso, parseJson } from '../util.ts';
+import { syncSeries } from '../identify/series.ts';
 
 /**
  * Needs review (PLAN.md §11.4), as far as M2 goes: what the deep pass finds — candidate moves,
@@ -289,6 +290,7 @@ export function actOnReview(
   );
   refreshFactsOfItems(db, touched);
   markObsoleteReviews(db);
+  syncSeries(db);
 }
 
 /** A confirmed move: the missing file's item (with the history) takes the new file's item. */

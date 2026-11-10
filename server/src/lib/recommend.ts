@@ -32,6 +32,11 @@ export interface RankItem {
   identity: 'accepted' | 'provisional' | 'tie' | 'unidentified';
   /** The owner confirmed the match (or the match came from the item's own ISBN). */
   matchConfirmed: boolean;
+  /**
+   * The source record this item is matched to ('hardcover:123'), when the match is accepted or
+   * provisional. Two items with the same one are probably one book under two names.
+   */
+  work?: string | null;
   /** Only read elsewhere, not owned (§7 'history' location). Teaches taste, never recommended. */
   historyOnly: boolean;
   series: {
@@ -472,13 +477,40 @@ export interface ReadNextResult {
   coverage: { eligible: number; rated: number; lengthKnown: number };
 }
 
+/**
+ * One card per book (§11.3 rule 4): entries matched to the same source record are probably one
+ * book under two names, so only one is offered — the one in progress, else one ready to read.
+ * The pair waits in Needs review; the kept card says so.
+ */
+export function onePerWork(items: RankItem[]): { kept: RankItem[]; twins: Set<string> } {
+  const byWork = new Map<string, RankItem[]>();
+  const kept: RankItem[] = [];
+  for (const i of items) {
+    if (!i.work) kept.push(i);
+    else {
+      if (!byWork.has(i.work)) byWork.set(i.work, []);
+      byWork.get(i.work)!.push(i);
+    }
+  }
+  const twins = new Set<string>();
+  const rank = (i: RankItem) =>
+    (IN_PROGRESS.includes(i.user.progress) ? 0 : 2) + (i.availability.readyToRead ? 0 : 1);
+  for (const group of byWork.values()) {
+    const best = [...group].sort((a, b) => rank(a) - rank(b) || a.id.localeCompare(b.id))[0]!;
+    kept.push(best);
+    if (group.length > 1) twins.add(best.id);
+  }
+  return { kept, twins };
+}
+
 export function readNext(
   all: RankItem[],
   s: Situation,
   page: { offset: number; limit: number },
 ): ReadNextResult {
+  const { kept, twins } = onePerWork(all.filter((i) => ineligibleBecause(i) === null));
   const eligible = onePerSeries(
-    all.filter(
+    kept.filter(
       (i) =>
         ineligibleBecause(i) === null &&
         // Reference items appear only in Skim, topic interests and Still relevant? (§13.1).
@@ -488,7 +520,12 @@ export function readNext(
         (!s.readyToRead || i.availability.readyToRead),
     ),
   );
-  const cards = eligible.map((i) => buildCard(i, all, s));
+  const cards = eligible.map((i) => {
+    const c = buildCard(i, all, s);
+    if (twins.has(i.id))
+      c.limitations.push('also in your library under another name — see Needs review');
+    return c;
+  });
   const order = (a: Card, b: Card) => b.score - a.score || a.title.localeCompare(b.title);
   let main = cards;
   let mightFit: Card[] = [];
