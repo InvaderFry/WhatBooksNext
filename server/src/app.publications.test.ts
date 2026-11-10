@@ -16,6 +16,7 @@ let db: DB;
 let made: ReturnType<typeof createApp>;
 let first: string, second: string, seriesId: string;
 let fail = false,
+  ambiguous = false,
   gate: Promise<void> | null = null;
 let calls: string[];
 const post = (url: string, body = {}) =>
@@ -44,6 +45,7 @@ const catalogue = () => ({
 beforeEach(async () => {
   db = await memoryDb();
   fail = false;
+  ambiguous = false;
   calls = [];
   gate = null;
   setSecret(db, 'hardcover_token', 'invented-token');
@@ -93,6 +95,17 @@ beforeEach(async () => {
       calls.push(b.query ?? 'GET');
       if (fail) return Response.json({ errors: [{ message: 'temporarily unavailable' }] });
       if (gate) await gate;
+      if (b.query.includes('SeriesMembership') && ambiguous)
+        return Response.json({
+          data: {
+            book_series: [700, 701].map((id) => ({
+              featured: false,
+              compilation: false,
+              position: b.variables.book === 501 ? 1 : 2,
+              series: { id, name: 'Copper Orchards' },
+            })),
+          },
+        });
       if (b.query.includes('SeriesMembership'))
         return Response.json({
           data: {
@@ -142,6 +155,27 @@ describe('published volumes beyond the owned library', () => {
     );
     made.lookups.invalidate();
     expect((await get('/api/lookups')).body).toMatchObject({ pending: 0, pendingSeries: 1 });
+  });
+  it('remembers a series it can’t identify instead of asking again every run, and names it', async () => {
+    ambiguous = true;
+    made.lookups.start({ itemIds: [] });
+    const run = await made.lookups.wait();
+    expect(run?.errors.join(' ')).toMatch(/“Copper Orchards”: Couldn’t confidently identify/);
+    made.lookups.invalidate();
+    expect((await get('/api/lookups')).body).toMatchObject({ pendingSeries: 0 });
+    const asked = calls.length;
+    made.lookups.start({ itemIds: [] });
+    expect((await made.lookups.wait())?.errors ?? []).toEqual([]);
+    expect(calls.length).toBe(asked); // nothing asked again
+    // Correcting the book's number (its anchor) makes it worth checking again.
+    db.prepare('UPDATE items SET series_position = 3 WHERE id = ?').run(first);
+    made.lookups.invalidate();
+    expect((await get('/api/lookups')).body).toMatchObject({ pendingSeries: 1 });
+    // The series page's own button always asks again.
+    ambiguous = false;
+    db.prepare('UPDATE items SET series_position = 1 WHERE id = ?').run(first);
+    expect((await post(`/api/series/${seriesId}/publications`)).status).toBe(200);
+    expect(db.prepare('SELECT COUNT(*) FROM series_publication_problems').pluck().get()).toBe(0);
   });
   it('hides the saved catalogue when its anchor volume number is corrected', async () => {
     await post(`/api/series/${seriesId}/publications`);

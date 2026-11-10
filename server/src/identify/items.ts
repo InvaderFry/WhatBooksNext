@@ -1,7 +1,7 @@
 import type { DB } from '../db/database.ts';
 import { newId, nowIso, parseJson } from '../util.ts';
 import type { EmbeddedMetadata } from '../scan/formats/types.ts';
-import { normalizeForCompare, titleCase, type ParsedName } from './filename.ts';
+import { normalizeForCompare, qualityRank, titleCase, type ParsedName } from './filename.ts';
 
 /** Facts about one file needed to group it and pick a primary (subset of a `files` row). */
 export interface FileFacts {
@@ -92,7 +92,8 @@ const COMIC_FORMAT_RANK: Record<string, number> = {
 
 /**
  * Primary file (what Open uses and whose length counts, §11.3): a present file before a
- * placeholder before a missing one; then EPUB for prose, the HD version for comics, then other
+ * placeholder before a missing one; never a reduced copy ("optimized") while the full one is
+ * there; then EPUB for prose, the HD version for comics, then other
  * (for comics: PDF, then CBZ, as the owner chose)
  * formats. Ties break on the shortest path so the choice is stable.
  */
@@ -102,7 +103,10 @@ export function choosePrimary(files: FileFacts[], kind: string | null): FileFact
   return [...files].sort(
     (a, b) =>
       (AVAILABILITY_RANK[a.availability] ?? 9) - (AVAILABILITY_RANK[b.availability] ?? 9) ||
-      (comic ? Number(Boolean(b.quality_tag)) - Number(Boolean(a.quality_tag)) : 0) ||
+      // A reduced copy ("optimized", "low") opens last for every kind; a better one (HD)
+      // first for comics, as the owner chose.
+      Number(qualityRank(a.quality_tag) < 0) - Number(qualityRank(b.quality_tag) < 0) ||
+      (comic ? qualityRank(b.quality_tag) - qualityRank(a.quality_tag) : 0) ||
       (fmtRank[a.format] ?? 9) - (fmtRank[b.format] ?? 9) ||
       a.rel_path.length - b.rel_path.length ||
       a.id.localeCompare(b.id),

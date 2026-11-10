@@ -6,6 +6,7 @@ import type { FakePlatform } from '../platform/fake.ts';
 import { ATTR_OFFLINE, ATTR_RECALL_ON_DATA_ACCESS } from '../platform/types.ts';
 import { fakePlatformWithDrives, memoryDb, tempDir, writeFiles } from '../testing/helpers.ts';
 import { addFolder, type FolderRow } from './folders.ts';
+import { splitItem } from '../lib/operations.ts';
 import { WorkerPool } from './pool.ts';
 import { ScanManager } from './scanManager.ts';
 
@@ -375,6 +376,53 @@ describe('title words are never mistaken for quality tags', () => {
     await addFolder(db, platform, { path: drive });
     await scan();
     expect(itemCount()).toBe(1);
+  });
+
+  it('groups "invented_book2_optimized.pdf" with "invented_book2.pdf" (both PDFs), and opens the full one', async () => {
+    writeFiles(drive, {
+      'Comics/lanternmarch_book1.pdf': 30,
+      'Comics/lanternmarch_book2.pdf': 40,
+      'Comics/lanternmarch_book2_optimized.pdf': 15,
+    });
+    await addFolder(db, platform, { path: drive });
+    await scan();
+    expect(itemCount()).toBe(2);
+    const book2 = itemOf('lanternmarch_book2.pdf');
+    expect(itemOf('lanternmarch_book2_optimized.pdf')).toBe(book2);
+    expect(file('lanternmarch_book2_optimized.pdf')).toMatchObject({ quality_tag: 'OPTIMIZED' });
+    const primary = db
+      .prepare(
+        'SELECT f.name FROM item_files x JOIN files f ON f.id = x.file_id WHERE x.item_id = ? AND x.is_primary = 1',
+      )
+      .pluck()
+      .get(book2);
+    expect(primary).toBe('lanternmarch_book2.pdf');
+    // Both books sit in one series, book 2 once.
+    const series = db
+      .prepare('SELECT series_id, series_position FROM items ORDER BY series_position')
+      .all() as { series_id: string | null; series_position: number }[];
+    expect(series.map((x) => x.series_position)).toEqual([1, 2]);
+    expect(new Set(series.map((x) => x.series_id)).size).toBe(1);
+    expect(series[0]!.series_id).not.toBeNull();
+  });
+
+  it('suggests, never silently joins, an optimized copy that is already apart (e.g. split by the owner)', async () => {
+    writeFiles(drive, {
+      'Comics/lanternmarch_book2.pdf': 40,
+      'Comics/lanternmarch_book2_optimized.pdf': 15,
+    });
+    await addFolder(db, platform, { path: drive });
+    await scan();
+    const book2 = itemOf('lanternmarch_book2.pdf');
+    splitItem(db, book2, [file('lanternmarch_book2_optimized.pdf').id as string], 'stay');
+    expect(itemCount()).toBe(2);
+    await scan();
+    expect(itemCount()).toBe(2);
+    const row = db
+      .prepare("SELECT tier, detail, status FROM review_items WHERE kind = 'cross_folder'")
+      .get() as { tier: number; detail: string; status: string };
+    expect(row).toMatchObject({ tier: 2, status: 'open' });
+    expect(JSON.parse(row.detail).why).toMatch(/same folder \(optimized\)/);
   });
 
   it('keeps "The High Road" and "The Road" in one folder as two books', async () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { compareKeyFor, parseFilename, titleCompareKey } from './filename.ts';
+import { compareKeyFor, parseFilename, qualityRank, titleCompareKey } from './filename.ts';
 import { displayTitle } from './items.ts';
 
 // Fixture names are invented look-alikes of real patterns (PLAN.md §5, §11.1). The owner's real
@@ -176,6 +176,48 @@ describe('name comparison', () => {
       compareKeyFor('quietgardens.epub'),
     );
     expect(compareKeyFor('fieldnotes (1).pdf')).toBe(compareKeyFor('fieldnotes.epub'));
+  });
+});
+
+describe("size versions and underscored markers (from the owner's M6 testing, invented names)", () => {
+  it('records "optimized", "opt", "downsampled", "-low" and "-high" as the file\'s quality', () => {
+    expect(parseFilename('lanternmarch_book2_optimized.pdf').quality).toBe('OPTIMIZED');
+    expect(parseFilename('lanternmarch_book_2_opt.pdf').quality).toBe('OPTIMIZED');
+    expect(parseFilename('Lantern March Book 2 (Optimized).pdf').quality).toBe('OPTIMIZED');
+    expect(parseFilename('Map Making downsampled.pdf').quality).toBe('DOWNSAMPLED');
+    expect(parseFilename('papermoths-low.pdf').quality).toBe('LOW');
+    expect(parseFilename('papermoths-high.pdf').quality).toBe('HIGH');
+    expect(parseFilename('lanternmarch_book2.pdf').quality).toBeUndefined();
+    // Still never in the middle of a title.
+    expect(parseFilename('road_to_low_orbit.epub').quality).toBeUndefined();
+    expect(parseFilename('Aim High.epub').quality).toBeUndefined();
+  });
+
+  it('ranks reduced copies below full ones and HD above them', () => {
+    expect(qualityRank('OPTIMIZED')).toBe(-1);
+    expect(qualityRank('LOW')).toBe(-1);
+    expect(qualityRank('HD')).toBe(1);
+    expect(qualityRank('HIGH')).toBe(1);
+    expect(qualityRank(null)).toBe(0);
+  });
+
+  it('reads "Book_2", "Vol_2" and "book_two" written in separate underscored parts', () => {
+    for (const name of [
+      'Lantern_March_Book_2.pdf',
+      'lanternmarch_book_two.pdf',
+      'lanternmarch_booktwo.pdf',
+      'lanternmarch_vol_2.pdf',
+      'Lantern_March_Book_2_Optimized.pdf',
+    ]) {
+      const p = parseFilename(name);
+      expect({ name, volume: v(p.volume), series: Boolean(p.series) }).toEqual({
+        name,
+        volume: '2',
+        series: true,
+      });
+    }
+    // A bare number after other words stays part of the title.
+    expect(parseFilename('catch_22.epub').volume).toBeUndefined();
   });
 });
 

@@ -76,6 +76,9 @@ export const BACKUP_EXCLUDED: Record<string, string> = {
   // The merge/split undo stack: snapshots of rows from before each operation. Restoring an old
   // stack could undo onto data it no longer describes, so restore clears it instead.
   operations: 'undo history, cleared by a restore',
+  // Published-volume checks that failed, kept only to avoid asking again every run. A restore
+  // simply checks those series again.
+  series_publication_problems: 'retry notes, rebuilt by the next lookup',
 };
 
 export interface Backup {

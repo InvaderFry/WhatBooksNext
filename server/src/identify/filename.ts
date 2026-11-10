@@ -60,6 +60,37 @@ export interface ParsedName {
 }
 
 const QUALITY_TOKENS = new Set(['hd', 'hq', 'hires', 'highres']);
+/**
+ * Smaller or lower-quality versions of the same file (Humble's "optimized" PDFs, "-low"
+ * comics). Recorded as the file's quality, like HD, so they group with the full version and
+ * are never chosen to open first.
+ */
+const REDUCED_QUALITY: Record<string, string> = {
+  optimized: 'OPTIMIZED',
+  opt: 'OPTIMIZED',
+  downsampled: 'DOWNSAMPLED',
+  lowres: 'LOW-RES',
+  low: 'LOW',
+};
+/** A "-high" version is the better one, like HD. */
+const HIGH_QUALITY: Record<string, string> = { high: 'HIGH' };
+
+/**
+ * How a quality tag ranks for opening: 1 for a better version (HD, HIGH…), -1 for a reduced
+ * one (OPTIMIZED, LOW…), 0 for none or unknown.
+ */
+export function qualityRank(tag: string | null | undefined): number {
+  if (!tag) return 0;
+  const t = tag.toUpperCase();
+  if (Object.values(REDUCED_QUALITY).includes(t)) return -1;
+  return 1;
+}
+
+function qualityOf(token: string): string | undefined {
+  const t = normalizeForCompare(token);
+  if (QUALITY_TOKENS.has(t)) return t.toUpperCase();
+  return REDUCED_QUALITY[t] ?? HIGH_QUALITY[t];
+}
 const ORDINAL_WORDS: Record<string, number> = {
   first: 1,
   second: 2,
@@ -208,7 +239,10 @@ export function parseFilename(fileName: string): ParsedName {
     const y = /^(19|20)\d\d$/.exec(t);
     if (y && !result.year) result.year = { value: Number(t), confidence: 0.8 };
     else if (QUALITY_TOKENS.has(normalizeForCompare(t))) result.quality = t.toUpperCase();
-    else if (t) tags.push(t);
+    else if (qualityOf(t)) {
+      result.quality ??= qualityOf(t);
+      tags.push(t);
+    } else if (t) tags.push(t);
     return ' ';
   });
   base = base.replace(/\s+/g, ' ').trim();
@@ -236,9 +270,52 @@ export function parseFilename(fileName: string): ParsedName {
   return parsed;
 }
 
+/** "one".."twelve" as written in names like "march_book_two" or "marchbooktwo". */
+const COUNT_WORDS: Record<string, number> = {
+  one: 1,
+  two: 2,
+  three: 3,
+  four: 4,
+  five: 5,
+  six: 6,
+  seven: 7,
+  eight: 8,
+  nine: 9,
+  ten: 10,
+  eleven: 11,
+  twelve: 12,
+};
+
+/**
+ * A marker and its number in separate underscored segments ("March_Book_2", "saga_vol_2",
+ * "march_book_two") become one segment ("book2", "vol2") for the rules below. A number word
+ * joined to "book" ("booktwo") is read the same way. Only "book", "vol" and "volume": a bare
+ * number after other words is too often part of a title.
+ */
+function joinMarkers(segs: string[]): string[] {
+  const out: string[] = [];
+  for (let i = 0; i < segs.length; i++) {
+    const s = segs[i]!.toLowerCase();
+    const next = segs[i + 1]?.toLowerCase();
+    const n = next === undefined ? null : /^\d{1,3}$/.test(next) ? next : COUNT_WORDS[next];
+    if ((s === 'book' || s === 'vol' || s === 'volume') && n !== null && n !== undefined && i > 0) {
+      out.push(`${s}${n}`);
+      i++;
+      continue;
+    }
+    const w = /^book([a-z]+)$/.exec(s);
+    if (w && COUNT_WORDS[w[1]!] !== undefined && i > 0) {
+      out.push(`book${COUNT_WORDS[w[1]!]}`);
+      continue;
+    }
+    out.push(segs[i]!);
+  }
+  return out;
+}
+
 /** Humble-style slugs: "series_vol1_subtitle", "title_issue3", "runtogethertitle". */
 function parseSlug(base: string, r: Partial<ParsedName>, tags: string[]) {
-  const segs = base.split('_').filter(Boolean);
+  const segs = joinMarkers(base.split('_').filter(Boolean));
   const textSegs: string[] = [];
   let markerIndex = -1;
 
@@ -619,7 +696,12 @@ export function stripTrailingTags(input: string): {
     } else {
       const q = t === 'highdefinition' ? 'hd' : t;
       if (QUALITY_TOKENS.has(q)) quality ??= q.toUpperCase();
-      else tags.push(q);
+      else {
+        // A size version ("optimized", "-low") is a quality too, and stays listed as a tag.
+        const sized = REDUCED_QUALITY[q] ?? HIGH_QUALITY[q];
+        if (sized) quality ??= sized;
+        tags.push(q);
+      }
       base = base.slice(0, m.index);
     }
     base = base.trim();
