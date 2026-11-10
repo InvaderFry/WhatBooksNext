@@ -162,6 +162,7 @@ try {
     ['triage', '/?view=triage', async () => {}],
     ['library', '/?view=library', async () => {}],
     ['library-filtered', '/?view=library&ready=1&kind=comic', async () => {}],
+    ['library-online-rating', '/?view=library&sort=community&dir=desc', async () => {}],
     [
       'item-tie',
       '/?view=library&q=puddles',

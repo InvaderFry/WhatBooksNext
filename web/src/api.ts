@@ -93,6 +93,17 @@ export interface ItemSummary {
   availability: Availability;
   user: UserData;
   firstSeenAt: string;
+  /** The online rating recommendations use; null when none is known. */
+  community?: {
+    score: number;
+    raw: number;
+    scale: number;
+    votes: number | null;
+    source: string;
+    sourceLabel: string;
+    scope: 'book' | 'volume' | 'series';
+    unconfirmed: boolean;
+  } | null;
 }
 
 export interface FileDetail {

@@ -72,6 +72,20 @@ export interface UserData {
   updatedAt: string | null;
 }
 
+/** The online rating recommendations use, as the Library shows and sorts it. */
+export interface LibraryRating {
+  /** 0–100 after adjusting for how many people rated it (what ranking uses). */
+  score: number;
+  /** As the source states it, e.g. 4.2 of 5. */
+  raw: number;
+  scale: number;
+  votes: number | null;
+  source: string;
+  sourceLabel: string;
+  scope: 'book' | 'volume' | 'series';
+  unconfirmed: boolean;
+}
+
 export interface ItemSummary {
   id: string;
   title: string;
@@ -84,6 +98,8 @@ export interface ItemSummary {
   /** The series this item is in, and its number there (§12.5). */
   series: { id: string; name: string; position: number | null; unit: 'volume' | 'issue' } | null;
   creators: { name: string; role?: string }[];
+  /** Filled by the Library route; null when no online rating is known. */
+  community?: LibraryRating | null;
   /** A file of this item with a thumbnail (its cover is served by this file id), or null. */
   coverFileId: string | null;
   formats: string[];
@@ -504,10 +520,19 @@ export function queryLibrary(
     added: (a, b) => a.firstSeenAt.localeCompare(b.firstSeenAt),
     touched: (a, b) => (a.user.progressAt ?? '').localeCompare(b.user.progressAt ?? ''),
     rating: (a, b) => (a.user.rating ?? -1) - (b.user.rating ?? -1),
+    // The adjusted score, so 5.0 from 2 ratings doesn't jump ahead of 4.3 from 5,000; then more
+    // ratings first. Books with no online rating are placed last below, in either direction.
+    community: (a, b) =>
+      a.community!.score - b.community!.score ||
+      (a.community!.votes ?? -1) - (b.community!.votes ?? -1),
   };
   const by = cmp[sort];
   if (!by) throw new HttpError(400, `Unknown sort "${sort}".`);
-  list = [...list].sort((a, b) => by(a, b) * dir || collator.compare(a.title, b.title));
+  list = [...list].sort((a, b) => {
+    if (sort === 'community' && !a.community !== !b.community) return a.community ? -1 : 1;
+    const both = sort !== 'community' || (a.community && b.community);
+    return (both ? by(a, b) * dir : 0) || collator.compare(a.title, b.title);
+  });
   const offset = q.offset ?? 0;
   const limit = Math.min(q.limit ?? 100, 1000);
   return { total: list.length, items: list.slice(offset, offset + limit) };

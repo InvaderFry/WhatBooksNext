@@ -49,7 +49,7 @@ import { loadRankData } from './lib/rankData.ts';
 import { ratingChangeReport, ratingDiagnostics } from './lib/ratingDiagnostics.ts';
 import { listFullSnapshots } from './lib/fullSnapshot.ts';
 import { Sources } from './sources/index.ts';
-import type { Fetcher } from './sources/types.ts';
+import { SOURCE_LABELS, type Fetcher } from './sources/types.ts';
 import { syncSeries } from './identify/series.ts';
 import { HttpError, nowIso, parseJson, todayLocal } from './util.ts';
 
@@ -365,7 +365,27 @@ export function createApp(ctx: AppContext) {
         offset: int(req.query.offset),
         limit: int(req.query.limit),
       };
-      const { items } = loadLibrary(db, await reach.get());
+      // The rank data carries the chosen online rating; the Library shows and sorts by it.
+      const data = loadRankData(db, await reach.get());
+      const ratings = new Map(data.items.map((i) => [i.id, i.community]));
+      const items = [...data.library.values()].map((i) => {
+        const c = ratings.get(i.id);
+        return {
+          ...i,
+          community: c
+            ? {
+                score: c.score,
+                raw: c.raw,
+                scale: c.scale,
+                votes: c.votes,
+                source: c.source,
+                sourceLabel: SOURCE_LABELS[c.source],
+                scope: c.scope,
+                unconfirmed: c.match === 'provisional',
+              }
+            : null,
+        };
+      });
       return queryLibrary(items, q);
     }),
   );

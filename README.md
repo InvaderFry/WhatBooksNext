@@ -131,7 +131,9 @@ with scope first, then the most ratings. A supported book/volume rating (at leas
 comes before a supported whole-series score, then sparse book/volume and sparse series scores.
 An unconfirmed match is a labelled last resort. Counts from different sites are never added,
 and each series rating counts once in its source's statistics. Your personal rating still
-replaces the community part of the ranking; the Library's rating sort stays personal-only.
+replaces the community part of the ranking. In the Library, **Your rating** sorts by your own
+ratings, and **Online rating** sorts by the chosen online rating, adjusted for how many people
+rated it, with unrated books last.
 **Hidden gems** needs at least 5 ratings on a trusted book/volume match, few for its source,
 and few on every other trusted source with a known count. Unknown counts don't prove obscurity.
 **Diagnostics → Rating evidence** shows the five tier counts and how many default What next

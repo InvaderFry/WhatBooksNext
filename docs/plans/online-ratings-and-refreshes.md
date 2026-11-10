@@ -56,8 +56,10 @@ authority throughout. A missing community rating stays unknown and neutral.
   order** (rated books first, highest first, in the triage route of `routes/reading.ts`); the item
   page (`OnlineCard.tsx`); the CSV export (`lib/export.ts`). It picks up the new choice with no
   change of its own.
-- **Not a reader, and unchanged:** the Library page's "rating" sort (`lib/library.ts`) uses only
-  the owner's personal rating. Stage 1 leaves it as it is.
+- **Not a reader, and unchanged:** the Library page's "Your rating" sort (`lib/library.ts`) uses
+  only the owner's personal rating. Stage 1 leaves it as it is. (Added after stage 2, at the
+  owner's request: a separate **Online rating** sort and a rating on each Library row, using the
+  chosen rating's adjusted score, unrated books last.)
 - Details: the title is the owner's, else the file's embedded title, else an accepted match's
   title (only when the file's title came from its filename), else the filename guess
   (`lib/library.ts`). Subjects are pooled from every used match (provisional included) and the
