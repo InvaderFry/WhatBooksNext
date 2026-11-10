@@ -10,7 +10,8 @@ owner has already made. Don't reopen those decisions. Then read the latest
   verified; quality session passed, `docs/quality-summary.md`).
 - **M4 in progress** (`docs/milestones/M4.md`). Part 1 (series and gaps) and part 2 (Metron and
   ComicVine adapters) are built. Part 2 waits on the owner's Test Metron / Test ComicVine
-  reports; then replace `fixtures/sources/synthetic/` with recorded answers. Next: collection
+  reports (done: shapes confirmed, many ties; tie-breakers added). Record real answers into
+  `fixtures/sources/` when the owner can share some. Next: collection
   coverage, then merge/split with undo, then store titles and the Calibre import.
 - Series rows are rebuilt by `syncSeries` (`server/src/identify/series.ts`) from stored facts
   and owner corrections. Call it after anything that changes items' names, numbers, kinds or

@@ -65,6 +65,8 @@ export interface SourceRecord {
   rating?: SourceRating;
   series?: {
     name: string;
+    /** The source's own id for the series or run (Metron series, ComicVine volume). */
+    id?: string;
     position?: number;
     /** Installments the source says exist (finished series), when it states it. */
     total?: number;

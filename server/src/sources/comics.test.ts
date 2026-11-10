@@ -55,7 +55,12 @@ describe('Metron (§12.1)', () => {
       series: { name: 'Copperline', position: 2, status: 'finished', total: 6 },
     });
     // No series details read for the other run: its status stays unknown, never guessed.
-    expect(second!.series).toEqual({ name: 'Copperline', position: 2, status: 'unknown' });
+    expect(second!.series).toEqual({
+      name: 'Copperline',
+      id: '9002',
+      position: 2,
+      status: 'unknown',
+    });
     expect(second!.years).toEqual([2023]);
   });
 

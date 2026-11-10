@@ -23,6 +23,16 @@ let paths: string[];
 
 const NONE = { count: 0, next: null, previous: null, results: [] };
 
+/** When set, Metron also has #3 in both invented runs (2019 and 2023). */
+let metronHasThree = false;
+const issueThree = () => {
+  const two = fixture('metron-issues-copperline-2.json') as { results: Record<string, unknown>[] };
+  return {
+    ...two,
+    results: two.results.map((r) => ({ ...r, id: Number(r.id) + 1, number: '3' })),
+  };
+};
+
 const fetcher: Fetcher = async (url) => {
   const u = new URL(url);
   paths.push(`${u.hostname}${u.pathname}`);
@@ -30,7 +40,11 @@ const fetcher: Fetcher = async (url) => {
   if (u.hostname === 'metron.cloud') {
     if (u.pathname === '/api/issue/')
       body =
-        u.searchParams.get('number') === '2' ? fixture('metron-issues-copperline-2.json') : NONE;
+        u.searchParams.get('number') === '2'
+          ? fixture('metron-issues-copperline-2.json')
+          : u.searchParams.get('number') === '3' && metronHasThree
+            ? issueThree()
+            : NONE;
     else if (u.pathname === '/api/series/9001/') body = fixture('metron-series-9001.json');
     else if (u.pathname === '/api/series/9002/') body = fixture('metron-series-9002.json');
   } else if (u.hostname === 'comicvine.gamespot.com') {
@@ -56,6 +70,7 @@ const issue = (n: number) =>
 beforeEach(async () => {
   drive = tempDir('wbn-m4-comics-');
   paths = [];
+  metronHasThree = false;
   db = await memoryDb();
   made = createApp({
     db,
@@ -158,5 +173,68 @@ describe('comic issue lookups', () => {
     expect(r.ok).toBe(true);
     expect(r.results.length).toBeGreaterThan(0);
     expect(JSON.stringify(r)).not.toContain('Copperline');
+  });
+
+  it('takes the run from a year in the folder name when the file gives none', async () => {
+    metronHasThree = true;
+    writeFiles(drive, {
+      'Copperline (2023)/Copperline 003.cbz': makeCbz({
+        pages: 4,
+        comicInfo: { Series: 'Copperline', Number: '3' },
+      }),
+    });
+    await api.post('/api/scan', {});
+    await made.scans.wait();
+    await api.put('/api/settings/metron', { token: 'tok-1234567890abcdef' });
+    await lookUp();
+    const id = itemOf('Copperline 003.cbz');
+    expect(db.prepare('SELECT identity, match_source_id FROM items WHERE id = ?').get(id)).toEqual({
+      identity: 'accepted',
+      match_source_id: '900103',
+    });
+  });
+
+  it('settles an issue with no year by the run of the issues next to it', async () => {
+    metronHasThree = true;
+    const plain = (n: number, year?: string) =>
+      makeCbz({
+        pages: 4,
+        comicInfo: { Series: 'Copperline', Number: String(n), ...(year ? { Year: year } : {}) },
+      });
+    writeFiles(drive, {
+      'Run/Copperline 012 two.cbz': plain(2, '2019'),
+      'Run/Copperline 013 three.cbz': plain(3),
+    });
+    await api.post('/api/scan', {});
+    await made.scans.wait();
+    await api.put('/api/settings/metron', { token: 'tok-1234567890abcdef' });
+    await lookUp();
+    const three = itemOf('Copperline 013 three.cbz');
+    expect(
+      db.prepare('SELECT identity, match_source_id FROM items WHERE id = ?').get(three),
+    ).toEqual({
+      identity: 'accepted',
+      match_source_id: '900003',
+    });
+  });
+
+  it('leaves two runs tied when nothing tells them apart', async () => {
+    metronHasThree = true;
+    writeFiles(drive, {
+      'Loose/Copperline 003.cbz': makeCbz({
+        pages: 4,
+        comicInfo: { Series: 'Copperline', Number: '3' },
+      }),
+    });
+    await api.post('/api/scan', {});
+    await made.scans.wait();
+    await api.put('/api/settings/metron', { token: 'tok-1234567890abcdef' });
+    await lookUp();
+    expect(
+      db
+        .prepare('SELECT identity FROM items WHERE id = ?')
+        .pluck()
+        .get(itemOf('Copperline 003.cbz')),
+    ).toBe('tie');
   });
 });

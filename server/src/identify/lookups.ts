@@ -65,10 +65,16 @@ export function matchFactsFor(db: DB, itemId: string): MatchFacts | null {
   if (!i) return null;
   const files = db
     .prepare(
-      `SELECT f.metadata, f.parsed, x.is_primary FROM files f JOIN item_files x ON x.file_id = f.id
+      `SELECT f.metadata, f.parsed, f.rel_dir, x.is_primary FROM files f
+       JOIN item_files x ON x.file_id = f.id
        WHERE x.item_id = ? ORDER BY x.is_primary DESC`,
     )
-    .all(itemId) as { metadata: string | null; parsed: string; is_primary: number }[];
+    .all(itemId) as {
+    metadata: string | null;
+    parsed: string;
+    rel_dir: string | null;
+    is_primary: number;
+  }[];
   const isbns = new Set<string>();
   const candidates = new Set<string>();
   for (const f of files) {
@@ -83,9 +89,21 @@ export function matchFactsFor(db: DB, itemId: string): MatchFacts | null {
   for (const y of [parse?.year?.value, parse?.startYear?.value])
     if (typeof y === 'number') years.add(y);
   for (const f of files) {
-    const y = Number(parseJson<EmbeddedMetadata | null>(f.metadata, null)?.comic?.year);
-    if (Number.isInteger(y) && y > 1800) years.add(y);
+    const comic = parseJson<EmbeddedMetadata | null>(f.metadata, null)?.comic;
+    // ComicInfo's Year is the cover year; its Volume is often the run's start year ("2016").
+    for (const v of [comic?.year, comic?.volume]) {
+      const y = Number(v);
+      if (Number.isInteger(y) && y > 1800 && y < 2200) years.add(y);
+    }
   }
+  // A comic's folder often names its run with a year: "Copperline (2019)". Only the folder the
+  // file sits in counts; a year higher up ("Comics 2016") says less about this run.
+  if (i.issue_label)
+    for (const m of (files[0]?.rel_dir ?? '')
+      .split('/')
+      .at(-1)!
+      .matchAll(/(?:^|[\s([_-])((?:19|20)\d\d)(?=$|[\s)\]_-])/g))
+      years.add(Number(m[1]));
   const creators = parseJson<{ name: string; role?: string }[]>(i.creators, []);
   // The owner's own title is the best evidence there is (owner corrections win).
   const title = i.title_override ?? i.title;
@@ -105,6 +123,79 @@ export function matchFactsFor(db: DB, itemId: string): MatchFacts | null {
     isbnCandidates: [...candidates],
     kind: i.kind_override ?? i.kind,
   };
+}
+
+/**
+ * The run (per comic source) that the other issues of this item's series in the same folder
+ * are certainly in: matched with certainty or confirmed by the owner. A source whose sibling
+ * issues point at two different runs gives no hint.
+ */
+export function runHintsFor(db: DB, itemId: string): { source: string; id: string }[] {
+  const rows = db
+    .prepare(
+      `SELECT DISTINCT o.match_source AS source, json_extract(m.data, '$.series.id') AS id
+       FROM items i
+       JOIN item_files xi ON xi.item_id = i.id AND xi.is_primary = 1
+       JOIN files fi ON fi.id = xi.file_id
+       JOIN files fo ON fo.folder_id = fi.folder_id AND fo.rel_dir = fi.rel_dir AND fo.id != fi.id
+       JOIN item_files xo ON xo.file_id = fo.id AND xo.is_primary = 1
+       JOIN items o ON o.id = xo.item_id AND o.id != i.id
+       JOIN item_matches m ON m.item_id = o.id AND m.source = o.match_source
+         AND m.source_id = o.match_source_id
+       WHERE i.id = ? AND i.series_hint IS NOT NULL AND o.identity = 'accepted'
+         AND o.match_source IN ('metron', 'comicvine')
+         AND lower(o.series_hint) = lower(i.series_hint)`,
+    )
+    .all(itemId) as { source: string; id: string | number | null }[];
+  const bySource = new Map<string, Set<string>>();
+  for (const r of rows) {
+    if (r.id === null) continue;
+    if (!bySource.has(r.source)) bySource.set(r.source, new Set());
+    bySource.get(r.source)!.add(String(r.id));
+  }
+  return [...bySource]
+    .filter(([, ids]) => ids.size === 1)
+    .map(([source, ids]) => ({ source, id: [...ids][0]! }));
+}
+
+/**
+ * Comic issues left tied or unconfirmed, now that other issues in their folders are settled:
+ * scored again with the run hint, from the cache (no new requests unless something was never
+ * fetched). Run after each lookup run and after the owner confirms an issue.
+ */
+export async function resolveRunTies(
+  db: DB,
+  sources: Sources,
+  onlyIds?: string[],
+): Promise<number> {
+  let changed = 0;
+  for (let pass = 0; pass < 2; pass++) {
+    const ids = (
+      db
+        .prepare(
+          `SELECT i.id FROM items i WHERE i.issue_label IS NOT NULL
+             AND i.identity IN ('tie', 'provisional')
+             AND EXISTS (SELECT 1 FROM lookup_state l WHERE l.item_id = i.id
+               AND l.source IN ('metron', 'comicvine') AND l.outcome != 'failed')`,
+        )
+        .pluck()
+        .all() as string[]
+    ).filter((id) => (!onlyIds || onlyIds.includes(id)) && runHintsFor(db, id).length > 0);
+    let passChanged = 0;
+    for (const id of ids) {
+      const before = db.prepare('SELECT identity FROM items WHERE id = ?').pluck().get(id);
+      try {
+        await lookUpOnce(db, sources, id, {});
+      } catch {
+        continue;
+      }
+      if (db.prepare('SELECT identity FROM items WHERE id = ?').pluck().get(id) !== before)
+        passChanged++;
+    }
+    changed += passChanged;
+    if (passChanged === 0) break;
+  }
+  return changed;
 }
 
 function rejectedFor(db: DB, itemId: string): Set<string> {
@@ -633,6 +724,7 @@ async function lookUpOnce(
 ): Promise<{ source: SourceName; outcome: string; error?: string }[]> {
   const facts = matchFactsFor(db, itemId);
   if (!facts) return [];
+  if (facts.issue) facts.runs = runHintsFor(db, itemId);
   const query = buildQuery(facts);
   const qKey = JSON.stringify(query);
   const results: { source: SourceName; outcome: string; error?: string }[] = [];
@@ -817,6 +909,8 @@ export class LookupManager {
           status.estimateSeconds = Math.round((per * (status.total - status.done)) / 1000);
         }
       }
+      // Issues next to ones now settled follow their run (cache only).
+      if (!this.cancelled && !status.stoppedOffline) await resolveRunTies(this.db, this.sources);
       if (status.stoppedOffline) {
         status.status = 'failed';
         status.error = `Couldn’t reach the online sources for ${LOOKUP_STOP_AFTER_FAILED_ITEMS} books in a row, so the lookups stopped. Check the internet connection (or VPN), then press “Look them up now” to carry on where it stopped.`;

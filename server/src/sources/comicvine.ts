@@ -110,7 +110,12 @@ export function parseComicVineIssues(
       subjects: ['Comics'],
       format: 'ISSUE',
       // ComicVine doesn't say whether a run has ended.
-      series: { name: vname, ...(position !== undefined ? { position } : {}), status: 'unknown' },
+      series: {
+        name: vname,
+        ...(typeof i.volume?.id === 'number' ? { id: String(i.volume.id) } : {}),
+        ...(position !== undefined ? { position } : {}),
+        status: 'unknown',
+      },
     };
     if (i.name) rec.subtitle = i.name;
     if (cover) rec.firstPublishYear = cover;

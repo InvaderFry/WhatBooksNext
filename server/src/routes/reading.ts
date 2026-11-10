@@ -1,7 +1,13 @@
 import type { Express, Request } from 'express';
 import { READ_NEXT_PAGE, RECENT_DAYS, TRIAGE_SESSION } from '../config.ts';
 import type { DB } from '../db/database.ts';
-import { lookUpItem, matchFactsFor, type LookupManager } from '../identify/lookups.ts';
+import {
+  lookUpItem,
+  matchFactsFor,
+  resolveRunTies,
+  runHintsFor,
+  type LookupManager,
+} from '../identify/lookups.ts';
 import { buildQuery, decide } from '../identify/match.ts';
 import {
   applyMatchAction,
@@ -374,25 +380,33 @@ export function registerReadingRoutes(app: Express, d: ReadingDeps): void {
       const results = [];
       for (const [n, id] of ids.entries()) {
         const facts = matchFactsFor(db, id)!;
+        facts.runs = runHintsFor(db, id);
         const q = buildQuery(facts);
         const label = names ? `${q.series} #${q.issue}` : `Issue ${n + 1}`;
         try {
           const recs = await src.search(q, { refresh: true });
           const d = decide(facts, recs);
-          const top = recs[0];
+          const [top, next] = d.ranked;
+          const brief = (c: (typeof d.ranked)[number] | undefined) =>
+            c
+              ? {
+                  title: names ? c.record.title : undefined,
+                  score: c.score,
+                  years: c.record.years ?? [],
+                  status: c.record.series?.status ?? 'unknown',
+                  total: c.record.series?.total ?? null,
+                  link: Boolean(c.record.url),
+                }
+              : null;
           results.push({
             issue: label,
             results: recs.length,
             decision: d.decision,
-            top: top
-              ? {
-                  title: names ? top.title : undefined,
-                  years: top.years ?? [],
-                  status: top.series?.status ?? 'unknown',
-                  total: top.series?.total ?? null,
-                  link: Boolean(top.url),
-                }
-              : null,
+            // Years aren't titles: they say why a tie couldn't be settled.
+            fileYears: facts.years ?? [],
+            runHint: (facts.runs ?? []).length > 0,
+            top: brief(top),
+            next: brief(next),
           });
         } catch (e) {
           results.push({ issue: label, error: (e as Error).message });
@@ -448,11 +462,20 @@ export function registerReadingRoutes(app: Express, d: ReadingDeps): void {
   );
   app.post(
     '/api/items/:id/match',
-    route((req) => {
+    route(async (req) => {
       const id = d.itemIdOr404(String(req.params.id));
       const a = validateMatchAction(req.body);
       db.transaction(() => applyMatchAction(db, id, a))();
-      return { ok: true };
+      // A confirmed comic issue settles the run for the issues next to it (cache only). While a
+      // lookup run is going, it does this itself at the end.
+      let settled = 0;
+      if (
+        a.action === 'confirm' &&
+        !lookups.isRunning() &&
+        db.prepare('SELECT issue_label FROM items WHERE id = ?').pluck().get(id)
+      )
+        settled = await resolveRunTies(db, sources);
+      return { ok: true, settled };
     }),
   );
   app.post(

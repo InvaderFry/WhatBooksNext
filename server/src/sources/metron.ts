@@ -94,6 +94,7 @@ export function parseMetronIssues(
       format: 'ISSUE',
       series: {
         name: i.series.name,
+        ...(typeof i.series.id === 'number' ? { id: String(i.series.id) } : {}),
         ...(position !== undefined ? { position } : {}),
         status,
         // An issue count is only the story's length once it has ended.

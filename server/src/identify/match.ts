@@ -32,6 +32,11 @@ export interface MatchFacts {
    * and ComicInfo's Year (the cover year). Only comics use them, against an issue's years.
    */
   years?: number[];
+  /**
+   * Runs the other issues of this series in the same folder are certainly in, per source
+   * (Metron series id, ComicVine volume id). Issues of one series in one folder are one run.
+   */
+  runs?: { source: string; id: string }[];
   /** Identifiers from an EPUB: strong evidence. */
   isbns: string[];
   /** ISBNs found inside a PDF: candidates only, never accepted alone (§10). */
@@ -271,6 +276,16 @@ export function scoreCandidate(f: MatchFacts, r: SourceRecord): ScoredCandidate 
   ) {
     score = Math.max(score, 0.75 * title + 0.25);
     notes.push('Year matches.');
+  }
+  // The same run as the issues next to it in its folder: as good as a matching year.
+  if (
+    author === 'unknown' &&
+    title >= 0.75 &&
+    r.series?.id &&
+    f.runs?.some((h) => h.source === r.source && h.id === r.series!.id)
+  ) {
+    score = Math.max(score, 0.75 * title + 0.25);
+    notes.push('Same run as the other issues in its folder.');
   }
 
   const ours = ourNumber(f);

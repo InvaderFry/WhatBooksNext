@@ -302,6 +302,20 @@ function HardcoverCheck({ names }: { names: boolean }) {
   );
 }
 
+interface Candidate {
+  title?: string;
+  score: number;
+  years: number[];
+  status: string;
+  total: number | null;
+  link: boolean;
+}
+
+const candidateText = (c: Candidate | null | undefined) =>
+  c
+    ? `${c.title ? `"${c.title}", ` : ''}score ${c.score}, years ${c.years.join('/') || '-'}, series ${c.status}${c.total ? ` (${c.total} issues)` : ''}, link ${c.link ? 'yes' : 'no'}`
+    : 'none';
+
 interface ComicTest {
   ok: boolean;
   results: {
@@ -309,13 +323,10 @@ interface ComicTest {
     results?: number;
     decision?: string;
     error?: string;
-    top?: {
-      title?: string;
-      years: number[];
-      status: string;
-      total: number | null;
-      link: boolean;
-    } | null;
+    fileYears?: number[];
+    runHint?: boolean;
+    top?: Candidate | null;
+    next?: Candidate | null;
   }[];
   rateLimit: Record<string, string>;
   requestsToday: number | null;
@@ -344,11 +355,7 @@ function ComicCheck({
         ...result.results.map((r) =>
           r.error
             ? `${r.issue}: error: ${r.error}`
-            : `${r.issue}: ${r.results} results, decision ${r.decision}; top: ${
-                r.top
-                  ? `${r.top.title ? `"${r.top.title}", ` : ''}years ${r.top.years.join('/') || '-'}, series ${r.top.status}${r.top.total ? ` (${r.top.total} issues)` : ''}, link ${r.top.link ? 'yes' : 'no'}`
-                  : 'none'
-              }`,
+            : `${r.issue}: ${r.results} results, decision ${r.decision}; file years ${r.fileYears?.join('/') || 'none'}${r.runHint ? ', run known from its folder' : ''}; top: ${candidateText(r.top)}; next: ${candidateText(r.next)}`,
         ),
         `Rate-limit headers: ${
           Object.entries(result.rateLimit)
