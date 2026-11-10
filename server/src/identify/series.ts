@@ -1,6 +1,7 @@
 import type { DB } from '../db/database.ts';
-import type { SourceName } from '../sources/types.ts';
-import { newId, nowIso } from '../util.ts';
+import { MATCH_ACCEPT } from '../config.ts';
+import { SOURCE_LABELS, type SourceName } from '../sources/types.ts';
+import { newId, nowIso, parseJson } from '../util.ts';
 import { titleCompareKey } from './filename.ts';
 import { allMatchInputs, chooseUsed } from './lookups.ts';
 
@@ -31,6 +32,7 @@ interface ItemRow {
   series_unit: string | null;
   series_override: string | null;
   series_position_override: number | null;
+  history_only: number;
 }
 
 interface SeriesRow {
@@ -42,6 +44,7 @@ interface SeriesRow {
   order_source: string | null;
   status_source: string | null;
   match_key: string | null;
+  source_ids: string;
 }
 
 interface Placement {
@@ -53,6 +56,8 @@ interface Placement {
   positionFrom: string | null;
   unit: 'volume' | 'issue';
   kind: string | null;
+  run?: { source: SourceName; id?: string; year?: number };
+  collects?: { series: string; year?: number; number: string }[];
   source?: {
     source: SourceName;
     status?: 'finished' | 'ongoing' | 'unknown';
@@ -71,16 +76,27 @@ export function seriesKey(kind: string | null, name: string): string {
   return `${kind === 'comic' || kind === 'manga' ? 'c' : 'b'}:${titleCompareKey(name)}`;
 }
 
+/** Display context stays separate from the nominal name used for matching and corrections. */
+export function seriesRunLabel(s: { match_key: string | null; source_ids: string }): string | null {
+  if (!s.match_key?.includes('|run:')) return null;
+  const year = parseJson<{ runStartYear?: number }>(s.source_ids, {}).runStartYear;
+  if (year !== undefined) return `${year} run`;
+  const m = /\|run:(metron|comicvine):(.+)$/.exec(s.match_key);
+  return m ? `${SOURCE_LABELS[m[1] as SourceName]} run ${decodeURIComponent(m[2]!)}` : null;
+}
+
 function placementFor(
   i: ItemRow,
   used: ReturnType<typeof chooseUsed>,
-  confirmed: boolean,
+  override: string | null,
 ): Placement | null {
   if (i.series_override === '') return null;
   // A source's series is used only for a match the app is sure of, or the owner confirmed:
   // a wrong series would invent gaps.
   const trusted =
-    confirmed || i.identity === 'accepted' || used.some((m) => m.evidence.isbn === 'strong');
+    Boolean(override && override !== 'none') ||
+    i.identity === 'accepted' ||
+    used.some((m) => m.evidence.isbn === 'strong');
   const rec = (trusted ? used : []).find((m) => m.record.series?.name)?.record;
   let name: string | null = null;
   let nameRank = 0;
@@ -90,6 +106,19 @@ function placementFor(
   if (!name || !titleCompareKey(name)) return null;
   const key = seriesKey(i.kind, name);
   const fromSource = rec?.series && seriesKey(i.kind, rec.series.name) === key ? rec : undefined;
+  const unit = i.issue_label && !i.volume_label && i.kind !== 'manga' ? 'issue' : 'volume';
+  // Calibre or another provider may supply the preferred name, while a separate, certain
+  // comic match is the evidence for this run. Overall identity must not promote a provisional one.
+  const comic = used.find(
+    (m) =>
+      (m.source === 'metron' || m.source === 'comicvine') &&
+      (m.score >= MATCH_ACCEPT ||
+        m.evidence.isbn === 'strong' ||
+        override === `${m.source}:${m.sourceId}`) &&
+      ((m.record.series && seriesKey(i.kind, m.record.series.name) === key) ||
+        (unit === 'volume' &&
+          m.record.collects?.some((c) => seriesKey('comic', c.series) === key))),
+  )?.record;
 
   let position: number | null = null;
   let positionFrom: string | null = null;
@@ -107,8 +136,18 @@ function placementFor(
     position,
     positionFrom,
     // A manga's number is a volume whatever the file calls it (ComicInfo has only "Number").
-    unit: i.issue_label && !i.volume_label && i.kind !== 'manga' ? 'issue' : 'volume',
+    unit,
     kind: i.kind,
+    ...(unit === 'issue' && comic?.series
+      ? {
+          run: {
+            source: comic.source,
+            id: comic.series.id,
+            year: comic.series.startYear,
+          },
+        }
+      : {}),
+    collects: unit === 'volume' ? (comic?.collects ?? rec?.collects) : undefined,
     source: fromSource?.series
       ? {
           source: fromSource.source,
@@ -117,6 +156,144 @@ function placementFor(
         }
       : undefined,
   };
+}
+
+/** Split only runs that the sources distinguish; a missing year or id never supplies one. */
+function qualifyComicRuns(
+  db: DB,
+  items: ItemRow[],
+  placements: Map<string, Placement | null>,
+  existing: SeriesRow[],
+): void {
+  const byBase = new Map<string, { item: ItemRow; placement: Placement }[]>();
+  for (const item of items) {
+    const placement = placements.get(item.id);
+    if (!placement?.key.startsWith('c:')) continue;
+    if (!byBase.has(placement.key)) byBase.set(placement.key, []);
+    byBase.get(placement.key)!.push({ item, placement });
+  }
+  const byId = new Map(existing.map((s) => [s.id, s]));
+  const qualifiedByBase = new Map<string, SeriesRow[]>();
+  for (const row of existing) {
+    const offset = row.match_key?.indexOf('|run:') ?? -1;
+    if (offset < 0) continue;
+    const base = row.match_key!.slice(0, offset);
+    if (!qualifiedByBase.has(base)) qualifiedByBase.set(base, []);
+    qualifiedByBase.get(base)!.push(row);
+  }
+  const coverage = db
+    .prepare("SELECT item_id, series_id FROM collection_coverage WHERE state != 'rejected'")
+    .all() as { item_id: string; series_id: string }[];
+  for (const [base, members] of byBase) {
+    const allRuns = members
+      .map((m) => m.placement.run)
+      .filter((r): r is NonNullable<Placement['run']> => Boolean(r));
+    const ids = new Map<string, Set<string>>();
+    const yearOfId = new Map<string, Set<number>>();
+    for (const r of allRuns) {
+      if (!r.id) continue;
+      if (!ids.has(r.source)) ids.set(r.source, new Set());
+      ids.get(r.source)!.add(r.id);
+      const key = `${r.source}:${r.id}`;
+      if (!yearOfId.has(key)) yearOfId.set(key, new Set());
+      if (r.year !== undefined) yearOfId.get(key)!.add(r.year);
+    }
+    // Another issue of the same provider run may carry its explicit start year.
+    for (const r of allRuns) {
+      const years = r.id ? yearOfId.get(`${r.source}:${r.id}`) : undefined;
+      if (r.year === undefined && years?.size === 1) r.year = [...years][0];
+    }
+    const runs = [
+      ...new Map(allRuns.map((r) => [JSON.stringify([r.source, r.id, r.year]), r])).values(),
+    ];
+    const previousRows = qualifiedByBase.get(base) ?? [];
+    const years = new Set([
+      ...runs.flatMap((r) => (r.year === undefined ? [] : [r.year])),
+      ...members.flatMap(({ placement: p }) =>
+        (p.collects ?? []).flatMap((c) =>
+          c.year !== undefined && seriesKey('comic', c.series) === base ? [c.year] : [],
+        ),
+      ),
+    ]);
+    const wasQualified = previousRows.length > 0;
+    if (!wasQualified && years.size < 2 && ![...ids.values()].some((set) => set.size > 1)) continue;
+    const computeKey = (r: NonNullable<Placement['run']>): string | null => {
+      const oldKeysFor = (source: string, id: string | undefined) =>
+        id
+          ? previousRows
+              .filter((s) => {
+                if (!s.match_key?.startsWith(`${base}|run:`)) return false;
+                const ids = parseJson<Record<string, unknown>>(s.source_ids, {})[source];
+                return Array.isArray(ids) && ids.includes(id);
+              })
+              .map((s) => s.match_key!)
+          : [];
+      const own = oldKeysFor(r.source, r.id);
+      if (own.length === 1) return own[0]!;
+      // A year links the providers, except when one provider explicitly has several runs in it.
+      const sameYearIds = new Map<string, Set<string>>();
+      for (const other of runs) {
+        if (other.year !== r.year || !other.id) continue;
+        if (!sameYearIds.has(other.source)) sameYearIds.set(other.source, new Set());
+        sameYearIds.get(other.source)!.add(other.id);
+      }
+      if (r.year !== undefined && ![...sameYearIds.values()].some((set) => set.size > 1)) {
+        const previous = new Set(
+          runs
+            .filter((other) => other.year === r.year)
+            .flatMap((other) => oldKeysFor(other.source, other.id)),
+        );
+        for (const s of previousRows)
+          if (
+            s.match_key?.startsWith(`${base}|run:`) &&
+            parseJson<{ runStartYear?: number }>(s.source_ids, {}).runStartYear === r.year
+          )
+            previous.add(s.match_key);
+        return previous.size === 1 ? [...previous][0]! : `${base}|run:year:${r.year}`;
+      }
+      return r.id ? `${base}|run:${r.source}:${encodeURIComponent(r.id)}` : null;
+    };
+    // A thousand issues of two runs need only two identity resolutions.
+    const resolved = new Map<string, string | null>();
+    const keyFor = (r: NonNullable<Placement['run']>): string | null => {
+      const token = JSON.stringify([r.source, r.id, r.year]);
+      if (!resolved.has(token)) resolved.set(token, computeKey(r));
+      return resolved.get(token)!;
+    };
+    const known = new Set<string>();
+    for (const { placement: p } of members) {
+      const key = p.run ? keyFor(p.run) : null;
+      if (key) {
+        p.key = key;
+        known.add(key);
+      }
+    }
+    for (const { item, placement: p } of members) {
+      if (p.key !== base) continue;
+      // "Read this gap elsewhere" explicitly selected this series row. Keep that selection.
+      const old = item.history_only && item.series_id ? byId.get(item.series_id)?.match_key : null;
+      if (old?.startsWith(`${base}|run:`)) {
+        p.key = old;
+        continue;
+      }
+      if (p.unit !== 'volume') continue;
+      const targets = new Set<string>();
+      for (const c of p.collects ?? []) {
+        if (c.year === undefined || seriesKey('comic', c.series) !== base) continue;
+        for (const r of runs)
+          if (r.year === c.year) {
+            const key = keyFor(r);
+            if (key) targets.add(key);
+          }
+      }
+      if (targets.size === 0)
+        for (const c of coverage.filter((c) => c.item_id === item.id)) {
+          const target = byId.get(c.series_id)?.match_key;
+          if (target && known.has(target)) targets.add(target);
+        }
+      if (targets.size === 1) p.key = [...targets][0]!;
+    }
+  }
 }
 
 function mostCommon<T>(values: T[]): T | null {
@@ -148,7 +325,10 @@ function doSync(db: DB): SyncResult {
     .prepare(
       `SELECT i.id, COALESCE(u.kind_override, i.kind) AS kind, i.series_hint, i.volume_label,
          i.issue_label, i.identity, i.series_id, i.series_position, i.series_unit,
-         u.series_override, u.series_position_override
+         u.series_override, u.series_position_override,
+         EXISTS (SELECT 1 FROM locations l WHERE l.item_id = i.id AND l.kind = 'history')
+           AND NOT EXISTS (SELECT 1 FROM item_files f WHERE f.item_id = i.id)
+           AND NOT EXISTS (SELECT 1 FROM locations l WHERE l.item_id = i.id AND l.kind = 'store') AS history_only
        FROM items i LEFT JOIN user_item u ON u.item_id = i.id`,
     )
     .all() as ItemRow[];
@@ -163,15 +343,19 @@ function doSync(db: DB): SyncResult {
       rejected.get(i.id) ?? new Set(),
     );
     const o = overrides.get(i.id);
-    const p = placementFor(i, used, Boolean(o && o !== 'none'));
+    const p = placementFor(i, used, o ?? null);
     placements.set(i.id, p);
+  }
+
+  const existing = db.prepare('SELECT * FROM series').all() as SeriesRow[];
+  qualifyComicRuns(db, items, placements, existing);
+  for (const i of items) {
+    const p = placements.get(i.id);
     if (!p) continue;
     if (!groups.has(p.key)) groups.set(p.key, { items: [], placements: [] });
     groups.get(p.key)!.items.push(i);
     groups.get(p.key)!.placements.push(p);
   }
-
-  const existing = db.prepare('SELECT * FROM series').all() as SeriesRow[];
   const byKey = new Map<string, SeriesRow>();
   for (const s of existing) byKey.set(s.match_key ?? seriesKey(s.kind, s.name), s);
   const ownerStatus = new Map(
@@ -187,13 +371,13 @@ function doSync(db: DB): SyncResult {
   const insert = db.prepare(
     `INSERT INTO series (id, name, kind, publication_status, installments, source_ids,
        order_source, status_source, match_key, updated_at)
-     VALUES (@id, @name, @kind, @publication_status, @installments, '{}', @order_source,
+     VALUES (@id, @name, @kind, @publication_status, @installments, @source_ids, @order_source,
        @status_source, @match_key, @updated_at)`,
   );
   const update = db.prepare(
     `UPDATE series SET name = @name, kind = @kind, publication_status = @publication_status,
        installments = @installments, order_source = @order_source,
-       status_source = @status_source, match_key = @match_key, updated_at = @updated_at
+       status_source = @status_source, source_ids = @source_ids, match_key = @match_key, updated_at = @updated_at
      WHERE id = @id`,
   );
   const seriesOf = new Map<string, string>();
@@ -233,6 +417,26 @@ function doSync(db: DB): SyncResult {
       order_source: orderSource,
       status_source: statusSource,
       match_key: key,
+      source_ids: JSON.stringify({
+        ...(key.includes('|run:')
+          ? parseJson<Record<string, unknown>>(old?.source_ids ?? '{}', {})
+          : {}),
+        ...Object.fromEntries(
+          [...new Set(g.placements.flatMap((p) => (p.run ? [p.run.source] : [])))].map((source) => [
+            source,
+            [
+              ...new Set(
+                g.placements.flatMap((p) =>
+                  p.run?.source === source && p.run.id ? [p.run.id] : [],
+                ),
+              ),
+            ],
+          ]),
+        ),
+        ...(g.placements.some((p) => p.run?.year !== undefined)
+          ? { runStartYear: g.placements.find((p) => p.run?.year !== undefined)!.run!.year }
+          : {}),
+      }),
     };
     if (!old) insert.run({ ...row, updated_at: now });
     else if (
@@ -242,6 +446,7 @@ function doSync(db: DB): SyncResult {
       old.installments !== row.installments ||
       old.order_source !== row.order_source ||
       old.status_source !== row.status_source ||
+      old.source_ids !== row.source_ids ||
       old.match_key !== row.match_key
     )
       update.run({ ...row, updated_at: now });
@@ -270,7 +475,11 @@ function doSync(db: DB): SyncResult {
       `SELECT id FROM series s WHERE NOT EXISTS (SELECT 1 FROM items i WHERE i.series_id = s.id)
          AND NOT EXISTS (SELECT 1 FROM series_user x WHERE x.series_id = s.id)
          AND NOT EXISTS (SELECT 1 FROM collection_coverage c WHERE c.series_id = s.id
-           AND c.state != 'suggested')`,
+           AND c.state != 'suggested')
+         AND NOT EXISTS (SELECT 1 FROM operations o, json_each(o.before, '$.tables.items') item
+           WHERE o.undone_at IS NULL AND json_extract(item.value, '$.series_id') = s.id)
+         AND NOT EXISTS (SELECT 1 FROM operations o, json_each(o.before, '$.tables.collection_coverage') coverage
+           WHERE o.undone_at IS NULL AND json_extract(coverage.value, '$.series_id') = s.id)`,
     )
     .pluck()
     .all() as string[];

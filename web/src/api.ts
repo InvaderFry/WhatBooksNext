@@ -436,6 +436,7 @@ export interface SeriesEntry {
 export interface SeriesView {
   id: string;
   name: string;
+  runLabel?: string | null;
   kind: Kind | null;
   status: 'finished' | 'ongoing' | 'unknown';
   statusSource: string | null;

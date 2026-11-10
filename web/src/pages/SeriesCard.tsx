@@ -200,6 +200,7 @@ export function SeriesSection({
         <>
           <p>
             <strong>{s.name}</strong>
+            {s.runLabel && <span> · {s.runLabel}</span>}
             {position !== null && (
               <span>
                 {' '}

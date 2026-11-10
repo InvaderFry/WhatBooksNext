@@ -97,7 +97,7 @@ export function seriesView(db: DB, reach: FolderReachability, id: string): Serie
     .map((i) => {
       const p = places.get(i.id)!;
       const historyOnly = history.has(i.id);
-      const holding = holdingOf({ historyOnly, availability: i.availability });
+      const holding = holdingOf({ historyOnly, availability: i.availability, user: i.user });
       return {
         id: i.id,
         title: i.title,
@@ -106,7 +106,11 @@ export function seriesView(db: DB, reach: FolderReachability, id: string): Serie
         unit: p.series_unit ?? 'volume',
         progress: i.user.progress,
         holding,
-        availabilityLabel: historyOnly ? 'Read elsewhere' : i.availability.label,
+        availabilityLabel: historyOnly
+          ? i.user.progress === 'finished'
+            ? 'Read elsewhere'
+            : 'History only · not owned'
+          : i.availability.label,
         formats: i.formats,
       };
     })
@@ -129,7 +133,11 @@ export function seriesView(db: DB, reach: FolderReachability, id: string): Serie
   const coverage: Coverage[] = rows.map((r) => {
     const col = cols.get(r.item_id);
     const h = col
-      ? holdingOf({ historyOnly: history.has(col.id), availability: col.availability })
+      ? holdingOf({
+          historyOnly: history.has(col.id),
+          availability: col.availability,
+          user: col.user,
+        })
       : null;
     return {
       id: r.id,
@@ -227,14 +235,21 @@ export function markReadElsewhere(
     throw new HttpError(400, 'unit must be volume or issue.');
   return db.transaction(() => {
     const s = seriesRow(db, seriesId);
+    const history = historyOnlyIds(db);
     const taken = new Set(
       db
         .prepare(
-          `SELECT series_position FROM items WHERE series_id = ? AND series_unit = ?
-             AND series_position IS NOT NULL`,
+          `SELECT i.id, i.series_position, u.progress FROM items i
+           LEFT JOIN user_item u ON u.item_id = i.id WHERE i.series_id = ? AND i.series_unit = ?
+             AND i.series_position IS NOT NULL`,
         )
-        .pluck()
-        .all(seriesId, unit) as number[],
+        .all(seriesId, unit)
+        .filter(
+          (r) =>
+            !history.has((r as { id: string }).id) ||
+            (r as { progress: string }).progress === 'finished',
+        )
+        .map((r) => (r as { series_position: number }).series_position),
     );
     const now = nowIso();
     const made: string[] = [];
@@ -244,15 +259,16 @@ export function markReadElsewhere(
       if (taken.has(p)) continue;
       const id = newId();
       db.prepare(
-        `INSERT INTO items (id, kind, kind_source, title, title_source, creators, series_hint,
+        `INSERT INTO items (id, kind, kind_source, title, title_source, creators, series_hint, series_id,
            volume_label, issue_label, created_at, updated_at)
-         VALUES (?, ?, ?, ?, 'owner', '[]', ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, 'owner', '[]', ?, ?, ?, ?, ?, ?)`,
       ).run(
         id,
         s.kind,
         s.kind ? 'series' : null,
         unit === 'issue' ? `${s.name} #${p}` : `${s.name} Vol. ${p}`,
         s.name,
+        seriesId,
         unit === 'volume' ? String(p) : null,
         unit === 'issue' ? String(p) : null,
         now,

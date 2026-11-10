@@ -52,12 +52,13 @@ describe('Metron (§12.1)', () => {
       format: 'ISSUE',
       firstPublishYear: 2019,
       years: [2019],
-      series: { name: 'Copperline', position: 2, status: 'finished', total: 6 },
+      series: { name: 'Copperline', startYear: 2019, position: 2, status: 'finished', total: 6 },
     });
     // No series details read for the other run: its status stays unknown, never guessed.
     expect(second!.series).toEqual({
       name: 'Copperline',
       id: '9002',
+      startYear: 2023,
       position: 2,
       status: 'unknown',
     });
@@ -133,7 +134,7 @@ describe('ComicVine (§12.1)', () => {
       title: 'Copperline #2',
       subtitle: 'The Second Shift',
       years: [2019],
-      series: { name: 'Copperline', position: 2, status: 'unknown' },
+      series: { name: 'Copperline', startYear: 2019, position: 2, status: 'unknown' },
     });
     const issues = new URL(calls[1]!.url);
     expect(issues.searchParams.get('filter')).toBe('volume:77001,issue_number:2');

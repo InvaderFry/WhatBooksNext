@@ -209,6 +209,31 @@ describe('store CSV (§14)', () => {
     expect(quills).toBe(2);
   });
 
+  it('keeps intentionally cleared progress, ratings and notes on a repeat store import', async () => {
+    const text =
+      'title,author,store,progress,rating,note\nImported Rain Ledger,Ada Fen,Kindle,read,4/5,Imported note';
+    await api.post('/api/import/csv', { text, keepNew: true });
+    const id = db
+      .prepare("SELECT id FROM items WHERE title = 'Imported Rain Ledger'")
+      .pluck()
+      .get() as string;
+    await api.patch(`/api/items/${id}`, { progress: 'not_started', rating: null, note: null });
+    const preview = (await api.post('/api/import/csv/preview', { text })).body;
+    expect(preview.rows[0]).toMatchObject({ outcome: 'already', applies: [] });
+    expect((await api.post('/api/import/csv', { text, keepNew: true })).body).toEqual({
+      added: 0,
+      attached: 0,
+      already: 1,
+      skipped: 0,
+    });
+    expect((await api.get(`/api/items/${id}`)).body.user).toMatchObject({
+      progress: 'not_started',
+      finishedOn: null,
+      rating: null,
+      note: null,
+    });
+  });
+
   it('says plainly what it can’t use', async () => {
     const r = await api.post('/api/import/csv/preview', { text: 'name,writer\nX,Y' });
     expect(r.status).toBe(400);

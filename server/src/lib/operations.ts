@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { UNDO_STACK_SIZE } from '../config.ts';
 import type { DB } from '../db/database.ts';
 import { groupUnassignedFiles } from '../identify/grouping.ts';
@@ -99,11 +100,21 @@ function restore(db: DB, snap: Snapshot, alsoIds: string[]): void {
   groupUnassignedFiles(db);
 }
 
-function stampOf(db: DB, id: string): string | null {
-  return (
-    (db.prepare('SELECT updated_at FROM user_item WHERE item_id = ?').pluck().get(id) as
-      string | undefined) ?? null
-  );
+function stampOf(db: DB, id: string): string {
+  // Owner data lives beyond user_item. Undo must also preserve later store, coverage,
+  // rejection and import decisions, while allowing scans to discover additional files.
+  const state = {
+    user: db.prepare('SELECT * FROM user_item WHERE item_id = ?').get(id) ?? null,
+    related: [
+      ['locations', 'id'],
+      ['collection_coverage', 'id'],
+      ['import_keys', 'source, row_key'],
+      ['candidates_rejected', 'source, source_id'],
+    ].map(([table, order]) =>
+      db.prepare(`SELECT * FROM ${table} WHERE item_id = ? ORDER BY ${order}`).all(id),
+    ),
+  };
+  return 'owner-v2:' + createHash('sha256').update(JSON.stringify(state)).digest('hex');
 }
 
 export function record(
@@ -365,6 +376,7 @@ export function mergeItems(
       otherId,
     );
     db.prepare('UPDATE locations SET item_id = ? WHERE item_id = ?').run(keepId, otherId);
+    db.prepare('UPDATE import_keys SET item_id = ? WHERE item_id = ?').run(keepId, otherId);
     db.prepare('UPDATE collection_coverage SET item_id = ? WHERE item_id = ?').run(keepId, otherId);
     db.prepare(
       `INSERT OR IGNORE INTO candidates_rejected (item_id, source, source_id, score, created_at)
@@ -376,6 +388,12 @@ export function mergeItems(
        SELECT ?, source, source_id, score, rank, evidence, data, fetched_at FROM item_matches m
        WHERE m.item_id = ? AND NOT EXISTS (SELECT 1 FROM item_matches k WHERE k.item_id = ? AND k.source = m.source)`,
     ).run(keepId, otherId, keepId);
+    // The owner's chosen match must survive even when both entries used the same provider.
+    db.prepare(
+      `INSERT OR REPLACE INTO item_matches (item_id, source, source_id, score, rank, evidence, data, fetched_at)
+       SELECT ?, source, source_id, score, rank, evidence, data, fetched_at FROM item_matches
+       WHERE item_id = ? AND source || ':' || source_id = ?`,
+    ).run(keepId, otherId, next.match_override ?? null);
     db.prepare(
       `INSERT OR IGNORE INTO lookup_state (item_id, source, version, query, looked_up_at, outcome, error)
        SELECT ?, source, version, query, looked_up_at, outcome, error FROM lookup_state WHERE item_id = ?`,
@@ -390,8 +408,14 @@ export function mergeItems(
       'INSERT OR REPLACE INTO deletions (entity, entity_id, deleted_at) VALUES (?, ?, ?)',
     ).run('item', otherId, now);
     db.prepare('UPDATE items SET updated_at = ? WHERE id = ?').run(now, keepId);
+    // Protect the snapshot's series dependencies before the rebuild can remove orphan rows.
+    const operationId = record(db, 'merge', summary, before, [keepId]);
     settle(db, [keepId]);
-    return { operationId: record(db, 'merge', summary, before, [keepId]) };
+    db.prepare('UPDATE operations SET stamps = ? WHERE id = ?').run(
+      JSON.stringify({ [keepId]: stampOf(db, keepId) }),
+      operationId,
+    );
+    return { operationId };
   })();
 }
 
@@ -452,6 +476,18 @@ export function splitItem(
     );
     const newItemId = createItemForFiles(db, moving);
     if (ownerData === 'move') {
+      const match = db
+        .prepare('SELECT match_override FROM user_item WHERE item_id = ?')
+        .pluck()
+        .get(itemId);
+      db.prepare(
+        `UPDATE item_matches SET item_id = ? WHERE item_id = ? AND source || ':' || source_id = ?`,
+      ).run(newItemId, itemId, match ?? null);
+      db.prepare('UPDATE candidates_rejected SET item_id = ? WHERE item_id = ?').run(
+        newItemId,
+        itemId,
+      );
+      db.prepare('UPDATE import_keys SET item_id = ? WHERE item_id = ?').run(newItemId, itemId);
       db.prepare(
         'UPDATE user_item SET item_id = ?, preferred_file_id = NULL WHERE item_id = ?',
       ).run(newItemId, itemId);
@@ -463,9 +499,14 @@ export function splitItem(
       ).run(itemId, ...fileIds);
     }
     db.prepare('UPDATE items SET updated_at = ? WHERE id = ?').run(nowIso(), itemId);
-    settle(db, [itemId, newItemId]);
     const summary = `Split ${moving.length === 1 ? moving[0]!.name : `${moving.length} files`} off “${title}”`;
-    return { operationId: record(db, 'split', summary, before, [itemId, newItemId]), newItemId };
+    const operationId = record(db, 'split', summary, before, [itemId, newItemId]);
+    settle(db, [itemId, newItemId]);
+    db.prepare('UPDATE operations SET stamps = ? WHERE id = ?').run(
+      JSON.stringify(Object.fromEntries([itemId, newItemId].map((id) => [id, stampOf(db, id)]))),
+      operationId,
+    );
+    return { operationId, newItemId };
   })();
 }
 
@@ -515,6 +556,8 @@ function judge(db: DB, op: OpRow, later: OpRow[]): OperationView {
   if (!blocked && touchedLater) blocked = 'A later merge or split changed these books.';
   if (!blocked && ids.some((i) => !db.prepare('SELECT 1 FROM items WHERE id = ?').get(i)))
     blocked = 'One of these books is gone.';
+  if (!blocked && ids.some((i) => !stamps[i]?.startsWith('owner-v2:')))
+    blocked = 'This older undo record cannot verify later changes. Use the preview instead.';
   if (!blocked && ids.some((i) => stampOf(db, i) !== (stamps[i] ?? null)))
     blocked = 'You’ve changed these books since (progress, rating, notes…). Undo would lose that.';
   let instead: OperationView['instead'] = null;

@@ -218,29 +218,30 @@ export async function copyAndRead(
       400,
       'There’s no metadata.db in that folder. Choose the folder Calibre calls its library.',
     );
-  if (platform.supportsPlaceholders) {
-    const state = availabilityFromAttributes(await platform.checkAttributes(src));
-    if (state !== 'present')
-      throw new HttpError(
-        409,
-        state === 'placeholder'
-          ? 'That metadata.db is online-only. Download it first (or open Calibre once), then try again.'
-          : 'Couldn’t check that metadata.db is on this PC, so it wasn’t read.',
-      );
-  }
-  const dir = dataDir
-    ? path.join(dataDir, 'calibre')
-    : fs.mkdtempSync(path.join(os.tmpdir(), 'wbn-calibre-'));
-  fs.mkdirSync(dir, { recursive: true });
+  const parent = dataDir ? path.join(dataDir, 'calibre') : os.tmpdir();
+  fs.mkdirSync(parent, { recursive: true });
+  // Requests can overlap while checking attributes. Each copy needs its own database/WAL/SHM.
+  const dir = fs.mkdtempSync(path.join(parent, 'wbn-calibre-'));
   const copy = path.join(dir, 'metadata.db');
-  for (const ext of ['', '-wal']) {
-    fs.rmSync(copy + ext, { force: true });
-    if (fs.existsSync(src + ext)) fs.copyFileSync(src + ext, copy + ext);
-  }
   try {
+    for (const ext of ['', '-wal']) {
+      const file = src + ext;
+      if (!fs.existsSync(file)) continue;
+      if (platform.supportsPlaceholders) {
+        const state = availabilityFromAttributes(await platform.checkAttributes(file));
+        if (state !== 'present')
+          throw new HttpError(
+            409,
+            state === 'placeholder'
+              ? `That metadata.db${ext} is online-only. Download it first, then try again.`
+              : `Couldn’t check that metadata.db${ext} is on this PC, so it wasn’t read.`,
+          );
+      }
+      fs.copyFileSync(file, copy + ext);
+    }
     return readCalibreDb(copy);
   } finally {
-    if (!dataDir) fs.rmSync(dir, { recursive: true, force: true });
+    fs.rmSync(dir, { recursive: true, force: true });
   }
 }
 
@@ -434,7 +435,7 @@ async function plan(
         }
     }
     const { applies, kept, patch } = ownerChanges(db, itemId, b, opts);
-    return { book: b, outcome, itemId, applies, kept, patch };
+    return { book: b, outcome, itemId, applies: outcome === 'already' ? [] : applies, kept, patch };
   });
 }
 
@@ -539,8 +540,10 @@ export async function importCalibre(
         );
       }
       applyIdentity(db, itemId);
-      const { patch } = ownerChanges(db, itemId, r.book, opts);
-      if (Object.keys(patch).length) applyUserPatch(db, itemId, patch);
+      if (r.outcome !== 'already') {
+        const { patch } = ownerChanges(db, itemId, r.book, opts);
+        if (Object.keys(patch).length) applyUserPatch(db, itemId, patch);
+      }
       db.prepare(
         'INSERT OR IGNORE INTO import_keys (source, row_key, item_id, created_at) VALUES (?, ?, ?, ?)',
       ).run('calibre', key(lib.libraryId, r.book), itemId, now);

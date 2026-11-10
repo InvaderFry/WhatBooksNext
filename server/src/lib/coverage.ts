@@ -1,7 +1,7 @@
 import type { DB } from '../db/database.ts';
 import { allMatchInputs, chooseUsed } from '../identify/lookups.ts';
 import { seriesKey } from '../identify/series.ts';
-import { HttpError, newId, nowIso } from '../util.ts';
+import { HttpError, newId, nowIso, parseJson } from '../util.ts';
 import { coveredNumbers, type Coverage } from './series.ts';
 
 /**
@@ -179,7 +179,18 @@ export function setSuggestedCoverage(
  * The series a collection's issues belong to, when the owner has any of it. A series nobody owns
  * an issue of has no gaps to fill, so its coverage isn't kept.
  */
-export function seriesIdFor(db: DB, key: string): string | null {
+export function seriesIdFor(db: DB, key: string, startYear?: number): string | null {
+  const runs = db
+    .prepare('SELECT id, source_ids FROM series WHERE match_key LIKE ?')
+    .all(`${key}|run:%`) as { id: string; source_ids: string }[];
+  if (runs.length) {
+    // Without a stated run, the name alone cannot choose among known restarts.
+    if (startYear === undefined) return null;
+    const exact = runs.filter(
+      (r) => parseJson<{ runStartYear?: number }>(r.source_ids, {}).runStartYear === startYear,
+    );
+    return exact.length === 1 ? exact[0]!.id : null;
+  }
   return (
     (db.prepare('SELECT id FROM series WHERE match_key = ?').pluck().get(key) as
       string | undefined) ?? null
@@ -221,7 +232,7 @@ export function suggestCoverageFromSources(db: DB): number {
     const bySeries = new Map<string, number[]>();
     for (const c of rec?.collects ?? []) {
       if (!/^\d+$/.test(c.number)) continue;
-      const id = seriesIdFor(db, seriesKey('comic', c.series));
+      const id = seriesIdFor(db, seriesKey('comic', c.series), c.year);
       if (!id) continue;
       if (!bySeries.has(id)) bySeries.set(id, []);
       bySeries.get(id)!.push(Number(c.number));

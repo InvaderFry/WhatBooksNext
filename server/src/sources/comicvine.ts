@@ -113,6 +113,7 @@ export function parseComicVineIssues(
       series: {
         name: vname,
         ...(typeof i.volume?.id === 'number' ? { id: String(i.volume.id) } : {}),
+        ...(yearOf(v?.start_year) !== undefined ? { startYear: yearOf(v?.start_year) } : {}),
         ...(position !== undefined ? { position } : {}),
         status: 'unknown',
       },

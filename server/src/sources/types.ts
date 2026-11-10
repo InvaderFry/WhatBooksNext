@@ -70,6 +70,8 @@ export interface SourceRecord {
     name: string;
     /** The source's own id for the series or run (Metron series, ComicVine volume). */
     id?: string;
+    /** Explicit start of this run, never an issue's cover/publication year. */
+    startYear?: number;
     position?: number;
     /** Installments the source says exist (finished series), when it states it. */
     total?: number;

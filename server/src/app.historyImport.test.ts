@@ -226,6 +226,63 @@ describe('Goodreads and StoryGraph history imports', () => {
     expect(db.prepare('SELECT COUNT(*) FROM import_keys').pluck().get()).toBe(1);
   });
 
+  it.each(['did-not-finish', 'currently-reading'])(
+    'never fills a series gap with unfinished unowned history (%s)',
+    async (status) => {
+      for (const number of ['1', '3'])
+        await post('/api/store/items', {
+          title: `Clockwater ${number}`,
+          kind: 'fiction',
+          series: 'Clockwater',
+          number,
+          store: 'kindle',
+        });
+      await post('/api/import/history', {
+        source: 'storygraph',
+        text: `Title,Authors,Read Status\nClockwater Two,Ada Fen,${status}`,
+      });
+      const id = db
+        .prepare("SELECT id FROM items WHERE title = 'Clockwater Two'")
+        .pluck()
+        .get() as string;
+      await request(made.app)
+        .patch(`/api/items/${id}`)
+        .set('Host', 'localhost:4818')
+        .send({ kindOverride: 'fiction', seriesOverride: 'Clockwater', seriesPositionOverride: 2 });
+      const detail = (await get(`/api/items/${id}`)).body;
+      const { seriesView } = await import('./lib/seriesView.ts');
+      const view = seriesView(db, new Map(), detail.series.id);
+      expect(view.entries.find((e) => e.id === id)).toMatchObject({
+        holding: null,
+        availabilityLabel: 'History only · not owned',
+      });
+      expect(view.gaps).toHaveLength(1);
+      const picks = (await get('/api/next')).body;
+      expect(JSON.stringify(picks)).not.toContain('Clockwater Two');
+      expect(JSON.stringify(picks)).toMatch(/volume 2/);
+      const filled = await post(`/api/series/${detail.series.id}/read-elsewhere`, {
+        unit: 'volume',
+        from: 2,
+        to: 2,
+      });
+      expect(filled.body.itemIds).toHaveLength(1);
+      expect((await get(`/api/items/${id}`)).body.user.progress).toBe(
+        status === 'did-not-finish' ? 'dnf' : 'into_it',
+      );
+      expect(seriesView(db, new Map(), detail.series.id).gaps).toHaveLength(0);
+      await request(made.app)
+        .delete(`/api/items/${filled.body.itemIds[0]}`)
+        .set('Host', 'localhost:4818')
+        .send({});
+      expect(seriesView(db, new Map(), detail.series.id).gaps).toHaveLength(1);
+      await request(made.app)
+        .patch(`/api/items/${id}`)
+        .set('Host', 'localhost:4818')
+        .send({ progress: 'finished', finishedPrecision: 'unknown' });
+      expect(seriesView(db, new Map(), detail.series.id).gaps).toHaveLength(0);
+    },
+  );
+
   it('preserves history, dates and repeatability through backup and restore with no folders', async () => {
     await upload();
     const backup = createBackup(db);

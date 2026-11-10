@@ -14,8 +14,11 @@ import { normalizeForCompare, titleCompareKey } from './filename.ts';
  * none (§4).
  */
 
-/** Bump when the scoring changes: the next lookup re-scores from the cache (no new requests). */
-export const MATCH_VERSION = 8;
+/**
+ * Bump when scoring or derived source fields change: the next lookup rebuilds from the cache.
+ * Version 9 also brings explicit comic run start years into existing stored matches.
+ */
+export const MATCH_VERSION = 9;
 
 export interface MatchFacts {
   title: string;

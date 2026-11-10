@@ -182,8 +182,10 @@ function seriesMembers(i: RankItem, all: RankItem[]): RankItem[] {
 }
 
 /** What the owner has of an installment, for gaps (§12.5). Null: nothing at all. */
-export function holdingOf(i: Pick<RankItem, 'historyOnly' | 'availability'>): Holding | null {
-  if (i.historyOnly) return 'read_elsewhere';
+export function holdingOf(
+  i: Pick<RankItem, 'historyOnly' | 'availability'> & { user: Pick<RankItem['user'], 'progress'> },
+): Holding | null {
+  if (i.historyOnly) return i.user.progress === 'finished' ? 'read_elsewhere' : null;
   if (i.availability.state === 'missing') return 'unavailable';
   if (i.availability.state === 'none') return null;
   return 'owned';

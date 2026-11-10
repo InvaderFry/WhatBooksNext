@@ -450,7 +450,7 @@ export function previewCsv(db: DB, text: string): { rows: PreviewRow[]; problems
       outcome,
       itemId,
       itemTitle: itemId ? titleOfItem(db, itemId) : null,
-      applies,
+      applies: outcome === 'already' ? [] : applies,
       kept,
     });
   }
@@ -477,8 +477,8 @@ export function importCsv(
       const r = byLine.get(p.line)!;
       let itemId: string | null;
       if (p.outcome === 'already') {
-        itemId = p.itemId;
         counts.already++;
+        continue;
       } else if (
         p.outcome === 'isbn' ||
         (p.outcome === 'possible' && opts.attach.includes(p.line))
