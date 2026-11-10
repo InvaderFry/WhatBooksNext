@@ -714,8 +714,9 @@ keys.
   the ranking uses.
 - Current community rating preference: Hardcover → AniList → Open Library. The
   [ratings and refresh plan](docs/plans/online-ratings-and-refreshes.md) replaces this fixed order
-  with scope, then the most ratings among trusted matches, shows the other sources' ratings, keeps Hidden
-  gems honest ("few ratings everywhere we looked") and adds automatic refreshes. **A series score is never shown as a volume's score.**
+  with scope, then the most ratings among trusted matches; shows every source's rating and the
+  best detail from each source; keeps Hidden gems honest ("few ratings everywhere we looked");
+  and adds automatic refreshes. **A series score is never shown as a volume's score.**
 - Unknown rating: neutral in the blend; **fails** any "highly rated" filter.
 
 ### 12.3 Duration
