@@ -6,10 +6,10 @@ owner has already made. Don't reopen those decisions. Then read the latest
 
 ## Where things stand
 
-- **M0**, **M1** and **M2** are done and checked on the owner's PC. **M3** (first real
-  recommendations) is built and passes its checks; see `docs/milestones/M3.md` for what the owner
-  still has to do (Hardcover test, the first quality session).
-- **Next:** finish M3's owner steps, then **M4** (PLAN.md §18).
+- **M0–M3** are done and checked on the owner's PC (M3: first real recommendations; Hardcover
+  verified; quality session passed, `docs/quality-summary.md`).
+- **Next: M4** (PLAN.md §18): series and collections, Metron/ComicVine (single issues wait for
+  them), merge/split with undo, store titles and imports.
 - Content reads go through `server/src/scan/guard.ts` only. Raise a stage in `STAGE_VERSIONS`
   (`server/src/scan/deepPass.ts`) when its reader changes, so the next scan re-reads files.
 - Online sources live in `server/src/sources/`, one polite client each (rate limit, cache,

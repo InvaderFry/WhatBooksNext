@@ -451,9 +451,20 @@ export function createApp(ctx: AppContext) {
       const id = itemIdOr404(String(req.params.id));
       const patch = validatePatch(req.body);
       db.transaction(() => {
+        if (
+          patch.preferredFileId &&
+          !db
+            .prepare('SELECT 1 FROM item_files WHERE item_id = ? AND file_id = ?')
+            .get(id, patch.preferredFileId)
+        )
+          throw new HttpError(400, 'That file isn’t one of this book’s files.');
         applyUserPatch(db, id, patch, todayLocal());
-        // Comics and books open different formats first: a kind correction re-picks the file.
-        if (patch.kindOverride !== undefined) refreshPrimary(db, id);
+        // Comics and books open different formats first, and the owner may choose a file:
+        // either re-picks the main file now, and its cover and details follow.
+        if (patch.kindOverride !== undefined || patch.preferredFileId !== undefined) {
+          refreshPrimary(db, id);
+          refreshFactsOfItems(db, [id]);
+        }
       })();
       return { ok: true };
     }),

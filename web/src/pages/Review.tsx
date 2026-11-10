@@ -117,12 +117,24 @@ export function Review({ onChanged }: { onChanged: () => void }) {
           {data.hidden > 0 && ` · ${data.hidden} deferred or dismissed`}
         </p>
       )}
+      {data &&
+        (['cross_folder', 'move'] as const).some(
+          (k) => data.rows.filter((r) => r.kind === k).length >= 2,
+        ) && (
+          <section className="section bulk-top" aria-labelledby="bulk-top-h">
+            <h2 id="bulk-top-h" className="visually-hidden">
+              Answer many at once
+            </h2>
+            {/* "Confirm all like this" (§11.4), up front: the rows it answers can sit in the
+              collapsed "Everything else" section, where the owner didn't find it. */}
+            <BulkBar rows={data.rows} run={run} />
+          </section>
+        )}
       {[1, 2, 3].map(
         (n) =>
           tier(n).length > 0 && (
             <section key={n} aria-labelledby={`tier${n}-h`} className="section">
               <h2 id={`tier${n}-h`}>{TIER_TITLES[n]}</h2>
-              <BulkBar rows={tier(n)} run={run} />
               <ul className="review-list">
                 {tier(n).map((r) => (
                   <ReviewCard key={r.id} row={r} {...handlers} />
@@ -146,7 +158,6 @@ export function Review({ onChanged }: { onChanged: () => void }) {
                 `${data.notListed.provisional.toLocaleString()} more unconfirmed matches aren’t listed here.`}
             </p>
           )}
-          <BulkBar rows={tier(4)} run={run} />
           <ul className="review-list">
             {tier(4).map((r) => (
               <ReviewCard key={r.id} row={r} {...handlers} />

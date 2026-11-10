@@ -66,6 +66,7 @@ export interface UserData {
   icloudOverride: 'in' | 'not_in' | null;
   triage: 'want' | 'maybe' | 'never' | null;
   effortOverride: 'light' | 'medium' | 'heavy' | null;
+  preferredFileId: string | null;
 }
 
 export interface ItemSummary {

@@ -38,6 +38,7 @@ type Patch = Partial<{
   icloudOverride: 'in' | 'not_in' | null;
   triage: 'want' | 'maybe' | 'never' | null;
   effortOverride: 'light' | 'medium' | 'heavy' | null;
+  preferredFileId: string | null;
 }>;
 
 export function ItemPage({ id }: { id: string }) {
@@ -307,7 +308,24 @@ export function ItemPage({ id }: { id: string }) {
         <h2 id="files-h">Files</h2>
         <ul className="file-list">
           {item.files.map((f) => (
-            <FileRow key={f.id} file={f} onChanged={load} />
+            <FileRow
+              key={f.id}
+              file={f}
+              onChanged={load}
+              choice={
+                item.files.length > 1
+                  ? {
+                      chosen: u.preferredFileId === f.id,
+                      anyChosen: u.preferredFileId !== null,
+                      choose: (v) =>
+                        save(
+                          { preferredFileId: v },
+                          v ? `${f.name} now opens by default` : 'The app chooses again',
+                        ),
+                    }
+                  : null
+              }
+            />
           ))}
         </ul>
       </section>
@@ -571,7 +589,22 @@ function FromTheFile({ file }: { file: FileDetail | undefined }) {
   );
 }
 
-function FileRow({ file, onChanged }: { file: FileDetail; onChanged: () => Promise<void> }) {
+/** "Use this file by default" (owner's choice of which copy opens), when a book has several. */
+interface FileChoice {
+  chosen: boolean;
+  anyChosen: boolean;
+  choose: (fileId: string | null) => Promise<void>;
+}
+
+function FileRow({
+  file,
+  onChanged,
+  choice,
+}: {
+  file: FileDetail;
+  onChanged: () => Promise<void>;
+  choice: FileChoice | null;
+}) {
   const [message, setMessage] = useState<{ kind: 'error' | 'info'; text: string } | null>(null);
   const [confirm, setConfirm] = useState<string | null>(null);
 
@@ -609,7 +642,10 @@ function FileRow({ file, onChanged }: { file: FileDetail; onChanged: () => Promi
     <li className="file-row">
       <div>
         <div className="file-name">
-          {file.name} {file.isPrimary && <span className="tag">Primary</span>}
+          {file.name}{' '}
+          {file.isPrimary && (
+            <span className="tag">{choice?.chosen ? 'Default (your choice)' : 'Default'}</span>
+          )}
         </div>
         <div className="muted small path">
           {file.folderPath}
@@ -680,6 +716,25 @@ function FileRow({ file, onChanged }: { file: FileDetail; onChanged: () => Promi
         >
           Show in folder
         </button>
+        {choice && !file.isPrimary && file.availability !== 'missing' && (
+          <button
+            type="button"
+            className="secondary small"
+            aria-label={`Use ${file.name} by default`}
+            onClick={() => void choice.choose(file.id)}
+          >
+            Use this file by default
+          </button>
+        )}
+        {choice?.chosen && (
+          <button
+            type="button"
+            className="link-button small"
+            onClick={() => void choice.choose(null)}
+          >
+            Let the app choose
+          </button>
+        )}
       </div>
       {confirm && (
         <div className="confirm" role="alertdialog" aria-label="Confirm download">

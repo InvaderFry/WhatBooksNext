@@ -38,6 +38,8 @@ export interface UserPatch {
   icloudOverride?: 'in' | 'not_in' | null;
   triage?: 'want' | 'maybe' | 'never' | null;
   effortOverride?: 'light' | 'medium' | 'heavy' | null;
+  /** "Use this file by default": one of the item's file ids, or null to let the app choose. */
+  preferredFileId?: string | null;
 }
 
 const MAX_TEXT = 10_000;
@@ -96,6 +98,7 @@ export function validatePatch(body: unknown): UserPatch {
     'icloudOverride',
     'triage',
     'effortOverride',
+    'preferredFileId',
   ]);
   for (const k of Object.keys(b))
     if (!allowed.has(k)) throw new HttpError(400, `Unknown field "${k}".`);
@@ -133,6 +136,11 @@ export function validatePatch(body: unknown): UserPatch {
   }
   if ('icloudOverride' in b)
     p.icloudOverride = oneOf('icloudOverride', b.icloudOverride, ['in', 'not_in'] as const);
+  if ('preferredFileId' in b) {
+    if (b.preferredFileId !== null && typeof b.preferredFileId !== 'string')
+      throw new HttpError(400, 'preferredFileId must be a file id or null.');
+    p.preferredFileId = b.preferredFileId as string | null;
+  }
   if ('triage' in b) p.triage = oneOf('triage', b.triage, ['want', 'maybe', 'never'] as const);
   if ('effortOverride' in b)
     p.effortOverride = oneOf('effortOverride', b.effortOverride, [
@@ -162,6 +170,7 @@ interface Row {
   triage: string | null;
   triage_at: string | null;
   effort_override: string | null;
+  preferred_file_id: string | null;
 }
 
 export function ensureUserRow(db: DB, itemId: string): void {
@@ -236,6 +245,7 @@ export function applyUserPatch(db: DB, itemId: string, p: UserPatch, today = tod
     next.triage_at = p.triage === null ? null : now;
   }
   if (p.effortOverride !== undefined) next.effort_override = p.effortOverride;
+  if (p.preferredFileId !== undefined) next.preferred_file_id = p.preferredFileId;
 
   db.prepare(
     `UPDATE user_item SET progress = @progress, dnf_reason = @dnf_reason, started_on = @started_on,
@@ -244,7 +254,8 @@ export function applyUserPatch(db: DB, itemId: string, p: UserPatch, today = tod
        note = @note, takeaway = @takeaway, hidden = @hidden, title_override = @title_override,
        kind_override = @kind_override, reference_override = @reference_override,
        icloud_override = @icloud_override, triage = @triage, triage_at = @triage_at,
-       effort_override = @effort_override, updated_at = @updated_at
+       effort_override = @effort_override, preferred_file_id = @preferred_file_id,
+       updated_at = @updated_at
      WHERE item_id = @item_id`,
   ).run({ ...next, updated_at: now, item_id: itemId });
 }

@@ -375,6 +375,33 @@ describe('which file a book opens with', () => {
     expect(comic.creators[0].name).toBe('Jun Arden');
   });
 
+  it('opens the file the owner chose, keeps the choice through scans, and can give it back', async () => {
+    await addAndScan({
+      'Books/quietshore.epub': makeEpub({ title: 'Quiet Shore', chapters: [600] }),
+      'Books/quietshore.pdf': 20_000,
+    });
+    const id = itemIdOf('quietshore.epub');
+    const pdf = db.prepare("SELECT id FROM files WHERE name = 'quietshore.pdf'").pluck().get();
+    const primary = () =>
+      db
+        .prepare(
+          `SELECT f.format FROM item_files x JOIN files f ON f.id = x.file_id
+           WHERE x.item_id = ? AND x.is_primary = 1`,
+        )
+        .pluck()
+        .get(id);
+    expect(primary()).toBe('epub');
+    expect((await api.patch(`/api/items/${id}`, { preferredFileId: pdf })).status).toBe(200);
+    expect(primary()).toBe('pdf');
+    await api.post('/api/scan', {});
+    await made.scans.wait();
+    expect(primary()).toBe('pdf');
+    // Only one of the book's own files can be chosen.
+    expect((await api.patch(`/api/items/${id}`, { preferredFileId: 'nope' })).status).toBe(400);
+    await api.patch(`/api/items/${id}`, { preferredFileId: null });
+    expect(primary()).toBe('epub');
+  });
+
   it('opens a comic as EPUB when it has no PDF or CBZ', async () => {
     await addAndScan({
       'Comics/glimmerkeep_vol2.epub': makeEpub({ title: 'Glimmerkeep Vol. 2', chapters: [300] }),

@@ -30,6 +30,7 @@ const user = (over: Partial<RankItem['user']> = {}): RankItem['user'] => ({
   icloudOverride: null,
   triage: null,
   effortOverride: null,
+  preferredFileId: null,
   updatedAt: null,
   ...over,
 });

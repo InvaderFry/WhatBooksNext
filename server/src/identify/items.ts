@@ -160,7 +160,14 @@ export function refreshPrimary(db: DB, itemId: string): boolean {
     )
     .get(itemId) as { kind: string | null } | undefined;
   if (!item) return false;
-  const primary = choosePrimary(filesOfItem(db, itemId), item.kind);
+  const files = filesOfItem(db, itemId);
+  // The owner's chosen file wins, while it's still one of this book's files and not missing.
+  const preferred = db
+    .prepare('SELECT preferred_file_id FROM user_item WHERE item_id = ?')
+    .pluck()
+    .get(itemId) as string | null | undefined;
+  const chosen = files.find((f) => f.id === preferred && f.availability !== 'missing');
+  const primary = chosen ?? choosePrimary(files, item.kind);
   const before = db
     .prepare('SELECT file_id FROM item_files WHERE item_id = ? AND is_primary = 1')
     .pluck()

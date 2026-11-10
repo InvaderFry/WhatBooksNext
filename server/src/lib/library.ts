@@ -51,6 +51,7 @@ export interface UserData {
   icloudOverride: 'in' | 'not_in' | null;
   triage: 'want' | 'maybe' | 'never' | null;
   effortOverride: 'light' | 'medium' | 'heavy' | null;
+  preferredFileId: string | null;
   updatedAt: string | null;
 }
 
@@ -103,6 +104,7 @@ const DEFAULT_USER: UserData = {
   icloudOverride: null,
   triage: null,
   effortOverride: null,
+  preferredFileId: null,
   updatedAt: null,
 };
 
@@ -126,6 +128,7 @@ interface UserRow {
   icloud_override: 'in' | 'not_in' | null;
   triage: 'want' | 'maybe' | 'never' | null;
   effort_override: 'light' | 'medium' | 'heavy' | null;
+  preferred_file_id: string | null;
   updated_at: string;
 }
 
@@ -150,6 +153,7 @@ export function userFromRow(r: UserRow | undefined): UserData {
     icloudOverride: r.icloud_override,
     triage: r.triage,
     effortOverride: r.effort_override,
+    preferredFileId: r.preferred_file_id,
     updatedAt: r.updated_at,
   };
 }
