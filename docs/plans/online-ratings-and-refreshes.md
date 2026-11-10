@@ -11,8 +11,11 @@ again to drop Google Books (see the end).
   instead of a fixed source order. Show the other sources' ratings and say why one was chosen.
 - **Keep Hidden gems**, adjusted so it stays honest under the new choice (stage 1, below).
 - **No Google Books.** Considered and dropped; reasons at the end of this plan.
-- **Every source's rating is kept and shown**, and among trustworthy matches the one with the most
-  ratings is used. Review text is not needed.
+- **Every source's rating is kept and shown on the book page**, and among trustworthy matches the
+  one with the most ratings is used. Review text is not needed.
+- **Choose each detail (title, creators, year, pages, description, subjects) from the best
+  trusted source**, with owner corrections and the files first. Descriptions: the longest from a
+  trusted match, preferring Hardcover.
 - Refresh automatically while the app runs, **by how likely something has changed**: 7 days for
   books in progress or on the shortlist, 30 days where a source has no match, no rating or few
   ratings, 90 days where a confirmed or accepted match already has a well-supported rating. Small
@@ -23,7 +26,8 @@ Decisions made in this plan on the owner's behalf (say so if any should change):
 - Unconfirmed ("provisional") matches still supply a rating, but only when nothing better exists,
   labelled as unconfirmed, and never for Hidden gems. Today they count fully; dropping them
   outright could empty modes that passed the first quality session.
-- Each stage is its own pull request against `main`, in the order below.
+- Each stage is its own pull request against `main`, in the order below: ratings, details, the
+  book page (built once for both), then refresh.
 
 This extends PLAN.md §12 and replaces its fixed rating-source order once stage 1 is merged.
 Personal ratings, confirmed matches, rejections, reading history and owner corrections keep their
@@ -140,28 +144,94 @@ Stage 1 changes ratings across the whole library, so measure it. Extend `npm run
 (or add a sibling script) with a title-free comparison of old and new choices: how many items
 changed source, gained or lost a rating, moved tier, or entered or left Hidden gems, Classics and
 Waiting on your shelf. Put the counts in the pull request. Do the owner's second quality session
-(§17.2, still open from M6) **after** stage 1, so it judges the new behaviour.
+(§17.2, still open from M6) **after** stages 1–3, so it judges the new ratings and details.
 
 No migration is needed for stage 1. Do not raise `MATCH_VERSION`: matching does not change.
 Put the new constants in `config.ts` and PLAN.md §20, marked as assumptions until calibrated
 against the owner's library (Diagnostics' tier counts help).
 
-## Stage 2 — "Ratings by source" on the item page
+## Stage 2 — best details from each source (pure, no network changes)
+
+### How details are chosen today
+
+Each file is searched on the sources for its kind (title, author, ISBN, series and volume or
+issue). Every candidate is scored; 0.90 or more is accepted, 0.60–0.90 is provisional, a near
+draw is a tie for the owner. Every source's candidates are stored in `item_matches`, but the
+details shown are picked inconsistently:
+
+- **Title:** the owner's title, else the file's own embedded title, else the accepted match's
+  title (only when the file's title was guessed from its filename), else the filename guess
+  (`lib/library.ts`). The file's title is kept as the fact underneath.
+- **Subjects:** pooled from every used match and the file (`lib/rankData.ts`).
+- **Pages:** from whichever used match happens to come first that has them; measured file
+  lengths come first for duration.
+- **First publication year:** from the chosen match (`refreshDerivedFacts`).
+- **Description:** from one record.
+
+### The best value per detail, not the "most detailed" source
+
+No source is best at everything: Open Library is built for first publication years and ISBNs,
+Hardcover for ratings, descriptions and series, AniList for manga tags and volume counts, Metron
+for comic issues and creators, and the files themselves for this exact copy. Choosing one whole
+source per book throws the others' strengths away. So choose each detail separately, with one
+pure function (`lib/details.ts`) used everywhere, like the rating selector:
+
+- **Only from matches to this book:** owner-confirmed or accepted. Provisional matches offer
+  values as suggestions on the item page, never as facts. A value never comes from a tie or a
+  rejected candidate, so details from two different books are never mixed.
+- **Owner corrections win, then the files, then the sources.** The files describe the copy the
+  owner has; sources describe the work or another edition.
+- **Per detail:**
+
+  | Detail                 | Rule                                                                                                                                                                                                                                                           |
+  | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+  | Title and subtitle     | As today, but when several sources are accepted, take the title from the strongest match (owner-confirmed, then strong ISBN, then score), with Hardcover, Open Library, AniList, Metron as the tie-break. Title and subtitle always come from the same record. |
+  | Authors / creators     | The file's own when present; otherwise the strongest match's. Comic creators from Metron, then ComicVine.                                                                                                                                                      |
+  | First publication year | Open Library for books; AniList for manga; Metron/ComicVine series start for comics. If accepted sources disagree by more than a year, show both on the item page and use the preferred one.                                                                   |
+  | Pages                  | Measured from the file first; otherwise a source record matched by the file's ISBN; otherwise the strongest match's. Always labelled with where it came from.                                                                                                  |
+  | Description            | The longest plain-text description from an accepted match, preferring Hardcover; shown with its source.                                                                                                                                                        |
+  | Subjects, genres, tags | Merged from all accepted matches and the file, de-duplicated, each with its source.                                                                                                                                                                            |
+  | Series, number, status | Unchanged: `syncSeries` rules.                                                                                                                                                                                                                                 |
+  | Rating                 | Stage 1.                                                                                                                                                                                                                                                       |
+
+- **Shown with its source** on the book page, in stage 3.
+- **No new requests and no migration:** everything is already stored. It works on existing data
+  the moment it is merged and refreshes with stage 4.
+- **Before and after:** a title-free count of how many items' displayed title, year, pages and
+  description changed, in the pull request. Search keeps matching both the displayed title and
+  the file's.
+- **Checks:** a provisional match never supplies a fact; an owner title always wins; an embedded
+  title beats an online one; two accepted sources with different titles pick the stronger match;
+  a measured page count beats a source's; disagreeing years are both shown; a description is
+  shown as text, never HTML (scenario 23).
+
+## Stage 3 — "From each source" on the book page
+
+Built once, after stages 1 and 2, so it shows both ratings and details.
 
 - Cards keep one rating, with its source, count and scope, and a short label when it is sparse,
   a series fallback or unconfirmed.
-- The item page gets an expandable **Ratings by source** list: raw score and scale, number of
-  ratings (a rating count, not a review count), what it rates (book / volume / series), match
-  status, link, when last looked up (stage 3 adds the time of the last real network answer), and
-  which one is used with its reason
-  ("More ratings for this book"). Unconfirmed ones are listed apart with the existing confirm
-  action; they are never shown as verified.
+- The book page gets an expandable **From each source** section. **Every source that was asked
+  for this book appears**, so nothing is hidden:
+  - a matched source: its rating (raw score and scale, number of ratings — a rating count, not a
+    review count — and what it rates: book / volume / series), its title, creators, first
+    year, pages, description and subjects, a link to its page, and when it was last looked up
+    (stage 4 adds the time of the last real network answer);
+  - the values in use are marked, each with its reason ("More ratings for this book", "From the
+    file", "Open Library is preferred for first publication year");
+  - unconfirmed matches are listed apart with the existing confirm action, never shown as
+    verified;
+  - a source with no match, no rating, a tie or a failed lookup says so in plain words ("Not
+    found on AniList", "Hardcover has no rating for this book", "Open Library couldn't be reached
+    last time; will retry"); a source that doesn't apply (for example AniList for a novel) or
+    isn't set up (no Hardcover token) is named once, so the owner knows why it is absent.
+  - Rejected candidates ("not this book") are not shown: they are other books.
 - Phone-width, keyboard, light/dark and reduced motion; check with `npm run screenshots` and its
   accessibility sweep.
-- Refresh-related labels ("Refresh due", "Refresh failed; showing the previous result") arrive
-  with stage 3, not here.
+- Refresh labels ("Refresh due", "Refresh failed; showing the previous result") arrive with
+  stage 4.
 
-## Stage 3 — automatic refresh
+## Stage 4 — automatic refresh
 
 Built around the existing `LookupManager`, not as a second lookup engine.
 
@@ -209,65 +279,9 @@ Built around the existing `LookupManager`, not as a second lookup engine.
   the previous result" labels; a refresh never blanks a page.
 - **Checks (fake clock, no network):** due selection for each of the three groups, including an
   item moving between them (started reading → 7 days; rating became supported → 90 days);
-  priority order; 429, quota and 5xx handling; budget enforcement including secondary requests; cancellation and restart;
-  demo/off/scan/manual deferral; a removed rating becomes unrated; a failure keeps the old
+  priority order; 429, quota and 5xx handling; budget enforcement including secondary requests;
+  cancellation and restart; demo/off/scan/manual deferral; a removed rating becomes unrated; a failure keeps the old
   result; confirmed, accepted and rejected decisions survive a refresh and a restore.
-
-## Stage 4 — best details from each source (proposed; owner to confirm)
-
-### How details are chosen today
-
-Each file is searched on the sources for its kind (title, author, ISBN, series and volume or
-issue). Every candidate is scored; 0.90 or more is accepted, 0.60–0.90 is provisional, a near
-draw is a tie for the owner. Every source's candidates are stored in `item_matches`, but the
-details shown are picked inconsistently:
-
-- **Title:** the owner's title, else the file's own embedded title, else the accepted match's
-  title (only when the file's title was guessed from its filename), else the filename guess
-  (`lib/library.ts`). The file's title is kept as the fact underneath.
-- **Subjects:** pooled from every used match and the file (`lib/rankData.ts`).
-- **Pages:** from whichever used match happens to come first that has them; measured file
-  lengths come first for duration.
-- **First publication year:** from the chosen match (`refreshDerivedFacts`).
-- **Description:** from one record.
-
-### Proposal: the best value per detail, not the "most detailed" source
-
-No source is best at everything: Open Library is built for first publication years and ISBNs,
-Hardcover for ratings, descriptions and series, AniList for manga tags and volume counts, Metron
-for comic issues and creators, and the files themselves for this exact copy. Choosing one whole
-source per book throws the others' strengths away. So choose each detail separately, with one
-pure function (`lib/details.ts`) used everywhere, like the rating selector:
-
-- **Only from matches to this book:** owner-confirmed or accepted. Provisional matches offer
-  values as suggestions on the item page, never as facts. A value never comes from a tie or a
-  rejected candidate, so details from two different books are never mixed.
-- **Owner corrections win, then the files, then the sources.** The files describe the copy the
-  owner has; sources describe the work or another edition.
-- **Per detail:**
-
-  | Detail                 | Rule                                                                                                                                                                                                                                                           |
-  | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-  | Title and subtitle     | As today, but when several sources are accepted, take the title from the strongest match (owner-confirmed, then strong ISBN, then score), with Hardcover, Open Library, AniList, Metron as the tie-break. Title and subtitle always come from the same record. |
-  | Authors / creators     | The file's own when present; otherwise the strongest match's. Comic creators from Metron, then ComicVine.                                                                                                                                                      |
-  | First publication year | Open Library for books; AniList for manga; Metron/ComicVine series start for comics. If accepted sources disagree by more than a year, show both on the item page and use the preferred one.                                                                   |
-  | Pages                  | Measured from the file first; otherwise a source record matched by the file's ISBN; otherwise the strongest match's. Always labelled with where it came from.                                                                                                  |
-  | Description            | The longest plain-text description from an accepted match, preferring Hardcover; shown with its source.                                                                                                                                                        |
-  | Subjects, genres, tags | Merged from all accepted matches and the file, de-duplicated, each with its source.                                                                                                                                                                            |
-  | Series, number, status | Unchanged: `syncSeries` rules.                                                                                                                                                                                                                                 |
-  | Rating                 | Stage 1.                                                                                                                                                                                                                                                       |
-
-- **Shown with its source.** The stage 2 list becomes **From each source**: each source's
-  rating and details side by side, with the value in use marked and why.
-- **No new requests and no migration:** everything is already stored. It works on existing data
-  the moment it is merged and refreshes with stage 3.
-- **Before and after:** a title-free count of how many items' displayed title, year, pages and
-  description changed, in the pull request. Search keeps matching both the displayed title and
-  the file's.
-- **Checks:** a provisional match never supplies a fact; an owner title always wins; an embedded
-  title beats an online one; two accepted sources with different titles pick the stronger match;
-  a measured page count beats a source's; disagreeing years are both shown; a description is
-  shown as text, never HTML (scenario 23).
 
 ## Documentation for every stage
 
@@ -281,7 +295,8 @@ matches), with `npm run screenshots` inspected for UI changes.
 
 ## Owner actions
 
-- **After stage 1 or 2:** glance at Diagnostics' count of ratings that rest on unconfirmed matches
+- **After stage 3:** the second quality session (§17.2, still open from M6), on the new ratings and
+  details; while there, glance at Diagnostics' count of ratings that rest on unconfirmed matches
   and confirm any that matter. No new accounts or keys are needed for this plan.
 
 ## Google Books: considered and dropped (2026-11-10)
