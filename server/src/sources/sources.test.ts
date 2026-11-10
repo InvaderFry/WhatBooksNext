@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { CIRCUIT_FAILURES } from '../config.ts';
+import { kindFromEvidence } from '../identify/kinds.ts';
 import { decide, scoreCandidate, type MatchFacts } from '../identify/match.ts';
 import { memoryDb } from '../testing/helpers.ts';
 import { parseAniList } from './anilist.ts';
@@ -417,5 +418,15 @@ describe('matching (§11.2)', () => {
       isbn[0]!,
     );
     expect(pdf.score).toBeLessThan(0.6);
+  });
+});
+
+describe('kind guesses (§8)', () => {
+  it('reads a graphic novel about history as a comic, not nonfiction', () => {
+    expect(
+      kindFromEvidence({
+        subjects: ['History', 'Biography', 'Civil rights', 'Graphic novels'],
+      })?.kind,
+    ).toBe('comic');
   });
 });

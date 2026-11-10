@@ -280,8 +280,17 @@ export const REVIEW_DEFER_DAYS = 30;
 /**
  * A PDF with at least PICTURE_MIN_PAGES pages and fewer than PICTURE_WORDS_PER_PAGE words a page
  * is mostly pictures: its length comes from its pages, and its kind is guessed as comic. Prose
- * runs to 250–400 words a page; a comic's text layer (credits, captions) stays far below 50.
- * From the owner's first quality check: a comic PDF read as "~5 min from 741 words".
+ * runs to 250–400 words a page; a comic's text layer (balloons, credits, captions) stays below 100.
+ * From the owner's first quality check: a comic PDF read as "~5 min from 741 words", and comics
+ * with lettered speech balloons came to about 60 words a page, so the line is at 100, still well
+ * below prose. (Sparse poetry could fall under it; the owner's kind correction then wins.)
  */
 export const PICTURE_MIN_PAGES = 20;
-export const PICTURE_WORDS_PER_PAGE = 50;
+export const PICTURE_WORDS_PER_PAGE = 100;
+
+/**
+ * Author variety in Read next: each earlier card in the list that shares an author lowers a card's
+ * score by this much. A bundle of one author's books downloaded on one day otherwise filled five
+ * of the top seven (owner's first quality check). Small, so a clearly better book still leads.
+ */
+export const SAME_AUTHOR_PENALTY = 0.04;

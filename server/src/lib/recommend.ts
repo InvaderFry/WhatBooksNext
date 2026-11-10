@@ -1,4 +1,4 @@
-import { EVENING_MINUTES, WEEKEND_MINUTES, WEIGHTS } from '../config.ts';
+import { EVENING_MINUTES, SAME_AUTHOR_PENALTY, WEEKEND_MINUTES, WEIGHTS } from '../config.ts';
 import { SOURCE_LABELS } from '../sources/types.ts';
 import { formatRange, remaining, type Duration, type Effort } from './estimate.ts';
 import type { AvailabilityView, UserData } from './library.ts';
@@ -326,6 +326,38 @@ export function buildCard(i: RankItem, all: RankItem[], s: Situation): Card {
   };
 }
 
+/**
+ * Re-orders a ranked list so one author doesn't fill it: each card is ranked by its score less
+ * SAME_AUTHOR_PENALTY for every card already placed that shares an author. The score itself is
+ * unchanged (it's what the reasons explain); only the order moves.
+ */
+export function diversify(sorted: Card[]): Card[] {
+  const authorsOf = (c: Card) =>
+    new Set(c.creators.map((x) => x.name.toLowerCase().replace(/[^\p{L}]+/gu, '')).filter(Boolean));
+  const seen = new Map<string, number>();
+  const left = [...sorted];
+  const out: Card[] = [];
+  // Only the top of the list matters to a reader; past that, plain score order is fine and fast.
+  const LIMIT = 200;
+  while (left.length && out.length < LIMIT) {
+    let bestI = 0;
+    let bestV = -Infinity;
+    for (let i = 0; i < Math.min(left.length, LIMIT); i++) {
+      let repeats = 0;
+      for (const a of authorsOf(left[i]!)) repeats = Math.max(repeats, seen.get(a) ?? 0);
+      const v = left[i]!.score - SAME_AUTHOR_PENALTY * repeats;
+      if (v > bestV + 1e-9) {
+        bestV = v;
+        bestI = i;
+      }
+    }
+    const [c] = left.splice(bestI, 1);
+    for (const a of authorsOf(c!)) seen.set(a, (seen.get(a) ?? 0) + 1);
+    out.push(c!);
+  }
+  return [...out, ...left];
+}
+
 // ---- Read next (§13.10) -------------------------------------------------------------------
 
 export interface ReadNextResult {
@@ -368,7 +400,7 @@ export function readNext(
       .sort(order)
       .slice(0, page.limit);
   }
-  main.sort(order);
+  main = diversify(main.sort(order));
   return {
     cards: main.slice(page.offset, page.offset + page.limit),
     mightFit,

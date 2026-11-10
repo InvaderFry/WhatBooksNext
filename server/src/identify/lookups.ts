@@ -14,6 +14,7 @@ import {
 } from '../sources/types.ts';
 import { HttpError, newId, nowIso, parseJson } from '../util.ts';
 import type { ParsedName } from './filename.ts';
+import { refreshPrimary } from './items.ts';
 import { kindFromEvidence, looksLikeReference } from './kinds.ts';
 import {
   buildQuery,
@@ -362,13 +363,15 @@ export function refreshDerivedFacts(db: DB, itemIds: string[]): void {
     const years = used
       .map((m) => m.record.firstPublishYear)
       .filter((y): y is number => typeof y === 'number');
-    update.run({
+    const changed = update.run({
       id,
       kind,
       kindSource,
       ref: looksLikeReference(i.title) ? 1 : 0,
       year: years.length ? Math.min(...years) : null,
-    });
+    }).changes;
+    // Comics and books open different formats first, so a new kind re-picks the main file.
+    if (changed && kind !== i.kind) refreshPrimary(db, id);
   }
 }
 
@@ -644,7 +647,14 @@ export class LookupManager {
     if (this.isRunning()) throw new HttpError(409, 'Lookups are already running.');
     // A new run starts with every source un-paused: the connection may be back.
     this.sources.resetBreakers();
-    this.db.transaction(() => pruneInapplicable(this.db, this.sources))();
+    this.db.transaction(() => {
+      pruneInapplicable(this.db, this.sources);
+      // Kind rules may have changed since the books were looked up; re-derive them (no requests).
+      refreshDerivedFacts(
+        this.db,
+        this.db.prepare('SELECT id FROM items').pluck().all() as string[],
+      );
+    })();
     const ids = opts.itemIds ?? itemsNeedingLookup(this.db, this.sources, opts.refresh);
     const status: LookupStatus = {
       runId: newId(),

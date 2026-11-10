@@ -3,6 +3,7 @@ import { estimateDuration, formatRange } from './estimate.ts';
 import { communityRating, ratingStats, shrink } from './ratings.ts';
 import {
   buildCard,
+  diversify,
   fitOf,
   onePerSeries,
   readNext,
@@ -257,6 +258,31 @@ describe('Read next', () => {
     expect(c.limitations).toEqual(
       expect.arrayContaining(['unconfirmed match', 'rating is for the whole series']),
     );
+  });
+
+  it('mixes authors: one author’s bundle doesn’t fill the top of the list', () => {
+    const by = (name: string, score: number) => ({
+      ...buildCard(item({ creators: [{ name }] }), [], situation()),
+      score,
+      title: `${name} ${score}`,
+    });
+    const order = diversify([
+      by('Ana Reyes', 0.6),
+      by('Ana Reyes', 0.59),
+      by('Ana Reyes', 0.58),
+      by('Ben Ortiz', 0.57),
+      by('Cy Park', 0.56),
+    ]).map((c) => c.title);
+    expect(order.slice(0, 3)).toEqual(['Ana Reyes 0.6', 'Ben Ortiz 0.57', 'Cy Park 0.56']);
+    // A clearly better book by the same author still comes first.
+    expect(
+      diversify([by('Ana Reyes', 0.9), by('Ana Reyes', 0.85), by('Ben Ortiz', 0.5)])[1]!.title,
+    ).toBe('Ana Reyes 0.85');
+  });
+
+  it('measures a comic with lettered balloons (about 60 words a page) by its pages', () => {
+    const d = estimateDuration({ kind: null, words: 7_500, pages: 120 })!;
+    expect(d.basis).toBe('from 120 pages, mostly pictures');
   });
 
   it('shows books only, comics and manga only, or both', () => {

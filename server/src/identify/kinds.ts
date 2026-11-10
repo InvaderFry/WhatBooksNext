@@ -64,6 +64,9 @@ export function kindFromEvidence(e: KindEvidence): { kind: string; why: string }
       }
     }
   }
+  // A graphic novel about history is still read as a comic: one comics subject decides, however
+  // many history or biography subjects come with it (owner's first quality check).
+  if ((votes.get('comic') ?? 0) > 0) return { kind: 'comic', why: 'its subjects say comics' };
   let best: string | null = null;
   let n = 0;
   for (const r of RULES) {
