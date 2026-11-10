@@ -680,6 +680,8 @@ export interface Signal {
   affinity: number;
   evidence: number;
   rated: boolean;
+  stopped: boolean;
+  meanRating: number | null;
   text: string;
 }
 

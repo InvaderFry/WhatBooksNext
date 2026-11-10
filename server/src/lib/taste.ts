@@ -1,5 +1,6 @@
 import {
   TASTE_EVIDENCE,
+  TASTE_HIGH_RATING,
   TASTE_MIN_GROUPS,
   TASTE_MIN_SIGNAL,
   TASTE_PRIOR_WEIGHT,
@@ -49,6 +50,8 @@ export interface Signal {
   rated: boolean;
   /** Mostly from books stopped as "Not for me": only then may a sentence say so. */
   stopped: boolean;
+  /** The owner's average rating (1–10) behind it, when any of its evidence is rated. */
+  meanRating: number | null;
 }
 
 export interface TasteModel {
@@ -159,13 +162,20 @@ interface Evidence {
   weight: number;
   rated: boolean;
   stopped?: boolean;
+  /** The owner's rating, 1–10, when the evidence is a rating. */
+  rating?: number;
 }
 
 /** What one item teaches, or null when it teaches nothing (§13.11). */
 export function evidenceOf(i: TasteInput): Omit<Evidence, 'item'> | null {
   const imported = i.historyOnly ? TASTE_EVIDENCE.importedFactor : 1;
   if (i.rating !== null)
-    return { value: (i.rating - 5.5) / 4.5, weight: TASTE_EVIDENCE.rated * imported, rated: true };
+    return {
+      value: (i.rating - 5.5) / 4.5,
+      weight: TASTE_EVIDENCE.rated * imported,
+      rated: true,
+      rating: i.rating,
+    };
   if (i.progress === 'finished')
     return { value: 0.5, weight: TASTE_EVIDENCE.finished * imported, rated: false };
   if (i.progress === 'dnf' && i.dnfReason === 'not_for_me')
@@ -223,14 +233,18 @@ export function learnTaste(items: TasteInput[], strength: TasteStrength = 'norma
       wv: number;
       ratedW: number;
       stoppedW: number;
+      ratingSum: number;
     }
   >();
   for (const e of ev) {
     for (const [key, f] of featuresOf(e.item)) {
-      const a = acc.get(key) ?? { ...f, w: 0, wv: 0, ratedW: 0, stoppedW: 0 };
+      const a = acc.get(key) ?? { ...f, w: 0, wv: 0, ratedW: 0, stoppedW: 0, ratingSum: 0 };
       a.w += e.weight;
       a.wv += e.weight * e.value;
-      if (e.rated) a.ratedW += e.weight;
+      if (e.rated) {
+        a.ratedW += e.weight;
+        a.ratingSum += e.weight * (e.rating ?? 0);
+      }
       if (e.stopped) a.stoppedW += e.weight;
       acc.set(key, a);
     }
@@ -247,6 +261,7 @@ export function learnTaste(items: TasteInput[], strength: TasteStrength = 'norma
       evidence: Math.round(a.w * 10) / 10,
       rated: a.ratedW > a.w / 2,
       stopped: a.stoppedW > a.w / 2,
+      meanRating: a.ratedW > 0 ? Math.round((a.ratingSum / a.ratedW) * 10) / 10 : null,
     });
   }
   return { active, outcomes: Math.round(outcomes * 10) / 10, groups, strength, signals };
@@ -287,10 +302,18 @@ const SPECIFIC: Record<Signal['type'], number> = {
   kind: 4,
 };
 
-/** A true sentence about a learned signal: "You rate fantasy highly", "You finish manga". */
+/**
+ * A true sentence about a liked signal: "You rate fantasy highly" (your ratings for it really
+ * are high), "You rate fantasy above your other books" (it stands out, but the ratings aren't
+ * high in themselves), "You finish manga".
+ */
 export function signalSentence(s: Signal): string {
   const verb = s.rated ? 'You rate' : 'You finish';
-  const tail = s.rated ? ' highly' : '';
+  const tail = !s.rated
+    ? ''
+    : (s.meanRating ?? 0) >= TASTE_HIGH_RATING
+      ? ' highly'
+      : ' above your other books';
   switch (s.type) {
     case 'author':
       return `${verb} books by ${s.label}${tail}`;

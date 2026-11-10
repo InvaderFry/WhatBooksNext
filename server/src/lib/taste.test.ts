@@ -134,6 +134,28 @@ describe('taste learning (§13.11)', () => {
     expect(text('poetry')).toBe('You rate poetry lower than your other books');
   });
 
+  it('says “highly” only when the owner’s ratings really are high', () => {
+    // A strict rater: 6s and 7s for science fiction stand out against 2s and 3s elsewhere.
+    const strict = [
+      ...history(6, ['Science fiction'], { progress: 'finished', rating: 7 }),
+      ...history(6, ['Romance'], { progress: 'finished', rating: 2 }),
+    ];
+    const sf = tasteSummary(tasteFrom(strict, 'normal')).likes.find(
+      (l) => l.label === 'science fiction',
+    )!;
+    expect(sf.meanRating).toBe(7);
+    expect(sf.text).toBe('You rate science fiction above your other books');
+    // A generous one: the same books rated 9 are rated highly.
+    const generous = [
+      ...history(6, ['Science fiction'], { progress: 'finished', rating: 9 }),
+      ...history(6, ['Romance'], { progress: 'finished', rating: 6 }),
+    ];
+    expect(
+      tasteSummary(tasteFrom(generous, 'normal')).likes.find((l) => l.label === 'science fiction')!
+        .text,
+    ).toBe('You rate science fiction highly');
+  });
+
   it('learns only "Not for me" as dislike among unrated DNFs', () => {
     const notForMe = learnTaste(
       history(2, ['Westerns'], { progress: 'dnf', dnfReason: 'not_for_me' }).map(toInput),

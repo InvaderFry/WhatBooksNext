@@ -391,3 +391,10 @@ export const STILL_READING_SNOOZE_DAYS = 30;
 /** Topic interests: at most this many, each at most this long. Enough for real interests. */
 export const MAX_TOPICS = 30;
 export const MAX_TOPIC_LENGTH = 40;
+
+/**
+ * Taste reasons say "You rate X highly" only when the owner's own ratings behind X average at
+ * least this; otherwise "above your other books". Assumption: 8/10 is a rating most people would
+ * call high; a strict rater's 6s and 7s can stand out without being high.
+ */
+export const TASTE_HIGH_RATING = 8;
