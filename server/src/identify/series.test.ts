@@ -5,7 +5,7 @@ import type { DB } from '../db/database.ts';
 import { addCoverage, seriesIdFor, suggestCoverageFromSources } from '../lib/coverage.ts';
 import { createStoreItem } from '../lib/store.ts';
 import { loadRankData } from '../lib/rankData.ts';
-import { readNext } from '../lib/recommend.ts';
+import { readNext } from '../lib/modes.ts';
 import { markReadElsewhere, setSeriesStatus } from '../lib/seriesView.ts';
 import { ensureUserRow } from '../lib/progress.ts';
 import type { SourceRecord } from '../sources/types.ts';

@@ -324,3 +324,77 @@ export const SERIES_PUBLICATION_LIMIT = 500;
 export const SERIES_MEMBERSHIP_LIMIT = 100;
 /** Assumption: weekly catalogue refresh catches new volumes without repeated requests per book. */
 export const SERIES_PUBLICATION_CACHE_DAYS = 7;
+
+// ---- Modes and taste (M5, PLAN.md §13.10, §13.11, §20) -------------------------------------
+
+/** Hidden gems: votes in the bottom 25% for that source, and at least 5 votes (§20). */
+export const HIDDEN_GEM_VOTE_PERCENTILE = 0.25;
+export const HIDDEN_GEM_MIN_VOTES = 5;
+
+/** Classics you missed: first published at least 25 years ago (§20). */
+export const CLASSICS_AGE_YEARS = 25;
+
+/** One-sitting reads: the default Finish-within budget, a typical uninterrupted session (§20). */
+export const ONE_SITTING_MINUTES = 120;
+
+/** Surprise me: random from the top 50 of Read next, probability ∝ score² (§20). */
+export const SURPRISE_POOL = 50;
+
+/**
+ * Mood re-weights rather than filters (§13.10): an item that fits the mood gains up to this much
+ * score. Assumption: about the size of the rating's spread between an average and a highly
+ * rated book, so the mood leads without hiding everything else.
+ */
+export const MOOD_WEIGHT = 0.3;
+
+/**
+ * Skim: "short items" are those whose whole length is at most this long. Assumption: an hour is
+ * a skim; anything longer is a read.
+ */
+export const SKIM_MINUTES = 60;
+
+/**
+ * Taste is inert below 10 explicit outcomes (rated, finished, or DNF "Not for me"), counted after
+ * the series cap, from at least 3 different authors or series (§20).
+ */
+export const TASTE_THRESHOLD = 10;
+export const TASTE_MIN_GROUPS = 3;
+
+/** A series counts as at most 2 items of evidence (§20), so one long run can't dominate. */
+export const TASTE_SERIES_CAP = 2;
+
+/**
+ * Evidence strength (§13.11): your rating > finished (engagement, not necessarily enjoyment) >
+ * imported history. Assumption: each step about half the one before.
+ */
+export const TASTE_EVIDENCE = { rated: 1, finished: 0.6, notForMe: 1, importedFactor: 0.5 };
+
+/**
+ * A signal is shrunk toward the owner's own average with this much pretend evidence, so one book
+ * doesn't make a genre a favourite. Assumption: two books' worth.
+ */
+export const TASTE_PRIOR_WEIGHT = 2;
+
+/** A signal needs at least this much evidence (in books) before it counts at all. Assumption. */
+export const TASTE_MIN_SIGNAL = 1;
+
+/** A signal is given as a reason only when it stands out by at least this much. Assumption. */
+export const TASTE_REASON_MIN = 0.15;
+
+/** Off / Low / Normal / High (§13.11): how strongly learned taste moves the taste component. */
+export const TASTE_STRENGTH = { off: 0, low: 0.5, normal: 1, high: 2 } as const;
+
+/** Still reading? after 90 untouched days in progress; Snooze lasts 30 days (§20). */
+export const STILL_READING_DAYS = 90;
+export const STILL_READING_SNOOZE_DAYS = 30;
+
+/** Topic interests: at most this many, each at most this long. Enough for real interests. */
+export const MAX_TOPICS = 30;
+export const MAX_TOPIC_LENGTH = 40;
+
+/**
+ * Taste reasons say "You rate X highly" only when the owner's own ratings behind X average at
+ * least this; otherwise "above your other books". Assumption: 8/10 is a rating most people would
+ * call high; a strict rater's 6s and 7s can stand out without being high.
+ */
+export const TASTE_HIGH_RATING = 8;

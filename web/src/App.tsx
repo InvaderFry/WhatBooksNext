@@ -9,6 +9,7 @@ import { Library } from './pages/Library.tsx';
 import { Settings } from './pages/Settings.tsx';
 import { Shortlist } from './pages/Shortlist.tsx';
 import { Triage } from './pages/Triage.tsx';
+import { Tune } from './pages/Tune.tsx';
 import { WhatNext } from './pages/WhatNext.tsx';
 import { ScanProgress } from './ScanProgress.tsx';
 import { hrefFor, onLinkClick, useParams } from './url.ts';
@@ -82,6 +83,7 @@ export function App() {
       diagnostics: 'Diagnostics',
       review: 'Needs review',
       health: 'Library health',
+      tune: 'Tune',
       item: 'Book',
     };
     document.title = `${titles[view] ?? 'What next'} · whatBooksNext`;
@@ -119,7 +121,8 @@ export function App() {
                     aria-current={
                       view === n.view ||
                       (view === 'item' && n.view === 'library') ||
-                      (view === 'health' && n.view === 'review')
+                      (view === 'health' && n.view === 'review') ||
+                      (view === 'tune' && n.view === 'settings')
                         ? 'page'
                         : undefined
                     }
@@ -143,7 +146,9 @@ export function App() {
         {view === 'next' && state && (
           <WhatNext key={dataVersion} params={params} onChanged={() => void refreshState()} />
         )}
-        {view === 'triage' && <Triage key={dataVersion} onChanged={() => void refreshState()} />}
+        {view === 'triage' && (
+          <Triage key={dataVersion} params={params} onChanged={() => void refreshState()} />
+        )}
         {view === 'library' && (
           <Library key={dataVersion} state={state} onScanStarted={scanStarted} />
         )}
@@ -167,6 +172,7 @@ export function App() {
         {view === 'diagnostics' && <Diagnostics key={dataVersion} />}
         {view === 'review' && <Review key={dataVersion} onChanged={() => void refreshState()} />}
         {view === 'health' && <Health key={dataVersion} />}
+        {view === 'tune' && <Tune key={dataVersion} />}
       </main>
     </>
   );

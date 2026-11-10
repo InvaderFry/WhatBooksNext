@@ -16,6 +16,8 @@ export interface FolderRow {
   also_in_icloud: number;
   last_seen_at: string | null;
   last_complete_scan_at: string | null;
+  /** When the folder's first scan completed: books first seen after it are new arrivals. */
+  first_complete_scan_at: string | null;
   reminder_snoozed_until?: string | null;
   created_at: string;
   updated_at: string;
@@ -96,6 +98,7 @@ export async function addFolder(
     also_in_icloud: 0,
     last_seen_at: now,
     last_complete_scan_at: null,
+    first_complete_scan_at: null,
     created_at: now,
     updated_at: now,
   };

@@ -5,6 +5,8 @@ import { HistoryImport } from './HistoryImport.tsx';
 import { CalibreImport } from './CalibreImport.tsx';
 import { CsvImport } from './StoreBooks.tsx';
 import { OnlineSettings } from './OnlineSettings.tsx';
+import { TopicsSection } from './Tune.tsx';
+import { hrefFor, onLinkClick } from '../url.ts';
 
 export function Settings({
   dataVersion,
@@ -81,6 +83,17 @@ export function Settings({
       <CsvImport />
       <CalibreImport />
       <HistoryImport onChanged={onLibraryChanged} />
+      <section aria-labelledby="picks-h" className="section">
+        <h2 id="picks-h">Recommendations</h2>
+        <p>
+          <a href={hrefFor({ view: 'tune' })} onClick={onLinkClick({ view: 'tune' })}>
+            Tune
+          </a>{' '}
+          — how much rating, time, taste, progress, Want and recently added count; taste learning
+          strength; and what taste has learned.
+        </p>
+      </section>
+      <TopicsSection />
       <BackupSection onRestored={onLibraryChanged} />
     </div>
   );

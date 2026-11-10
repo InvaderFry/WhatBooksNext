@@ -17,6 +17,9 @@ owner has already made. Don't reopen those decisions. Then read the latest
   CSV, `lib/store.ts`; Calibre, `lib/calibre.ts`) are built. Part 7 (Goodreads/StoryGraph,
   `lib/historyImport.ts`) is built. Windows checks and fresh authenticated export verification
   remain open in the M4 notes.
+- **M5 built** (`docs/milestones/M5.md`): the ten modes (`server/src/lib/modes.ts`, one shared
+  pool), taste learning (`lib/taste.ts`, pure), Tune and topics (`lib/tune.ts`, in `settings`),
+  Still reading?, triage sources and bulk triage (`routes/modes.ts`). Next is **M6**.
 - Series rows are rebuilt by `syncSeries` (`server/src/identify/series.ts`) from stored facts
   and owner corrections. Call it after anything that changes items' names, numbers, kinds or
   matches. Gap rules are pure, in `server/src/lib/series.ts`.

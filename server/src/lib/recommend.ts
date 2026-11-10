@@ -1,9 +1,18 @@
-import { EVENING_MINUTES, SAME_AUTHOR_PENALTY, WEEKEND_MINUTES, WEIGHTS } from '../config.ts';
+import {
+  EVENING_MINUTES,
+  MOOD_WEIGHT,
+  SAME_AUTHOR_PENALTY,
+  SKIM_MINUTES,
+  WEEKEND_MINUTES,
+  WEIGHTS,
+} from '../config.ts';
 import { SOURCE_LABELS } from '../sources/types.ts';
 import { formatRange, remaining, type Duration, type Effort } from './estimate.ts';
 import type { AvailabilityView, UserData } from './library.ts';
 import type { CommunityRating } from './ratings.ts';
+import { tasteFor, type TasteModel } from './taste.ts';
 import {
+  coveredNumbers,
   gapSentence,
   ownedCount,
   seriesGaps,
@@ -60,7 +69,15 @@ export interface RankItem {
   firstPublishYear: number | null;
   acquired: { date: string | null; basis: 'entered' | 'file_date' | 'first_seen' | 'unknown' };
   effort: Effort;
+  /** Genres, subjects and tags from sources and the file (taste, topics). */
+  subjects?: string[];
+  publisher?: string | null;
 }
+
+export type Weights = Record<keyof typeof WEIGHTS, number>;
+
+/** Escape (fiction, comics, manga) / Learn (nonfiction, tech, self-help) / Skim (§13.10). */
+export type Mood = 'escape' | 'learn' | 'skim';
 
 export type TimeMode = 'read_for' | 'finish_within';
 
@@ -89,6 +106,18 @@ export interface Situation {
   /** Today, YYYY-MM-DD (injectable for tests). */
   today: string;
   recentDays: number;
+  /** The owner's weights from Tune (§13.7); the starting values when not set. */
+  weights?: Weights;
+  /** What taste has learned (§13.11); null or inert changes nothing. */
+  taste?: TasteModel | null;
+  /** Mood re-weights rather than filters (§13.10). */
+  mood?: Mood | null;
+  /** The owner's topic interests (§13.10, Settings). */
+  topics?: string[];
+  /** Complete stories only (§13.3). */
+  completeOnly?: boolean;
+  /** One of the owner's topics: only items about it, reference included (§13.1). */
+  topic?: string | null;
 }
 
 export const TIME_PRESETS: { id: string; label: string; minutes: number | null }[] = [
@@ -275,6 +304,77 @@ export function recencyComponent(i: RankItem, s: Situation): number {
   return d >= 0 && d <= s.recentDays ? 1 : 0;
 }
 
+const MOOD_KINDS: Record<Mood, string[]> = {
+  escape: ['fiction', 'comic', 'manga'],
+  learn: ['nonfiction', 'tech', 'self_help'],
+  skim: [],
+};
+
+/**
+ * How well an item fits a mood, 0–1; 0.5 when unknown. Skim is short items and reference: a
+ * whole length within SKIM_MINUTES, or anything marked reference.
+ */
+export function moodComponent(i: RankItem, mood: Mood | null | undefined): number {
+  if (!mood) return 0;
+  if (mood === 'skim') {
+    if (i.isReference) return 1;
+    if (!i.duration) return NEUTRAL;
+    return i.duration.high <= SKIM_MINUTES ? 1 : 0;
+  }
+  if (!i.kind) return NEUTRAL;
+  return MOOD_KINDS[mood].includes(i.kind) ? 1 : 0;
+}
+
+const topicNorm = (t: string) =>
+  t
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^\p{L}\p{N}+#]+/gu, ' ')
+    .trim();
+
+/** The owner's topics this item is about: by its title, subjects or tags (whole words). */
+export function topicsOf(i: Pick<RankItem, 'title' | 'subjects'>, topics: string[]): string[] {
+  if (topics.length === 0) return [];
+  const hay = ` ${topicNorm([i.title, ...(i.subjects ?? [])].join(' | '))} `;
+  return topics.filter((t) => {
+    const n = topicNorm(t);
+    return n !== '' && hay.includes(` ${n} `);
+  });
+}
+
+export type Completeness =
+  { ok: true } | { ok: false; why: 'ongoing' | 'unknown' | 'missing'; text: string };
+
+/**
+ * Complete stories only (§13.3): standalone works, and series whose story is known to be
+ * finished and whose every installment the owner owns or has read. Unknown doesn't pass.
+ */
+export function completeness(i: RankItem, all: RankItem[]): Completeness {
+  if (!i.series || i.series.position === null) return { ok: true };
+  const s = i.series;
+  if (s.status === 'ongoing') return { ok: false, why: 'ongoing', text: 'story ongoing' };
+  if (s.status !== 'finished')
+    return { ok: false, why: 'unknown', text: 'not known whether the story is finished' };
+  const members = asMembers(seriesMembers(i, all)).filter((m) => m.unit === s.unit);
+  const held = new Set(members.filter((m) => m.holding !== 'unavailable').map((m) => m.position));
+  // Issues in a confirmed collection the owner has count as owned (§12.5). A suggested one only
+  // "may" cover them, so it doesn't.
+  if (s.unit === 'issue')
+    for (const c of s.coverage ?? [])
+      if (c.state === 'confirmed' && c.held) for (const n of coveredNumbers(c)) held.add(n);
+  const top = Math.max(s.total ?? 0, ...members.map((m) => m.position ?? 0));
+  if (s.total === null) {
+    // A finished story whose length no source states: complete only if nothing is missing
+    // between 1 and the highest owned number — and that's still a guess about the end, so no.
+    return { ok: false, why: 'unknown', text: 'its number of installments isn’t known' };
+  }
+  const word = s.unit === 'issue' ? 'issue' : 'vol.';
+  for (let n = 1; n <= top; n++)
+    if (!held.has(n)) return { ok: false, why: 'missing', text: `you’re missing ${word} ${n}` };
+  return { ok: true };
+}
+
 // ---- Cards (§13.3, §13.8) --------------------------------------------------------------------
 
 export interface Card {
@@ -298,7 +398,9 @@ export interface Card {
   reasons: string[];
   limitations: string[];
   score: number;
-  components: Record<keyof typeof WEIGHTS, number>;
+  components: Record<keyof typeof WEIGHTS, number> & { mood?: number };
+  /** Topic interests this item is about (§13.10). */
+  topics?: string[];
 }
 
 function budgetText(m: number): string {
@@ -356,29 +458,34 @@ function scopeText(i: RankItem, all: RankItem[], d: Duration | null): string {
 export function buildCard(i: RankItem, all: RankItem[], s: Situation): Card {
   const d = i.duration;
   const fit = fitOf(d, s);
+  const W = s.weights ?? WEIGHTS;
+  const taste = tasteFor(i, s.taste);
   const components = {
     rating: ratingComponent(i),
     timeFit: timeFitComponent(i, s, d),
-    // Taste learning arrives in M5. Until then it is inert: neutral for everyone (§13.11).
-    taste: NEUTRAL,
+    // Neutral for everyone until taste has enough evidence (§13.11).
+    taste: taste.score,
     momentum: momentumComponent(i, all),
     triage: triageComponent(i),
     recency: recencyComponent(i, s),
   };
-  const score = (Object.keys(WEIGHTS) as (keyof typeof WEIGHTS)[]).reduce(
-    (a, k) => a + WEIGHTS[k] * components[k],
-    0,
-  );
+  const mood = moodComponent(i, s.mood);
+  const topics = topicsOf(i, s.topics ?? []);
+  const score =
+    (Object.keys(WEIGHTS) as (keyof typeof WEIGHTS)[]).reduce(
+      (a, k) => a + W[k] * components[k],
+      0,
+    ) + (s.mood ? MOOD_WEIGHT * mood : 0);
 
   // Reasons: only what the data really says, strongest contribution first (§13.8).
   const reasons: { text: string; weight: number }[] = [];
   if (i.user.rating !== null)
     reasons.push({
       text: `You rated it ${i.user.rating}/10`,
-      weight: WEIGHTS.rating * components.rating,
+      weight: W.rating * components.rating,
     });
   else if (i.community?.highlyRated)
-    reasons.push({ text: ratingReason(i.community), weight: WEIGHTS.rating * components.rating });
+    reasons.push({ text: ratingReason(i.community), weight: W.rating * components.rating });
   if (IN_PROGRESS.includes(i.user.progress))
     reasons.push({
       text:
@@ -387,12 +494,12 @@ export function buildCard(i: RankItem, all: RankItem[], s: Situation): Card {
           : i.user.progress === 'halfway'
             ? 'You’re halfway through'
             : 'You’ve started it',
-      weight: WEIGHTS.momentum * components.momentum,
+      weight: W.momentum * components.momentum,
     });
   else if (components.momentum > 0)
     reasons.push({
       text: 'Next in a series you’re reading',
-      weight: WEIGHTS.momentum * components.momentum,
+      weight: W.momentum * components.momentum,
     });
   if (s.budget !== null && d && fit === 'fits')
     reasons.push({
@@ -401,15 +508,24 @@ export function buildCard(i: RankItem, all: RankItem[], s: Situation): Card {
         d.measured && d.high <= s.budget
           ? `You can finish it within ${budgetText(s.budget)}`
           : `Good for ${sessionText(s.budget)}`,
-      weight: WEIGHTS.timeFit * components.timeFit,
+      weight: W.timeFit * components.timeFit,
     });
   if (i.user.triage === 'want')
-    reasons.push({ text: 'You marked it Want', weight: WEIGHTS.triage * components.triage });
+    reasons.push({ text: 'You marked it Want', weight: W.triage * components.triage });
+  if (taste.reason)
+    reasons.push({ text: taste.reason, weight: W.taste * (components.taste - NEUTRAL) * 2 });
+  if (s.mood && mood === 1)
+    reasons.push({ text: moodReason(i, s.mood), weight: MOOD_WEIGHT * 0.5 });
+  if (topics.length > 0)
+    reasons.push({
+      text: `About ${topics.slice(0, 2).join(' and ')}, one of your topics`,
+      weight: 0.05,
+    });
   if (components.recency > 0 && i.acquired.date) {
     const days = daysBetween(i.acquired.date, s.today);
     reasons.push({
       text: `Added ${days === 0 ? 'today' : days === 1 ? 'yesterday' : `${days} days ago`}${i.acquired.basis === 'file_date' ? ' (from the file date)' : ''}`,
-      weight: WEIGHTS.recency,
+      weight: W.recency,
     });
   }
 
@@ -447,8 +563,23 @@ export function buildCard(i: RankItem, all: RankItem[], s: Situation): Card {
       .map((r) => r.text),
     limitations: limits,
     score: Math.round(score * 1000) / 1000,
-    components,
+    components: s.mood ? { ...components, mood } : components,
+    topics,
   };
+}
+
+function moodReason(i: RankItem, mood: Mood): string {
+  if (mood === 'skim')
+    return i.isReference ? 'Reference: good for dipping into' : 'Short enough to skim';
+  const kinds: Record<string, string> = {
+    fiction: 'fiction',
+    comic: 'a comic',
+    manga: 'manga',
+    nonfiction: 'nonfiction',
+    tech: 'a tech book',
+    self_help: 'self-help',
+  };
+  return `${mood === 'escape' ? 'An escape' : 'Something to learn from'}: ${kinds[i.kind ?? ''] ?? 'fits'}`;
 }
 
 /**
@@ -483,17 +614,6 @@ export function diversify(sorted: Card[]): Card[] {
   return [...out, ...left];
 }
 
-// ---- Read next (§13.10) -------------------------------------------------------------------
-
-export interface ReadNextResult {
-  cards: Card[];
-  /** "Finish within" only: rough estimates that might fit, kept apart (§13.2). */
-  mightFit: Card[];
-  total: number;
-  /** Eligible items before the time filter, and how many have a rating or a known length. */
-  coverage: { eligible: number; rated: number; lengthKnown: number };
-}
-
 /**
  * One card per book (§11.3 rule 4): entries matched to the same source record are probably one
  * book under two names, so only one is offered — the one in progress, else one ready to read.
@@ -518,51 +638,4 @@ export function onePerWork(items: RankItem[]): { kept: RankItem[]; twins: Set<st
     if (group.length > 1) twins.add(best.id);
   }
   return { kept, twins };
-}
-
-export function readNext(
-  all: RankItem[],
-  s: Situation,
-  page: { offset: number; limit: number },
-): ReadNextResult {
-  const { kept, twins } = onePerWork(all.filter((i) => ineligibleBecause(i) === null));
-  const eligible = onePerSeries(
-    kept.filter(
-      (i) =>
-        ineligibleBecause(i) === null &&
-        // Reference items appear only in Skim, topic interests and Still relevant? (§13.1).
-        !i.isReference &&
-        !s.exclude.has(i.id) &&
-        shows(i, s.show) &&
-        (!s.readyToRead || i.availability.readyToRead),
-    ),
-    all,
-  );
-  const cards = eligible.map((i) => {
-    const c = buildCard(i, all, s);
-    if (twins.has(i.id))
-      c.limitations.push('also in your library under another name — see Needs review');
-    return c;
-  });
-  const order = (a: Card, b: Card) => b.score - a.score || a.title.localeCompare(b.title);
-  let main = cards;
-  let mightFit: Card[] = [];
-  if (s.mode === 'finish_within' && s.budget !== null) {
-    main = cards.filter((c) => c.fit === 'fits');
-    mightFit = cards
-      .filter((c) => c.fit === 'might_fit')
-      .sort(order)
-      .slice(0, page.limit);
-  }
-  main = diversify(main.sort(order));
-  return {
-    cards: main.slice(page.offset, page.offset + page.limit),
-    mightFit,
-    total: main.length,
-    coverage: {
-      eligible: eligible.length,
-      rated: eligible.filter((i) => i.community || i.user.rating !== null).length,
-      lengthKnown: eligible.filter((i) => i.duration).length,
-    },
-  };
 }

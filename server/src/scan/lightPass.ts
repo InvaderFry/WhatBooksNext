@@ -317,8 +317,11 @@ export function applyFolderListing(
     const complete = summary.status === 'completed';
     db.prepare(
       `UPDATE folders SET last_seen_at = ?, updated_at = ?,
-         last_complete_scan_at = CASE WHEN ? THEN ? ELSE last_complete_scan_at END WHERE id = ?`,
-    ).run(now, now, complete ? 1 : 0, now, folder.id);
+         last_complete_scan_at = CASE WHEN ? THEN ? ELSE last_complete_scan_at END,
+         first_complete_scan_at = CASE WHEN ? THEN COALESCE(first_complete_scan_at, ?)
+           ELSE first_complete_scan_at END
+       WHERE id = ?`,
+    ).run(now, now, complete ? 1 : 0, now, complete ? 1 : 0, now, folder.id);
   })();
   summary.reparsed = reparsedFileIds.length;
   return reparsedFileIds;

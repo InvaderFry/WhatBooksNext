@@ -48,6 +48,49 @@ try {
         await p.getByRole('button', { name: 'Not this, because…' }).first().click();
       },
     ],
+    // M5: every mode populated, a truthful empty case, and the new pages.
+    ...(
+      [
+        'continue',
+        'next_in_series',
+        'one_sitting',
+        'waiting',
+        'hidden_gems',
+        'classics',
+        'still_relevant',
+        'surprise',
+      ] as const
+    ).map(
+      (m) =>
+        [`mode-${m}`, `/?m=${m}`, async () => {}] as [
+          string,
+          string,
+          (p: import('playwright').Page) => Promise<void>,
+        ],
+    ),
+    ['mode-mood-learn', '/?m=mood&mood=learn', async () => {}],
+    ['mode-mood-skim', '/?m=mood&mood=skim', async () => {}],
+    ['mode-complete-only', '/?complete=1', async () => {}],
+    ['mode-empty-classics-comics', '/?m=classics&show=comics', async () => {}],
+    [
+      'mode-still-reading-dnf',
+      '/?m=continue',
+      async (p) => {
+        await p.getByRole('button', { name: 'Did not finish' }).first().click();
+      },
+    ],
+    ['tune', '/?view=tune', async () => {}],
+    [
+      'triage-bulk-preview',
+      '/?view=triage&bulk=1',
+      async (p) => {
+        await p.getByRole('checkbox').nth(1).check();
+        await p.getByRole('checkbox').nth(2).check();
+        await p.getByRole('button', { name: /^Already read/ }).click();
+        await p.getByRole('heading', { name: /^Mark 2 books/ }).waitFor();
+      },
+    ],
+    ['triage-folder', '/?view=triage&source=folder', async () => {}],
     ['triage', '/?view=triage', async () => {}],
     ['library', '/?view=library', async () => {}],
     ['library-filtered', '/?view=library&ready=1&kind=comic', async () => {}],
@@ -249,7 +292,10 @@ try {
         colorScheme: scheme,
         deviceScaleFactor: 1,
       });
+      // SHOTS=next,tune takes only those (names start with these).
+      const only = (process.env.SHOTS ?? '').split(',').filter(Boolean);
       for (const [name, url, act] of shots) {
+        if (only.length && !only.some((o) => name.startsWith(o))) continue;
         await page.goto(BASE + url);
         await page.waitForLoadState('networkidle');
         await act(page);

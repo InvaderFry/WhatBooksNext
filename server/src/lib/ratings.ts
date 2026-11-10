@@ -1,4 +1,6 @@
 import {
+  HIDDEN_GEM_MIN_VOTES,
+  HIDDEN_GEM_VOTE_PERCENTILE,
   HIGHLY_RATED_FALLBACK,
   HIGHLY_RATED_MIN_ITEMS,
   HIGHLY_RATED_PERCENTILE,
@@ -26,6 +28,8 @@ export interface SourceStats {
   rated: number;
   /** Shrunk score at or above which a book from this source is "highly rated". */
   highlyRated: number;
+  /** Vote counts at or below this are "few" for this source (hidden gems, §20). */
+  fewVotes: number;
 }
 
 export type RatingStats = Map<SourceName, SourceStats>;
@@ -77,6 +81,11 @@ export function ratingStats(all: RatedFrom[]): RatingStats {
         rs.length < HIGHLY_RATED_MIN_ITEMS
           ? HIGHLY_RATED_FALLBACK
           : percentile(shrunk, HIGHLY_RATED_PERCENTILE),
+      // Only real counts: a rating with no count says nothing about obscurity.
+      fewVotes: percentile(
+        rs.filter((r) => r.count !== null && r.count !== undefined).map((r) => r.count!),
+        HIDDEN_GEM_VOTE_PERCENTILE,
+      ),
     });
   }
   return out;
@@ -92,6 +101,11 @@ export interface CommunityRating {
   /** 0–100 after shrinking toward the source's mean. */
   score: number;
   highlyRated: boolean;
+  /**
+   * Few votes for this source in this library (bottom 25%), and at least 5 (§20). False when the
+   * count is unknown: missing data is not obscurity (§13.10).
+   */
+  fewVotes: boolean;
 }
 
 /** The community rating to use, by preference, with its scope (§12.2). */
@@ -110,5 +124,10 @@ export function communityRating(ratings: RatedFrom[], stats: RatingStats): Commu
     scope: pick.scope,
     score: Math.round(score),
     highlyRated: score >= (s?.highlyRated ?? HIGHLY_RATED_FALLBACK),
+    fewVotes:
+      pick.count !== null &&
+      pick.count !== undefined &&
+      pick.count >= HIDDEN_GEM_MIN_VOTES &&
+      pick.count <= (s?.fewVotes ?? -1),
   };
 }

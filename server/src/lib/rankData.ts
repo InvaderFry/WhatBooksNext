@@ -2,7 +2,8 @@ import { BULK_COPY_SHARE } from '../config.ts';
 import type { DB } from '../db/database.ts';
 import { allMatchInputs, chooseUsed, picturesFile, type MatchRow } from '../identify/lookups.ts';
 import { SOURCE_LABELS } from '../sources/types.ts';
-import { todayLocal } from '../util.ts';
+import type { EmbeddedMetadata } from '../scan/formats/types.ts';
+import { parseJson, todayLocal } from '../util.ts';
 import { estimateDuration, estimateEffort, unitFor } from './estimate.ts';
 import {
   historyOnlyIds,
@@ -45,6 +46,8 @@ interface ItemFactRow {
   size: number | null;
   /** The largest page count among the item's files (another copy may have one). */
   any_pages: number | null;
+  /** The primary file's embedded metadata (JSON): subjects, publisher, ComicInfo genre. */
+  metadata: string | null;
 }
 
 export interface RankData {
@@ -53,6 +56,11 @@ export interface RankData {
   /** Everything the library view has, by id (for detail views). */
   library: Map<string, ItemSummary>;
   used: Map<string, MatchRow[]>;
+  /**
+   * Items that arrived after their folder's first scan, with when they were first seen: genuinely
+   * new, not a new format of a known book (which joins the known item) (§13.5).
+   */
+  arrivals: Map<string, string>;
 }
 
 /** Library folders where most files share one day's date: a bulk copy, dates unknown (§13.7). */
@@ -86,7 +94,7 @@ export function loadRankData(db: DB, reach: FolderReachability): RankData {
              s.publication_status AS series_status, s.installments AS series_total,
              i.series_hint, i.volume_label, i.issue_label, i.publication_year, i.identity,
              i.match_source, i.match_source_id, u.acquired_on, f.word_count AS words, f.page_count AS pages,
-             f.pdf_type, fu.pdf_type_override AS pdf_override, f.format, f.size,
+             f.pdf_type, fu.pdf_type_override AS pdf_override, f.format, f.size, f.metadata,
              (SELECT MAX(g.page_count) FROM item_files y JOIN files g ON g.id = y.file_id
               WHERE y.item_id = i.id) AS any_pages
            FROM items i
@@ -151,11 +159,22 @@ export function loadRankData(db: DB, reach: FolderReachability): RankData {
       acquired = { date: i.firstSeenAt.slice(0, 10), basis: 'first_seen' };
     else acquired = { date: null, basis: 'unknown' };
 
+    const md = parseJson<EmbeddedMetadata | null>(f?.metadata ?? null, null);
+    const subjects = [
+      ...new Set([
+        ...u.flatMap((m) => m.record.subjects),
+        ...(md?.subjects ?? []),
+        ...(md?.comic?.genre ? [md.comic.genre] : []),
+      ]),
+    ];
+
     return {
       id: i.id,
       title: i.title,
       kind: i.kind,
       isReference: i.isReference,
+      subjects,
+      publisher: md?.comic?.publisher ?? md?.publisher ?? null,
       creators: i.creators,
       coverFileId: i.coverFileId,
       formats: i.formats,
@@ -213,15 +232,30 @@ export function loadRankData(db: DB, reach: FolderReachability): RankData {
     };
   });
   attachCoverage(db, rankItems);
-  return { items: rankItems, stats, library: new Map(items.map((i) => [i.id, i])), used };
+  const arrivals = new Map<string, string>();
+  for (const i of items)
+    if (i.folderIds.length > 0 && !firstScan(i, folders)) arrivals.set(i.id, i.firstSeenAt);
+  return {
+    items: rankItems,
+    stats,
+    library: new Map(items.map((i) => [i.id, i])),
+    used,
+    arrivals,
+  };
 }
 
 /** Was the item first seen in its folder's first scan? Then first-seen isn't an acquisition. */
-function firstScan(i: ItemSummary, folders: Map<string, { created_at: string }>): boolean {
-  const created = i.folderIds.map((f) => folders.get(f)?.created_at).filter(Boolean) as string[];
-  if (created.length === 0) return true;
-  const earliest = created.sort()[0]!;
-  return Date.parse(i.firstSeenAt) - Date.parse(earliest) < 86_400_000;
+function firstScan(
+  i: ItemSummary,
+  folders: Map<string, { first_complete_scan_at?: string | null }>,
+): boolean {
+  // Seen by the first complete scan of any of its folders (or no such scan has finished yet):
+  // it came with the folder. Only books first seen after that scan are new.
+  for (const id of i.folderIds) {
+    const first = folders.get(id)?.first_complete_scan_at;
+    if (!first || i.firstSeenAt <= first) return true;
+  }
+  return i.folderIds.length === 0;
 }
 
 /**

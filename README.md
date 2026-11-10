@@ -5,11 +5,11 @@ they already own. It's a local web app for Windows. It lists your folders, works
 file is, and tracks your reading with one tap. It isn't a reader: you keep reading in your usual
 apps.
 
-**Status: Milestone 4 of 6 — features built; Windows checks remain.** This version has the library and tracking (folders, scanning,
-progress, the shortlist, backup and restore), reads inside your files (titles, authors, word and
-page counts, covers, fingerprints that recognise moved and copied files), and gives **first real
-recommendations**: it looks your books up online for ratings and details, and **What next**
-suggests what to read for the time you have, with the reasons behind each pick.
+**Status: Milestone 5 of 6 — all ten modes and taste learning built; Windows checks remain.**
+This version has the library and tracking (folders, scanning, progress, the shortlist, backup and
+restore), reads inside your files (titles, authors, word and page counts, covers, fingerprints
+that recognise moved and copied files), looks your books up online for ratings and details, and
+**What next** suggests what to read in ten different ways, with the reasons behind each pick.
 The full plan is in [`PLAN.md`](PLAN.md), and milestone notes are in
 [`docs/milestones/`](docs/milestones/).
 
@@ -71,7 +71,37 @@ you want to _read for_ that long or _finish something_ in that time. Each pick s
 tells the app why not. **What kind?** narrows the picks to Books, Tech, Comics and manga, or All.
 When a book has several files, it opens EPUB first; a comic opens PDF, then CBZ, then EPUB (an HD
 copy first). Every file keeps its own Open button on the book's page. **Triage** sorts books into Want / Maybe / Never / Already read; it's
-optional.
+optional. It can take just the **new arrivals** from your last scan, or **one folder**, and can
+mark **several at once** as Already read or Never, with a preview first and Undo after.
+
+**The ten modes.** _What are you after?_ on What next switches between them. Each states its rule
+on screen, and none ever shows a finished, Never, hidden or "did not finish" book:
+
+| Mode                  | What it shows                                                                      |
+| --------------------- | ---------------------------------------------------------------------------------- |
+| Read next             | The best picks for the time you have                                               |
+| Continue reading      | Books you've started: your shortlist first, then nearly done, halfway…             |
+| Next in series        | The next book you own in each series you've started; an earlier skipped one first  |
+| One-sitting reads     | Whole books or single installments whose measured length fits (2 hours by default) |
+| Waiting on your shelf | Highly rated, unstarted, the ones you've had longest first                         |
+| Hidden gems           | Highly rated with few ratings for their source (a missing count isn't "obscure")   |
+| Classics you missed   | Highly rated, unstarted, first published 25+ years ago                             |
+| Still relevant?       | A review of undecided tech books: Want, Mark as reference, Never or Decide later   |
+| Mood                  | Escape, Learn or Skim: moves matching books up without hiding the rest             |
+| Surprise me           | A random pick from your top 50, favouring the top; Reroll and Not today            |
+
+**Complete stories only** keeps standalone books and finished series you own every part of. Under
+**Settings → Topic interests** you can list subjects ("Rust", "gardening"); What next can then show
+one topic (reference books included). **Still reading?** gathers books untouched for three months
+into one list — Still reading, Snooze 30 days, Back to not started, or Did not finish.
+
+**Taste and Tune.** Once you've rated, finished or stopped ("Not for me") ten books from at least
+three different authors or series, whatBooksNext learns which genres, authors, comic artists and
+publishers stand out for you, and the card says so ("You rate books by … highly"). Until then it
+changes nothing, and one series counts as at most two books. **Settings → Tune** shows how much
+each part of the ranking counts, with a Reset, the taste strength (Off / Low / Normal / High) and
+what it has learned. A caveat: taste tends to suggest more of what you already read — turn it down
+if picks feel samey.
 
 **Series.** Books in a series are offered one at a time: the one you're reading, else the next
 unread one. The series comes from the files' own details (EPUB series, ComicInfo), or from a source
