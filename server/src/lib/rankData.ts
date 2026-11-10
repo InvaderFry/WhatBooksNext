@@ -1,7 +1,6 @@
 import { BULK_COPY_SHARE } from '../config.ts';
 import type { DB } from '../db/database.ts';
 import { allMatchInputs, chooseUsed, picturesFile, type MatchRow } from '../identify/lookups.ts';
-import { SOURCE_LABELS } from '../sources/types.ts';
 import type { EmbeddedMetadata } from '../scan/formats/types.ts';
 import { parseJson, todayLocal } from '../util.ts';
 import { estimateDuration, estimateEffort, unitFor } from './estimate.ts';
@@ -20,6 +19,7 @@ import {
   type RatingSelection,
 } from './ratings.ts';
 import { ratingEvidence } from './ratingEvidence.ts';
+import type { ItemDetails } from './details.ts';
 import { holdingOf, type RankItem } from './recommend.ts';
 import { loadCoverage, viaStates } from './coverage.ts';
 import { positionLabel, type Coverage } from './series.ts';
@@ -61,6 +61,7 @@ interface ItemFactRow {
 export interface RankData {
   items: RankItem[];
   stats: RatingStats;
+  details: Map<string, ItemDetails>;
   ratings: Map<string, RatingSelection>;
   /** Everything the library view has, by id (for detail views). */
   library: Map<string, ItemSummary>;
@@ -94,7 +95,7 @@ function bulkCopyFolders(db: DB): Set<string> {
 }
 
 export function loadRankData(db: DB, reach: FolderReachability): RankData {
-  const { items, folders } = loadLibrary(db, reach);
+  const { items, folders, details, rankingFacts } = loadLibrary(db, reach);
   const facts = new Map(
     (
       db
@@ -158,7 +159,9 @@ export function loadRankData(db: DB, reach: FolderReachability): RankData {
     const selection = communityRating(evidence.get(i.id) ?? [], stats, !!f?.series_id);
     ratings.set(i.id, selection);
     const pdfType = f?.pdf_override ?? f?.pdf_type ?? null;
-    const sourcePages = u.find((m) => m.record.pages)?.record;
+    const chosenDetails = details.get(i.id)!;
+    const sourcePages = chosenDetails.pages?.measured ? null : chosenDetails.pages;
+    const ranking = rankingFacts.get(i.id)!;
     const dates = fileDates.get(i.id) ?? [];
     const realDates = dates.filter((d) => !bulk.has(d.folderId));
     let acquired: RankItem['acquired'];
@@ -183,12 +186,14 @@ export function loadRankData(db: DB, reach: FolderReachability): RankData {
 
     return {
       id: i.id,
-      title: i.title,
+      title: ranking.title,
+      displayTitle: i.title,
+      displayCreators: i.creators,
       kind: i.kind,
       isReference: i.isReference,
       subjects,
       publisher: md?.comic?.publisher ?? md?.publisher ?? null,
-      creators: i.creators,
+      creators: ranking.creators,
       coverFileId: i.coverFileId,
       formats: i.formats,
       availability: i.availability,
@@ -231,15 +236,15 @@ export function loadRankData(db: DB, reach: FolderReachability): RankData {
               ? null
               : (f?.words ?? null),
           // A PDF's page count is measured; its words exist only with a text layer.
-          pages: f?.pages ?? f?.any_pages ?? null,
+          pages: chosenDetails.pages?.measured ? chosenDetails.pages.value : null,
           pdfType,
-          sourcePages: sourcePages?.pages ?? null,
-          sourceName: sourcePages ? SOURCE_LABELS[sourcePages.source] : null,
+          sourcePages: sourcePages?.value ?? null,
+          sourceName: sourcePages?.label ?? null,
         },
         unitFor(i.kind, f?.volume_label ?? null, f?.issue_label ?? null),
       ),
       community: selection.chosen,
-      firstPublishYear: f?.publication_year ?? null,
+      firstPublishYear: chosenDetails.firstPublishYear?.value ?? null,
       acquired,
       effort: i.user.effortOverride ?? estimateEffort(i.kind, i.isReference),
     };
@@ -251,6 +256,7 @@ export function loadRankData(db: DB, reach: FolderReachability): RankData {
   return {
     items: rankItems,
     stats,
+    details,
     ratings,
     library: new Map(items.map((i) => [i.id, i])),
     used,
@@ -288,7 +294,7 @@ export function attachCoverage(db: DB, items: RankItem[]): void {
     const c: Coverage = {
       id: r.id,
       itemId: r.item_id,
-      title: r.title,
+      title: col.displayTitle ?? col.title,
       first: r.first_num,
       last: r.last_num,
       state: r.state as Coverage['state'],

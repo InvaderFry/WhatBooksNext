@@ -125,11 +125,7 @@ export function ItemPage({
           <TitleEditor item={item} onSave={save} />
           {item.creators.length > 0 && <p className="byline">{creatorsText(item.creators)}</p>}
           {!u.titleOverride && (
-            <p className="muted small">
-              {item.titleSource === 'embedded'
-                ? 'Title from the file’s own details.'
-                : 'Title guessed from the filename.'}
-            </p>
+            <p className="muted small">Title from {item.details.title.label}.</p>
           )}
           <div className="item-meta big">
             <AvailabilityLabels a={item.availability} />

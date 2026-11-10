@@ -250,7 +250,7 @@ export function computeStats(input: StatsInput): Stats {
     .filter((i) => i.user.takeaway && i.user.takeaway.trim())
     .map((i) => ({
       id: i.id,
-      title: i.title,
+      title: i.displayTitle ?? i.title,
       takeaway: i.user.takeaway!.trim(),
       finishedOn: i.user.finishedPrecision === 'unknown' ? null : i.user.finishedOn,
     }))

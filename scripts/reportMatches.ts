@@ -1,3 +1,4 @@
+import { reportDetailChanges } from './detailComparison.ts';
 // Match quality report (PLAN.md §11.5): runs the matching over labelled examples and reports
 // coverage by confidence band, precision, and — the number that matters — wrong
 // high-confidence matches. No network: each case is matched against a recorded response.
@@ -106,4 +107,5 @@ if (fs.existsSync(privateCases)) {
   );
 }
 reportRatingChanges();
+await reportDetailChanges();
 process.exitCode = ok ? 0 : 1;

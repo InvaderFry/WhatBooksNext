@@ -98,7 +98,24 @@ export function OnlineCard({ itemId, onChanged }: { itemId: string; onChanged: (
           {data.effort !== 'unknown' && <span className="muted"> (rough, from its kind)</span>}
         </dd>
         <dt>First published</dt>
-        <dd>{data.firstPublishYear ?? 'Unknown'}</dd>
+        <dd>
+          {data.firstPublishYear ?? 'Unknown'}
+          {data.details.firstPublishYear && (
+            <span className="muted small"> — {data.details.firstPublishYear.label}</span>
+          )}
+          {data.details.yearDisagreement && (
+            <div className="muted small">
+              Sources disagree:{' '}
+              {data.details.years.map((y) => `${y.value} (${y.label})`).join('; ')}
+            </div>
+          )}
+        </dd>
+        <dt>Pages</dt>
+        <dd>
+          {data.details.pages
+            ? `${data.details.pages.value} — ${data.details.pages.label}${data.details.pages.measured ? ' (measured)' : ' (source estimate)'}`
+            : 'Unknown'}
+        </dd>
         <dt>Acquired</dt>
         <dd>
           {data.acquired?.date
@@ -108,7 +125,13 @@ export function OnlineCard({ itemId, onChanged }: { itemId: string; onChanged: (
         {data.subjects.length > 0 && (
           <>
             <dt>Subjects</dt>
-            <dd>{data.subjects.join(', ')}</dd>
+            <dd>
+              {data.details.subjects
+                .map(
+                  (s) => `${s.value} (${[...new Set(s.sources.map((p) => p.label))].join(', ')})`,
+                )
+                .join('; ')}
+            </dd>
           </>
         )}
       </dl>
@@ -116,6 +139,7 @@ export function OnlineCard({ itemId, onChanged }: { itemId: string; onChanged: (
         <details>
           <summary>Description</summary>
           {/* Untrusted text from a source: rendered as text, never HTML (scenario 23). */}
+          <p className="muted small">From {data.details.description?.label}</p>
           <p className="description">{data.description}</p>
         </details>
       )}

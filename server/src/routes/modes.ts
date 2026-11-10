@@ -1,7 +1,7 @@
 import type { Express } from 'express';
 import { RECENT_DAYS, STILL_READING_SNOOZE_DAYS, WEIGHTS } from '../config.ts';
 import type { DB } from '../db/database.ts';
-import type { FolderReachability } from '../lib/library.ts';
+import { loadLibrary, type FolderReachability } from '../lib/library.ts';
 import { stillReadingDue } from '../lib/modes.ts';
 import { applyUserPatch, ensureUserRow, DNF_REASONS } from '../lib/progress.ts';
 import { loadRankData } from '../lib/rankData.ts';
@@ -183,7 +183,7 @@ export function registerModeRoutes(app: Express, d: ModeDeps): void {
   // ---- Bulk triage (§13.5): Already read / Never on a selection, with preview and undo -------
   app.post(
     '/api/triage/bulk',
-    route((req) => {
+    route(async (req) => {
       const b = (req.body ?? {}) as Record<string, unknown>;
       const action = b.action;
       if (action !== 'read' && action !== 'never')
@@ -192,13 +192,16 @@ export function registerModeRoutes(app: Express, d: ModeDeps): void {
         throw new HttpError(400, 'Choose at least one item.');
       if (b.ids.length > 2000) throw new HttpError(400, 'At most 2,000 items at once.');
       const ids = [...new Set(b.ids.map((x) => d.itemIdOr404(String(x))))];
+      const titles = new Map(
+        loadLibrary(db, await d.reach(), ids).items.map((i) => [i.id, i.title]),
+      );
       const rows = ids.map(
         (id) =>
           [
             id,
             db.prepare('SELECT * FROM user_item WHERE item_id = ?').get(id) as
               Record<string, unknown> | undefined,
-            db.prepare('SELECT title FROM items WHERE id = ?').pluck().get(id) as string,
+            titles.get(id)!,
           ] as const,
       );
       // What changes, and what the owner would want to know first: progress already recorded

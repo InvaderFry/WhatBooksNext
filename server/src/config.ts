@@ -291,6 +291,9 @@ export const HIGHLY_RATED_FALLBACK = 80;
 /** Assumption: 20 votes support a rating; separates noisy volume scores from series fallbacks (§20). */
 export const RATING_SUPPORTED_VOTES = 20;
 
+/** Assumption: 200 plain-text characters make a useful Hardcover description (§20). */
+export const DESCRIPTION_USEFUL_CHARS = 200;
+
 /** Read next shows this many cards; "Show more" adds as many again (§20). */
 export const READ_NEXT_PAGE = 10;
 
