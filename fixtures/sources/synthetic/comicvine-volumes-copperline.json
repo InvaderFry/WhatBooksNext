@@ -1,0 +1,10 @@
+{
+  "error": "OK",
+  "limit": 20,
+  "offset": 0,
+  "number_of_page_results": 1,
+  "number_of_total_results": 1,
+  "status_code": 1,
+  "results": [{ "id": 77001, "name": "Copperline", "start_year": "2019", "count_of_issues": 6 }],
+  "version": "1.0"
+}

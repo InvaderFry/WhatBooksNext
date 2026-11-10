@@ -1,7 +1,7 @@
 import { HARDCOVER_DAILY_LIMIT, HARDCOVER_MIN_INTERVAL_MS, SEARCH_RESULTS } from '../config.ts';
 import type { DB } from '../db/database.ts';
-import { todayLocal } from '../util.ts';
 import { SourceClient } from './client.ts';
+import { DailyUsage } from './usage.ts';
 import {
   SourceError,
   type Fetcher,
@@ -141,11 +141,10 @@ export class Hardcover implements SourceAdapter {
   readonly name = 'hardcover' as const;
   readonly client: SourceClient;
   private readonly getToken: () => string | null;
-  private readonly db: DB | null;
 
   constructor(db: DB | null, getToken: () => string | null, fetcher?: Fetcher) {
-    this.db = db;
     this.getToken = getToken;
+    this.usage = new DailyUsage(db, 'hardcoverUsage');
     this.client = new SourceClient({
       name: 'hardcover',
       minIntervalMs: HARDCOVER_MIN_INTERVAL_MS,
@@ -158,44 +157,11 @@ export class Hardcover implements SourceAdapter {
     return !!this.getToken();
   }
 
-  /**
-   * Requests made today, against the free daily allowance. Kept in the database, so restarting
-   * the app doesn't forget them (it did at first: the owner saw 402 drop back to 4). Without a
-   * database (tests), it's kept in memory.
-   */
-  private memoryUsage = { day: '', count: 0 };
+  /** Requests made today, against the free daily allowance (kept across restarts). */
+  private readonly usage: DailyUsage;
 
   usageToday(): number {
-    const u = this.readUsage();
-    return u.day === todayLocal() ? u.count : 0;
-  }
-
-  private readUsage(): { day: string; count: number } {
-    if (!this.db) return this.memoryUsage;
-    const v = this.db
-      .prepare("SELECT value FROM settings WHERE key = 'hardcoverUsage'")
-      .pluck()
-      .get() as string | undefined;
-    const u = v ? (JSON.parse(v) as { day?: unknown; count?: unknown }) : {};
-    return {
-      day: typeof u.day === 'string' ? u.day : '',
-      count: typeof u.count === 'number' ? u.count : 0,
-    };
-  }
-
-  private countRequest(): number {
-    const today = todayLocal();
-    const u = this.readUsage();
-    const next = { day: today, count: u.day === today ? u.count + 1 : 1 };
-    if (!this.db) this.memoryUsage = next;
-    else
-      this.db
-        .prepare(
-          `INSERT INTO settings (key, value, updated_at) VALUES ('hardcoverUsage', ?, ?)
-           ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
-        )
-        .run(JSON.stringify(next), new Date().toISOString());
-    return next.count;
+    return this.usage.today();
   }
 
   async search(q: SourceQuery, opts: { refresh?: boolean } = {}): Promise<SourceRecord[]> {
@@ -216,7 +182,7 @@ export class Hardcover implements SourceAdapter {
         'Reached today’s Hardcover allowance; carrying on tomorrow.',
         true,
       );
-    this.countRequest();
+    this.usage.count();
     const payload = await this.client.json(
       HARDCOVER_URL,
       {

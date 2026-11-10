@@ -79,6 +79,13 @@ export function matchFactsFor(db: DB, itemId: string): MatchFacts | null {
     for (const c of md?.isbnCandidates ?? []) candidates.add(c);
   }
   const parse = parseJson<ParsedName | null>(files[0]?.parsed, null);
+  const years = new Set<number>();
+  for (const y of [parse?.year?.value, parse?.startYear?.value])
+    if (typeof y === 'number') years.add(y);
+  for (const f of files) {
+    const y = Number(parseJson<EmbeddedMetadata | null>(f.metadata, null)?.comic?.year);
+    if (Number.isInteger(y) && y > 1800) years.add(y);
+  }
   const creators = parseJson<{ name: string; role?: string }[]>(i.creators, []);
   // The owner's own title is the best evidence there is (owner corrections win).
   const title = i.title_override ?? i.title;
@@ -93,6 +100,7 @@ export function matchFactsFor(db: DB, itemId: string): MatchFacts | null {
     seriesHint: i.series_hint,
     volume: i.volume_label,
     issue: i.issue_label,
+    years: [...years],
     isbns: [...isbns].filter((x) => x.length === 10 || x.length === 13),
     isbnCandidates: [...candidates],
     kind: i.kind_override ?? i.kind,
@@ -634,15 +642,29 @@ async function lookUpOnce(
      ON CONFLICT (item_id, source) DO UPDATE SET version = excluded.version, query = excluded.query,
        looked_up_at = excluded.looked_up_at, outcome = excluded.outcome, error = excluded.error`,
   );
-  const settled = await Promise.allSettled(
-    sources.forItem(facts.kind, facts.issue ?? null).map(async (s: SourceAdapter) => {
-      let records = await s.search(query, opts);
-      // A run-together filename title that found nothing: try the raw form too (§11.1).
-      if (records.length === 0 && query.rawTitle)
-        records = await s.search({ ...query, title: query.rawTitle }, opts);
-      return { s, records };
-    }),
+  const all = sources.forItem(facts.kind, facts.issue ?? null);
+  const ask = (list: SourceAdapter[]) =>
+    Promise.allSettled(
+      list.map(async (s: SourceAdapter) => {
+        let records = await s.search(query, opts);
+        // A run-together filename title that found nothing: try the raw form too (§11.1).
+        if (records.length === 0 && query.rawTitle)
+          records = await s.search({ ...query, title: query.rawTitle }, opts);
+        return { s, records };
+      }),
+    );
+  const settled = await ask(all.filter((s) => !s.fallback));
+  // A fallback source (ComicVine) is asked only when nothing else found a usable match, or
+  // couldn't be asked. Otherwise its lookup is recorded as skipped: its allowance is small.
+  const rejectedNow = rejectedFor(db, itemId);
+  const foundElsewhere = settled.some(
+    (r) =>
+      r.status === 'fulfilled' &&
+      decide(facts, r.value.records, rejectedNow).decision !== 'unidentified',
   );
+  const fallbacks = all.filter((s) => s.fallback);
+  const skipped = foundElsewhere ? fallbacks : [];
+  if (!foundElsewhere) settled.push(...(await ask(fallbacks)));
   db.transaction(() => {
     for (const r of settled) {
       if (r.status === 'rejected') {
@@ -660,6 +682,10 @@ async function lookUpOnce(
         d.decision === 'accepted' ? 'matched' : d.decision === 'unidentified' ? 'none' : d.decision;
       saveState.run(itemId, s.name, MATCH_VERSION, qKey, nowIso(), outcome, null);
       results.push({ source: s.name, outcome });
+    }
+    for (const s of skipped) {
+      saveState.run(itemId, s.name, MATCH_VERSION, qKey, nowIso(), 'skipped', null);
+      results.push({ source: s.name, outcome: 'skipped' });
     }
     applyIdentity(db, itemId);
   })();

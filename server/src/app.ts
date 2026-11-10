@@ -746,6 +746,7 @@ export function createApp(ctx: AppContext) {
     app,
     scans,
     lookups,
+    sources,
     close: async () => {
       await lookups.close();
       await scans.close();

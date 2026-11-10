@@ -1,0 +1,29 @@
+{
+  "count": 2,
+  "next": null,
+  "previous": null,
+  "results": [
+    {
+      "id": 900002,
+      "series": { "id": 9001, "name": "Copperline", "volume": 1, "year_began": 2019 },
+      "number": "2",
+      "issue": "Copperline (2019) #2",
+      "cover_date": "2019-05-01",
+      "store_date": "2019-03-27",
+      "image": null,
+      "cover_hash": "",
+      "modified": "2024-01-01T00:00:00-05:00"
+    },
+    {
+      "id": 900102,
+      "series": { "id": 9002, "name": "Copperline", "volume": 2, "year_began": 2023 },
+      "number": "2",
+      "issue": "Copperline (2023) #2",
+      "cover_date": "2023-08-01",
+      "store_date": "2023-06-28",
+      "image": null,
+      "cover_hash": "",
+      "modified": "2024-01-01T00:00:00-05:00"
+    }
+  ]
+}

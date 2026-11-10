@@ -38,6 +38,13 @@ const RATE_HEADERS = [
   'x-ratelimit-limit',
   'x-ratelimit-remaining',
   'x-ratelimit-reset',
+  // Metron: a per-minute burst window and a daily sustained one, resets in epoch seconds.
+  'x-ratelimit-burst-limit',
+  'x-ratelimit-burst-remaining',
+  'x-ratelimit-burst-reset',
+  'x-ratelimit-sustained-limit',
+  'x-ratelimit-sustained-remaining',
+  'x-ratelimit-sustained-reset',
   'retry-after',
 ];
 
@@ -55,6 +62,8 @@ export class SourceClient {
   private nextAt = 0;
   private failures = 0;
   private pausedUntil = 0;
+  /** The source's own allowance is used up until then (not a failure). */
+  private limitedUntil = 0;
   private lastError: string | null = null;
   private lastErrorAt: string | null = null;
   private lastSuccessAt: string | null = null;
@@ -106,6 +115,18 @@ export class SourceClient {
     }
   }
 
+  /** Saves a response under a cache key (for callers that check the answer before caching). */
+  store(key: string, payload: unknown): void {
+    if (!this.db) return;
+    this.db
+      .prepare(
+        `INSERT INTO source_cache (source, key, fetched_at, payload) VALUES (?, ?, ?, ?)
+         ON CONFLICT (source, key) DO UPDATE SET fetched_at = excluded.fetched_at,
+           payload = excluded.payload`,
+      )
+      .run(this.name, key, nowIso(), JSON.stringify(payload));
+  }
+
   /**
    * GET or POST returning JSON. A cached answer is used unless `refresh`; a fresh one replaces
    * the cache only when the request succeeded.
@@ -148,6 +169,12 @@ export class SourceClient {
         true,
       );
     }
+    if (this.limitedUntil > this.now())
+      throw new SourceError(
+        this.name,
+        `Reached the source’s allowance; carrying on after ${new Date(this.limitedUntil).toLocaleString()}.`,
+        true,
+      );
     const wait = this.nextAt - this.now();
     if (wait > 0) await this.sleep(wait);
     this.nextAt = this.now() + this.minInterval;
@@ -185,6 +212,17 @@ export class SourceClient {
     const retryAfterMs = retryAfter(res.headers, this.now());
     if (res.headers.get('x-ratelimit-remaining') === '0' && retryAfterMs !== null)
       this.nextAt = Math.max(this.nextAt, this.now() + retryAfterMs);
+    // An exhausted Metron window: wait for its reset before the next request.
+    for (const w of ['burst', 'sustained']) {
+      if (res.headers.get(`x-ratelimit-${w}-remaining`) !== '0') continue;
+      const reset = Number(res.headers.get(`x-ratelimit-${w}-reset`));
+      if (Number.isFinite(reset) && reset > 0) {
+        const ms = reset * 1000 - this.now();
+        if (ms > 0 && ms <= MAX_RETRY_WAIT_MS) this.nextAt = Math.max(this.nextAt, this.now() + ms);
+        // A long wait (the daily window): this answer is fine, the next request waits.
+        else if (ms > MAX_RETRY_WAIT_MS) this.limitedUntil = this.now() + ms;
+      }
+    }
 
     if (res.status === 429) {
       const ms = Math.min(retryAfterMs ?? 60_000, MAX_RETRY_WAIT_MS);

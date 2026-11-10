@@ -1,9 +1,11 @@
 import type { DB } from '../db/database.ts';
 import { nowIso } from '../util.ts';
 import { AniList } from './anilist.ts';
+import { ComicVine } from './comicvine.ts';
 import type { SourceStatus } from './client.ts';
 import { DemoSource } from './demo.ts';
 import { Hardcover } from './hardcover.ts';
+import { Metron } from './metron.ts';
 import { OpenLibrary } from './openlibrary.ts';
 import { SOURCE_LABELS, type Fetcher, type SourceAdapter, type SourceName } from './types.ts';
 
@@ -13,6 +15,8 @@ export class Sources {
   readonly openlibrary: OpenLibrary;
   readonly anilist: AniList;
   readonly hardcover: Hardcover;
+  readonly metron: Metron;
+  readonly comicvine: ComicVine;
   readonly demoSource = new DemoSource();
 
   constructor(db: DB, opts: { demo?: boolean; fetcher?: Fetcher } = {}) {
@@ -20,6 +24,16 @@ export class Sources {
     this.openlibrary = new OpenLibrary(db, opts.fetcher);
     this.anilist = new AniList(db, opts.fetcher);
     this.hardcover = new Hardcover(db, () => getSecret(db, 'hardcover_token'), opts.fetcher);
+    this.metron = new Metron(db, () => getSecret(db, 'metron_token'), opts.fetcher);
+    this.comicvine = new ComicVine(db, () => getSecret(db, 'comicvine_key'), opts.fetcher);
+  }
+
+  /** The comic sources the owner has set up: Metron first, ComicVine as its fallback. */
+  private comics(): SourceAdapter[] {
+    return [
+      ...(this.metron.configured() ? [this.metron] : []),
+      ...(this.comicvine.configured() ? [this.comicvine] : []),
+    ];
   }
 
   /**
@@ -29,8 +43,9 @@ export class Sources {
    *  - Manga: AniList for the series (score, status), and the book sources too, which list each
    *    volume as a book with its own rating (the owner's first run showed Hardcover does).
    *  - Comic volumes and collected editions: the book sources, which list them the same way.
-   *  - Single issues ("Series #48") of anything but manga: nothing yet. Book sources only return
-   *    unrelated novels with the series' name; Metron and ComicVine arrive in M4.
+   *  - Single issues ("Series #48") of anything but manga: Metron, then ComicVine only when
+   *    Metron finds nothing (its allowance is small). Never the book sources: they only return
+   *    unrelated novels with the series' name. With neither set up, issues aren't looked up.
    */
   forItem(kind: string | null, issue: string | null = null): SourceAdapter[] {
     if (this.demo) return [this.demoSource];
@@ -38,7 +53,7 @@ export class Sources {
       ? [this.openlibrary, this.hardcover]
       : [this.openlibrary];
     if (kind === 'manga') return [this.anilist, ...books];
-    if (issue) return [];
+    if (issue) return this.comics();
     return books;
   }
 
@@ -49,7 +64,7 @@ export class Sources {
       ? [this.hardcover, this.openlibrary]
       : [this.openlibrary];
     return kind === 'manga' || kind === 'comic'
-      ? [this.anilist, ...books]
+      ? [...this.comics(), this.anilist, ...books]
       : [...books, this.anilist];
   }
 
@@ -84,11 +99,33 @@ export class Sources {
           ? `Token saved. ${this.hardcover.usageToday()} of today’s 5,000 requests used by this app (Hardcover’s own count is on its API page).`
           : 'No token. Optional: adds book ratings with vote counts, series order and genres.',
       },
+      {
+        ...this.metron.client.status(),
+        label: SOURCE_LABELS.metron,
+        configured: this.metron.configured(),
+        note: this.metron.configured()
+          ? `Token saved. Single comic issues: series, number, cover year, whether the series has ended. ${this.metron.usageToday()} of today’s 5,000 requests used.`
+          : 'No token. Optional: looks up single comic issues (free account).',
+      },
+      {
+        ...this.comicvine.client.status(),
+        label: SOURCE_LABELS.comicvine,
+        configured: this.comicvine.configured(),
+        note: this.comicvine.configured()
+          ? 'Key saved. Asked only for comic issues Metron can’t find (200 requests an hour).'
+          : 'No key. Optional: a fallback for comic issues Metron can’t find (free account).',
+      },
     ];
   }
 
   resetBreakers(): void {
-    for (const c of [this.openlibrary.client, this.anilist.client, this.hardcover.client])
+    for (const c of [
+      this.openlibrary.client,
+      this.anilist.client,
+      this.hardcover.client,
+      this.metron.client,
+      this.comicvine.client,
+    ])
       c.resetBreaker();
   }
 

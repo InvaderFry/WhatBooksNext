@@ -1,0 +1,24 @@
+{
+  "error": "OK",
+  "limit": 20,
+  "offset": 0,
+  "number_of_page_results": 1,
+  "number_of_total_results": 1,
+  "status_code": 1,
+  "results": [
+    {
+      "id": 7700002,
+      "issue_number": "2",
+      "name": "The Second Shift",
+      "cover_date": "2019-05-01",
+      "store_date": "2019-03-27",
+      "site_detail_url": "https://comicvine.gamespot.com/copperline-2-the-second-shift/4000-7700002/",
+      "volume": {
+        "api_detail_url": "https://comicvine.gamespot.com/api/volume/4050-77001/",
+        "id": 77001,
+        "name": "Copperline",
+        "site_detail_url": "https://comicvine.gamespot.com/copperline/4050-77001/"
+      }
+    }
+  ]
+}

@@ -90,12 +90,17 @@ never files or your reading history.
 | Open Library | none                | books: ratings (some), subjects, first publication year |
 | AniList      | none                | manga: series scores, genres, publication status        |
 | Hardcover    | optional free token | book ratings with vote counts, series, genres           |
+| Metron       | optional free token | single comic issues: series, run, cover year, ended?    |
+| ComicVine    | optional free key   | comic issues Metron can't find (200 requests an hour)   |
 
 Everything works without a key. Lookups run after each scan (you can turn that off in
 **Settings → Online lookups**), about one book a second, and pick up where they stopped. **Sources
 fail soft:** if one is down or refuses requests, it's paused for ten minutes after five failures
 in a row, the rest carries on, and nothing already found is lost. Western comics have almost no
-community ratings anywhere; Metron and ComicVine lookups come in Milestone 4.
+community ratings anywhere. Single comic issues are looked up only on Metron (and ComicVine, when
+Metron finds nothing), so without those keys they rank on your own signals. An issue is matched by
+series name and number; a year in the file (the filename's "(2019)" or ComicInfo's Year) that
+agrees with the issue's makes the match certain, so two runs with the same name aren't confused.
 
 When a match isn't certain, the book is still recommended, marked "unconfirmed", and listed in
 **Needs review**, where you can confirm it, pick another, search, or leave it unidentified. Your

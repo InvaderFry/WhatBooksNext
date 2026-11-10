@@ -2,7 +2,7 @@ import type { Express, Request } from 'express';
 import { READ_NEXT_PAGE, RECENT_DAYS, TRIAGE_SESSION } from '../config.ts';
 import type { DB } from '../db/database.ts';
 import { lookUpItem, matchFactsFor, type LookupManager } from '../identify/lookups.ts';
-import { buildQuery } from '../identify/match.ts';
+import { buildQuery, decide } from '../identify/match.ts';
 import {
   applyMatchAction,
   itemMatchSummary,
@@ -25,7 +25,9 @@ import {
 } from '../lib/recommend.ts';
 import { bulkReview } from '../lib/review.ts';
 import type { ScanManager } from '../scan/scanManager.ts';
+import { COMICVINE_KEY_URL } from '../sources/comicvine.ts';
 import { HARDCOVER_NEW_TOKEN_URL, normaliseToken } from '../sources/hardcover.ts';
+import { METRON_SITE } from '../sources/metron.ts';
 import { getSecret, maskSecret, setSecret, type Sources } from '../sources/index.ts';
 import { SourceError, SOURCE_LABELS } from '../sources/types.ts';
 import { HttpError, newId, nowIso, parseJson, todayLocal } from '../util.ts';
@@ -304,6 +306,103 @@ export function registerReadingRoutes(app: Express, d: ReadingDeps): void {
         results,
         rateLimit: st.rateLimit,
         requestsToday: sources.hardcover.usageToday(),
+      };
+    }),
+  );
+
+  // ---- Comic source keys (§6.3, §12.1): Metron token and ComicVine key, like Hardcover's -----
+  const COMIC_KEYS = {
+    metron: { secret: 'metron_token', label: 'Metron token', site: METRON_SITE },
+    comicvine: { secret: 'comicvine_key', label: 'ComicVine API key', site: COMICVINE_KEY_URL },
+  } as const;
+  for (const [name, k] of Object.entries(COMIC_KEYS)) {
+    app.get(
+      `/api/settings/${name}`,
+      route(() => ({
+        configured: !!getSecret(db, k.secret),
+        masked: maskSecret(getSecret(db, k.secret)),
+        site: k.site,
+      })),
+    );
+    app.get(
+      `/api/settings/${name}/reveal`,
+      route(() => ({ token: getSecret(db, k.secret) })),
+    );
+    app.put(
+      `/api/settings/${name}`,
+      route((req) => {
+        const t = req.body?.token;
+        if (t !== null && typeof t !== 'string')
+          throw new HttpError(400, 'token must be text or null.');
+        const clean = t === null ? null : normaliseToken(t);
+        if (clean !== null && !/^[\w.\-~+/=]{16,4000}$/.test(clean))
+          throw new HttpError(400, `That doesn’t look like a ${k.label}. Copy it again.`);
+        setSecret(db, k.secret, clean);
+        lookups.invalidate();
+        return { ok: true, configured: !!clean };
+      }),
+    );
+  }
+
+  // Diagnostics → Test Metron / Test ComicVine: real lookups of single issues from the library,
+  // what came back, and the rate-limit headers. Titles only if the owner ticks the box.
+  app.post(
+    '/api/diagnostics/comic-test',
+    route(async (req) => {
+      const which = req.body?.source;
+      if (which !== 'metron' && which !== 'comicvine')
+        throw new HttpError(400, 'source must be metron or comicvine.');
+      const src = which === 'metron' ? sources.metron : sources.comicvine;
+      if (!src.configured())
+        throw new HttpError(
+          400,
+          `Enter the ${which === 'metron' ? 'Metron token' : 'ComicVine API key'} in Settings first.`,
+        );
+      const names = req.body?.names === true;
+      // ComicVine allows 200 requests an hour and needs two per issue: one issue is enough.
+      const ids = db
+        .prepare(
+          `SELECT i.id FROM items i LEFT JOIN user_item u ON u.item_id = i.id
+           WHERE i.issue_label IS NOT NULL AND i.series_hint IS NOT NULL
+             AND COALESCE(u.kind_override, i.kind, 'comic') = 'comic'
+           ORDER BY random() LIMIT ?`,
+        )
+        .pluck()
+        .all(which === 'metron' ? 3 : 1) as string[];
+      if (ids.length === 0)
+        throw new HttpError(400, 'No single comic issues in the library to test with.');
+      const results = [];
+      for (const [n, id] of ids.entries()) {
+        const facts = matchFactsFor(db, id)!;
+        const q = buildQuery(facts);
+        const label = names ? `${q.series} #${q.issue}` : `Issue ${n + 1}`;
+        try {
+          const recs = await src.search(q, { refresh: true });
+          const d = decide(facts, recs);
+          const top = recs[0];
+          results.push({
+            issue: label,
+            results: recs.length,
+            decision: d.decision,
+            top: top
+              ? {
+                  title: names ? top.title : undefined,
+                  years: top.years ?? [],
+                  status: top.series?.status ?? 'unknown',
+                  total: top.series?.total ?? null,
+                  link: Boolean(top.url),
+                }
+              : null,
+          });
+        } catch (e) {
+          results.push({ issue: label, error: (e as Error).message });
+        }
+      }
+      return {
+        ok: results.every((r) => !('error' in r)),
+        results,
+        rateLimit: src.client.status().rateLimit,
+        requestsToday: which === 'metron' ? sources.metron.usageToday() : null,
       };
     }),
   );

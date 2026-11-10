@@ -161,6 +161,8 @@ export function Diagnostics() {
               ))}
             </ul>
             <HardcoverCheck names={names} />
+            <ComicCheck source="metron" title="Metron" names={names} />
+            <ComicCheck source="comicvine" title="ComicVine" names={names} />
           </section>
           <section className="section" aria-labelledby="report-h">
             <h2 id="report-h">Report</h2>
@@ -280,6 +282,117 @@ function HardcoverCheck({ names }: { names: boolean }) {
             Hardcover test report
           </label>
           <textarea id="hc-report" className="report" readOnly rows={7} value={text} />
+          <button
+            type="button"
+            className="secondary"
+            onClick={async () => {
+              await navigator.clipboard.writeText(text);
+              setCopied(true);
+              window.setTimeout(() => setCopied(false), 2500);
+            }}
+          >
+            Copy test report
+          </button>
+          <span className="live" aria-live="polite">
+            {copied && ' ✓ Copied'}
+          </span>
+        </>
+      )}
+    </div>
+  );
+}
+
+interface ComicTest {
+  ok: boolean;
+  results: {
+    issue: string;
+    results?: number;
+    decision?: string;
+    error?: string;
+    top?: {
+      title?: string;
+      years: number[];
+      status: string;
+      total: number | null;
+      link: boolean;
+    } | null;
+  }[];
+  rateLimit: Record<string, string>;
+  requestsToday: number | null;
+}
+
+/**
+ * Test Metron / Test ComicVine: real lookups of single issues from the library, what came back
+ * and the rate-limit headers, as a report to share. Titles only if the names box is ticked.
+ */
+function ComicCheck({
+  source,
+  title,
+  names,
+}: {
+  source: 'metron' | 'comicvine';
+  title: string;
+  names: boolean;
+}) {
+  const [result, setResult] = useState<ComicTest | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const text = result
+    ? [
+        `${title} test: ${result.ok ? 'OK' : 'problems'}`,
+        ...result.results.map((r) =>
+          r.error
+            ? `${r.issue}: error: ${r.error}`
+            : `${r.issue}: ${r.results} results, decision ${r.decision}; top: ${
+                r.top
+                  ? `${r.top.title ? `"${r.top.title}", ` : ''}years ${r.top.years.join('/') || '-'}, series ${r.top.status}${r.top.total ? ` (${r.top.total} issues)` : ''}, link ${r.top.link ? 'yes' : 'no'}`
+                  : 'none'
+              }`,
+        ),
+        `Rate-limit headers: ${
+          Object.entries(result.rateLimit)
+            .map(([k, v]) => `${k}=${v}`)
+            .join(', ') || 'none sent'
+        }`,
+        ...(result.requestsToday !== null
+          ? [`Requests today by this app: ${result.requestsToday}`]
+          : []),
+      ].join('\n')
+    : '';
+  const id = `${source}-report`;
+  return (
+    <div className="card">
+      <h3>Test {title}</h3>
+      <p className="small muted">
+        {source === 'metron'
+          ? 'Looks up three single comic issues from your library on Metron. Uses up to nine of today’s 5,000 requests.'
+          : 'Looks up one single comic issue on ComicVine. Takes about 20 seconds: ComicVine allows only 200 requests an hour.'}
+      </p>
+      <button
+        type="button"
+        disabled={busy}
+        onClick={async () => {
+          setBusy(true);
+          setError(null);
+          try {
+            setResult(await api.post<ComicTest>('/api/diagnostics/comic-test', { source, names }));
+          } catch (e) {
+            setError((e as Error).message);
+          } finally {
+            setBusy(false);
+          }
+        }}
+      >
+        {busy ? 'Testing…' : `Test ${title}`}
+      </button>
+      {error && <Notice kind="error">{error}</Notice>}
+      {result && (
+        <>
+          <label htmlFor={id} className="visually-hidden">
+            {title} test report
+          </label>
+          <textarea id={id} className="report" readOnly rows={6} value={text} />
           <button
             type="button"
             className="secondary"

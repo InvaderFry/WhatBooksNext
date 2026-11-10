@@ -18,7 +18,7 @@ export interface MatchReport {
     tie: number;
     unidentified: number;
     notLookedUp: number;
-    /** Comics and single issues: their sources (Metron, ComicVine) arrive in M4. */
+    /** Items no source can look up yet: single comic issues while Metron and ComicVine aren't set up. */
     noSourceYet: number;
   };
   byFormat: Record<string, { items: number; identified: number }>;

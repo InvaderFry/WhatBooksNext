@@ -15,7 +15,7 @@ import { normalizeForCompare, titleCompareKey } from './filename.ts';
  */
 
 /** Bump when the scoring changes: the next lookup re-scores from the cache (no new requests). */
-export const MATCH_VERSION = 6;
+export const MATCH_VERSION = 7;
 
 export interface MatchFacts {
   title: string;
@@ -27,6 +27,11 @@ export interface MatchFacts {
   seriesHint?: string | null;
   volume?: string | null;
   issue?: string | null;
+  /**
+   * Years the file gives: a year in its name ("(2019)", usually the series' start for comics)
+   * and ComicInfo's Year (the cover year). Only comics use them, against an issue's years.
+   */
+  years?: number[];
   /** Identifiers from an EPUB: strong evidence. */
   isbns: string[];
   /** ISBNs found inside a PDF: candidates only, never accepted alone (§10). */
@@ -75,6 +80,7 @@ export function buildQuery(f: MatchFacts): SourceQuery {
     q.rawTitle = f.rawTitle;
   if (f.seriesHint) q.series = f.seriesHint;
   if (f.volume) q.volume = f.volume;
+  if (f.issue) q.issue = f.issue;
   return q;
 }
 
@@ -253,6 +259,20 @@ export function scoreCandidate(f: MatchFacts, r: SourceRecord): ScoredCandidate 
   else if (author === 'conflicts') score = 0.5 * title;
   else score = 0.85 * title;
 
+  // A comic issue: filenames and ComicInfo rarely name a writer the list answers carry, so the
+  // year is the corroboration. A year in the file that matches the issue's cover year or its
+  // series' start year counts like an agreeing author. A different year proves nothing (runs
+  // restart, reprints), so it never counts against.
+  if (
+    author === 'unknown' &&
+    title >= 0.75 &&
+    r.years?.length &&
+    f.years?.some((y) => r.years!.includes(y))
+  ) {
+    score = Math.max(score, 0.75 * title + 0.25);
+    notes.push('Year matches.');
+  }
+
   const ours = ourNumber(f);
   const theirs = numberIn(fullTitleOf(r));
   if (ours && theirs && ours !== theirs && title >= 0.75) {
@@ -290,6 +310,10 @@ const round = (n: number) => Math.round(n * 1000) / 1000;
  * ("Title: Volume 1" and "Title: Volume 2").
  */
 export function sameWork(a: SourceRecord, b: SourceRecord): boolean {
+  // Comic databases list each issue once: two records are two issues ("Batman #1" from 1940
+  // and from 2016), so a close score between them is a real tie.
+  if (a.format === 'ISSUE' && b.format === 'ISSUE')
+    return a.source === b.source && a.sourceId === b.sourceId;
   const full = (r: SourceRecord) => titleCompareKey(fullTitle(r));
   const main = (r: SourceRecord) => titleCompareKey(fullTitle(r).split(/[:—–]| - /)[0]!);
   const fa = full(a);
