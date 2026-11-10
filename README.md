@@ -68,7 +68,9 @@ labelled demo library of invented books at <http://localhost:4819>.
 you want to _read for_ that long or _finish something_ in that time. Each pick says what it is
 ("Whole book · ~4–5 h"), why it was picked, and what it rests on less firmly ("rough length",
 "unconfirmed match", "on external drive (not connected)"). **Not this, because…** on any card
-tells the app why not. **Triage** sorts books into Want / Maybe / Never / Already read; it's
+tells the app why not. **What kind?** narrows the picks to Books, Tech, Comics and manga, or All.
+When a book has several files, it opens EPUB first; a comic opens PDF, then CBZ, then EPUB (an HD
+copy first). Every file keeps its own Open button on the book's page. **Triage** sorts books into Want / Maybe / Never / Already read; it's
 optional.
 
 To rank books, whatBooksNext looks them up online. Only titles, authors and ISBNs are sent —
