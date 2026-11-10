@@ -206,8 +206,21 @@ The black window always says what went wrong. Find the message below.
 
 **"The database couldn't be updated"**
 
-- Nothing was changed, and your data is safe. The message names the safety copy that was saved.
-  Copy the whole message, then go to **Diagnostics** if the app is still open, and ask for help.
+- Nothing was changed, and your data is safe. The message names the safety copy that was saved
+  (in `data\snapshots`, called `pre-migration-…`).
+- To go back to the version that worked:
+  1. Close the black window.
+  2. In the `data` folder, rename `whatbooksnext.sqlite` to `whatbooksnext-broken.sqlite`, and
+     delete `whatbooksnext.sqlite-wal` and `whatbooksnext.sqlite-shm` if they are there.
+  3. Copy the safety copy the message named into the `data` folder and rename it
+     `whatbooksnext.sqlite`.
+  4. Start the **previous** version of whatBooksNext (the old folder, if you kept it).
+- Then copy the whole message and ask for help.
+
+**Going back to a full snapshot**
+
+- If you took one (Settings → Export and snapshots), its folder in `data\full-snapshots` has a
+  `README.txt` with the steps. API keys aren't in it: enter them again in Settings afterwards.
 
 **Anything else**
 

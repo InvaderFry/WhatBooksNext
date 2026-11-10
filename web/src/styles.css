@@ -1335,3 +1335,91 @@ kbd {
   min-width: 1.75rem;
   min-height: 1.75rem;
 }
+
+/* Stats */
+.stat-tiles {
+  list-style: none;
+  padding: 0;
+  margin: 0.5rem 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: 0.6rem;
+}
+.stat-tiles li {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.6rem 0.8rem;
+}
+.stat-tiles strong {
+  display: block;
+  font-size: 1.6rem;
+  line-height: 1.2;
+}
+.stats .table tr.total th,
+.stats .table tr.total td {
+  font-weight: 600;
+  border-top: 2px solid var(--border);
+}
+.rating-bars td {
+  width: 100%;
+}
+.bar-cell {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.bar-cell .bar {
+  display: inline-block;
+  height: 0.75rem;
+  max-width: calc(100% - 3rem);
+  background: var(--accent);
+  border-radius: 0 4px 4px 0;
+}
+.takeaways {
+  list-style: none;
+  padding: 0;
+}
+.takeaways li {
+  margin-bottom: 0.8rem;
+}
+.takeaways blockquote {
+  margin: 0.25rem 0 0;
+  padding-left: 0.75rem;
+  border-left: 3px solid var(--border);
+}
+.snapshot-list {
+  margin: 0.5rem 0;
+  padding-left: 1.2rem;
+}
+.table .folder-path {
+  word-break: break-all;
+  font-size: 0.85rem;
+}
+.toc ul {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 1rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+  font-size: 0.9rem;
+}
+.snapshot-list .folder-path {
+  word-break: break-all;
+  font-size: 0.8rem;
+}
+.stats .table thead th,
+.stats .table td,
+.rating-bars th {
+  white-space: nowrap;
+}
+.rating-bars td {
+  white-space: normal;
+}
+.stats .table th[scope='row']:not(.folder-path) {
+  white-space: nowrap;
+}
+#export-h ~ h3 {
+  margin-top: 1.25rem;
+}

@@ -18,6 +18,9 @@ interface DiagFolder {
 interface Diag {
   app: { schemaVersion: number; node: string; platform: string; demo: boolean };
   lastSnapshot: { kind: string; createdAt: string } | null;
+  snapshots: { preMigration: number; preRestore: number; full: number };
+  dataFolder: string | null;
+  lastLaunch: { action: 'open' | 'show'; ok: boolean; at: string; error: string | null } | null;
   placeholderDetection: string;
   folders: DiagFolder[];
   deepScan: { filesRead: number; filesHashed: number; problems: number; covers: number };
@@ -136,7 +139,15 @@ export function Diagnostics() {
                 {diag.lookups.running && ' (lookups running now)'}
               </li>
               <li>
-                Open: use the Open button on any book’s page to check it opens in your default app.
+                Snapshots kept: {diag.snapshots.preMigration} before updates,{' '}
+                {diag.snapshots.preRestore} before restores, {diag.snapshots.full} full (Settings →
+                Export and snapshots)
+              </li>
+              {diag.dataFolder && <li>Data folder: {diag.dataFolder}</li>}
+              <li>
+                {launchText(diag.lastLaunch)}
+                {!diag.lastLaunch?.ok &&
+                  ' To check it, press Open on any book’s page, then come back here.'}
               </li>
             </ul>
           </section>
@@ -200,6 +211,9 @@ function toReport(d: Diag): string {
     `Database version ${d.app.schemaVersion}; Node ${d.app.node}; ${d.app.platform}${d.app.demo ? '; DEMO' : ''}`,
     `Last snapshot: ${d.lastSnapshot ? `${d.lastSnapshot.kind} ${d.lastSnapshot.createdAt}` : 'none'}`,
     `Online-only detection: ${d.placeholderDetection}`,
+    `Snapshots: ${d.snapshots.preMigration} pre-migration, ${d.snapshots.preRestore} pre-restore, ${d.snapshots.full} full`,
+    ...(d.dataFolder ? [`Data folder: ${d.dataFolder}`] : []),
+    launchText(d.lastLaunch),
     '',
     ...d.folders.flatMap((f) => [
       `${f.name} (${f.storageKind})${f.volumeLabel ? ` "${f.volumeLabel}"` : ''}`,
@@ -220,6 +234,15 @@ function toReport(d: Diag): string {
     ),
   ];
   return lines.join('\n');
+}
+
+/** "Open works on a chosen file" (§15): how the last Open / Show in folder went. */
+function launchText(l: Diag['lastLaunch']): string {
+  if (!l) return 'Open: not tried since the app started.';
+  const what = l.action === 'open' ? 'Open' : 'Show in folder';
+  return l.ok
+    ? `${what}: worked (${new Date(l.at).toLocaleString()}).`
+    : `${what}: failed (${new Date(l.at).toLocaleString()}): ${l.error ?? 'no detail'}.`;
 }
 
 /**

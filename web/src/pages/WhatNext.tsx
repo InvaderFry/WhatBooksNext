@@ -401,7 +401,13 @@ export function WhatNext({ params, onChanged }: { params: Params; onChanged: () 
         </div>
       )}
       {cards.length > 0 && (
-        <ol className="cards">
+        // Cards are h3s under this heading, so headings don't jump from h1 to h3.
+        <h2 id="picks-list-h" className="visually-hidden">
+          Picks
+        </h2>
+      )}
+      {cards.length > 0 && (
+        <ol className="cards" aria-labelledby="picks-list-h">
           {cards.map((c) =>
             view === 'still_relevant' ? (
               <RelevanceCard key={c.id} card={c} onDone={onDone(c)} />

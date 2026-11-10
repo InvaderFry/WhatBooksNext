@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useState } from 'react';
-import { api, daysAgo, formatDate, type Folder, type ScanStatus } from '../api.ts';
+import { api, daysAgo, formatBytes, formatDate, type Folder, type ScanStatus } from '../api.ts';
 import { Notice } from '../components.tsx';
 import { HistoryImport } from './HistoryImport.tsx';
 import { CalibreImport } from './CalibreImport.tsx';
@@ -43,6 +43,23 @@ export function Settings({
       <div className="page-head">
         <h1>Settings</h1>
       </div>
+      <nav aria-label="On this page" className="toc">
+        <ul>
+          {TOC.map(([id, label]) => (
+            <li key={id}>
+              <a href={`#${id}`}>{label}</a>
+            </li>
+          ))}
+          <li>
+            <a
+              href={hrefFor({ view: 'diagnostics' })}
+              onClick={onLinkClick({ view: 'diagnostics' })}
+            >
+              Diagnostics
+            </a>
+          </li>
+        </ul>
+      </nav>
       {error && <Notice kind="error">{error}</Notice>}
 
       <section aria-labelledby="folders-h" className="section">
@@ -95,7 +112,103 @@ export function Settings({
       </section>
       <TopicsSection />
       <BackupSection onRestored={onLibraryChanged} />
+      <ExportSection />
     </div>
+  );
+}
+
+/** Settings is long: links to its sections, in page order. */
+const TOC: [string, string][] = [
+  ['folders-h', 'Folders'],
+  ['online-settings-h', 'Online lookups'],
+  ['csv-h', 'Store books'],
+  ['calibre-h', 'Calibre'],
+  ['history-import-h', 'Reading history'],
+  ['picks-h', 'Recommendations'],
+  ['topics-h', 'Topics'],
+  ['backup-h', 'Backup'],
+  ['export-h', 'Export and snapshots'],
+];
+
+interface FullSnapshot {
+  name: string;
+  path: string;
+  createdAt: string;
+  covers: number;
+  bytes: number;
+}
+
+/** CSV export for spreadsheets and full local snapshots (PLAN.md §16). */
+function ExportSection() {
+  const [list, setList] = useState<{ available: boolean; snapshots: FullSnapshot[] } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState<string | null>(null);
+  const load = useCallback(async () => setList(await api.get('/api/snapshots/full')), []);
+  useEffect(() => {
+    void load();
+  }, [load]);
+  return (
+    <section aria-labelledby="export-h" className="section">
+      <h2 id="export-h">Export and snapshots</h2>
+      <h3>A spreadsheet of your library</h3>
+      <p className="hint">
+        One row per book: title, author, kind, your progress, dates, rating, notes and takeaways,
+        series, where it is, and what was found online. For Excel or Google Sheets — it isn’t a
+        backup, and can’t be restored.
+      </p>
+      <a className="button secondary" href="/api/export/csv" download>
+        Download as CSV
+      </a>
+
+      <h3>Full snapshot</h3>
+      <p className="hint">
+        A complete copy of the app’s data — everything in a backup, plus the cover images and the
+        details found online — saved in a new folder inside the app’s <code>data</code> folder. API
+        keys are left out. The newest 3 are kept. Each one has a <code>README.txt</code> that says
+        how to go back to it.
+      </p>
+      {list?.available === false ? (
+        <p className="muted">Not available here: this app has no data folder.</p>
+      ) : (
+        <>
+          <button
+            type="button"
+            className="secondary"
+            disabled={busy}
+            onClick={async () => {
+              setBusy(true);
+              setError(null);
+              setDone(null);
+              try {
+                const r = await api.post<{ snapshot: FullSnapshot }>('/api/snapshots/full');
+                setDone(`Saved in ${r.snapshot.path}`);
+                await load();
+              } catch (e) {
+                setError((e as Error).message);
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            {busy ? 'Saving…' : 'Take a full snapshot'}
+          </button>
+          {error && <Notice kind="error">{error}</Notice>}
+          {done && <Notice kind="success">{done}</Notice>}
+          {list && list.snapshots.length > 0 && (
+            <ul className="snapshot-list">
+              {list.snapshots.map((x) => (
+                <li key={x.name}>
+                  {formatDate(x.createdAt)} — {x.covers.toLocaleString()} covers,{' '}
+                  {formatBytes(x.bytes)}
+                  <div className="muted small folder-path">{x.path}</div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
+      )}
+    </section>
   );
 }
 

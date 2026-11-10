@@ -28,6 +28,74 @@ async function waitForServer() {
   throw new Error('server did not start');
 }
 
+/**
+ * A quick accessibility pass on the page as shown (PLAN.md §5): names on every control, labels
+ * on every field, unique ids, one h1, no skipped heading levels, alt text, and no sideways
+ * scrolling. Not a full audit; it catches the mistakes whatGamesNext's tests missed.
+ */
+async function audit(page: import('playwright').Page): Promise<string[]> {
+  return page.evaluate(() => {
+    const out: string[] = [];
+    const visible = (el: Element) => {
+      const r = (el as HTMLElement).getBoundingClientRect();
+      const st = getComputedStyle(el);
+      return st.visibility !== 'hidden' && st.display !== 'none' && (r.width > 0 || r.height > 0);
+    };
+    const nameOf = (el: Element): string => {
+      const labelled = el.getAttribute('aria-labelledby');
+      if (labelled)
+        return labelled
+          .split(/\s+/)
+          .map((id) => document.getElementById(id)?.textContent ?? '')
+          .join(' ')
+          .trim();
+      const aria = el.getAttribute('aria-label');
+      if (aria?.trim()) return aria.trim();
+      if (
+        el instanceof HTMLInputElement ||
+        el instanceof HTMLSelectElement ||
+        el instanceof HTMLTextAreaElement
+      ) {
+        const own = el.labels?.[0]?.textContent?.trim();
+        if (own) return own;
+        if (el instanceof HTMLInputElement && ['submit', 'button'].includes(el.type))
+          return el.value;
+        return el.getAttribute('title') ?? '';
+      }
+      const alt = [...el.querySelectorAll('img[alt]')].map((i) => i.getAttribute('alt')).join(' ');
+      return `${el.textContent ?? ''} ${alt}`.trim();
+    };
+    const desc = (el: Element) =>
+      `<${el.tagName.toLowerCase()}${el.id ? ` id="${el.id}"` : ''}> "${(el.textContent ?? '').trim().slice(0, 40)}"`;
+    for (const el of document.querySelectorAll('button, a[href], [role=button]'))
+      if (visible(el) && !nameOf(el)) out.push(`no accessible name: ${desc(el)}`);
+    for (const el of document.querySelectorAll('input, select, textarea')) {
+      if (el instanceof HTMLInputElement && ['hidden', 'submit', 'button'].includes(el.type))
+        continue;
+      if (!nameOf(el)) out.push(`field without a label: ${desc(el)}`);
+    }
+    const ids = new Map<string, number>();
+    for (const el of document.querySelectorAll('[id]')) ids.set(el.id, (ids.get(el.id) ?? 0) + 1);
+    for (const [id, n] of ids) if (n > 1) out.push(`id "${id}" used ${n} times`);
+    const h1 = [...document.querySelectorAll('h1')].filter(visible).length;
+    if (h1 !== 1) out.push(`${h1} visible h1 headings`);
+    let last = 1;
+    for (const h of document.querySelectorAll(
+      'main h1, main h2, main h3, main h4, main h5, main h6',
+    )) {
+      if (!visible(h)) continue;
+      const level = Number(h.tagName[1]);
+      if (level > last + 1) out.push(`heading jumps from h${last} to h${level}: ${desc(h)}`);
+      last = level;
+    }
+    for (const img of document.querySelectorAll('img:not([alt])'))
+      out.push(`image without alt: ${desc(img)}`);
+    if (document.documentElement.scrollWidth > window.innerWidth + 1)
+      out.push(`page scrolls sideways (${document.documentElement.scrollWidth}px wide)`);
+    return out;
+  });
+}
+
 const server = spawn(process.execPath, ['server/src/main.ts'], {
   cwd: ROOT,
   env: { ...process.env, DEMO: '1', PORT: String(PORT), WBN_DATA_DIR: path.join(OUT, '.data') },
@@ -281,7 +349,19 @@ try {
     ['health', '/?view=health', async () => {}],
     ['settings', '/?view=settings', async () => {}],
     ['diagnostics', '/?view=diagnostics', async () => {}],
+    // M6: Stats, the export section with a full snapshot taken.
+    ['stats', '/?view=stats', async () => {}],
+    [
+      'settings-export',
+      '/?view=settings',
+      async (p) => {
+        await p.getByRole('button', { name: 'Take a full snapshot' }).click();
+        await p.getByText(/^Saved in /).waitFor();
+        await p.locator('#export-h').scrollIntoViewIfNeeded();
+      },
+    ],
   ];
+  const problems: string[] = [];
   for (const scheme of ['light', 'dark'] as const) {
     for (const [width, label] of [
       [1280, 'desktop'],
@@ -300,6 +380,7 @@ try {
         await page.waitForLoadState('networkidle');
         await act(page);
         await page.waitForTimeout(150);
+        for (const x of await audit(page)) problems.push(`${name} (${label}, ${scheme}): ${x}`);
         await page.screenshot({
           path: path.join(OUT, `${name}-${label}-${scheme}.png`),
           fullPage: true,
@@ -310,6 +391,12 @@ try {
   }
   await browser.close();
   console.log(`Screenshots in ${OUT}`);
+  const unique = [...new Set(problems)];
+  if (unique.length) {
+    console.log(`\nAccessibility checks found ${unique.length} problem(s):`);
+    for (const x of unique) console.log(`  - ${x}`);
+    process.exitCode = 1;
+  } else console.log('Accessibility checks: no problems found.');
 } finally {
   server.kill();
 }
