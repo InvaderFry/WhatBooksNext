@@ -7,7 +7,7 @@ import {
 } from '../config.ts';
 import type { DB } from '../db/database.ts';
 import { titleCompareKey } from '../identify/filename.ts';
-import { todayLocal } from '../util.ts';
+import { decodeEntities, todayLocal } from '../util.ts';
 import { SourceClient } from './client.ts';
 import { DailyUsage } from './usage.ts';
 import {
@@ -198,8 +198,8 @@ export function parseHardcover(payload: unknown): SourceRecord[] {
     const rec: SourceRecord = {
       source: 'hardcover',
       sourceId: String(d.id),
-      title: d.title,
-      authors: d.author_names ?? [],
+      title: decodeEntities(d.title),
+      authors: (d.author_names ?? []).map(decodeEntities),
       isbns: (d.isbns ?? []).slice(0, 20),
       subjects: [...(d.genres ?? []), ...(d.tags ?? [])],
       url: d.slug ? `https://hardcover.app/books/${encodeURIComponent(d.slug)}` : undefined,

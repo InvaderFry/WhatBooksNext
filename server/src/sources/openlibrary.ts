@@ -1,3 +1,4 @@
+import { decodeEntities } from '../util.ts';
 import { OPENLIBRARY_MIN_INTERVAL_MS, SEARCH_RESULTS } from '../config.ts';
 import type { DB } from '../db/database.ts';
 import { SourceClient } from './client.ts';
@@ -65,13 +66,13 @@ export function parseOpenLibrary(payload: unknown): SourceRecord[] {
     const r: SourceRecord = {
       source: 'openlibrary',
       sourceId: d.key,
-      title: d.title,
-      authors: d.author_name ?? [],
+      title: decodeEntities(d.title),
+      authors: (d.author_name ?? []).map(decodeEntities),
       isbns: (d.isbn ?? []).slice(0, 20),
       subjects: (d.subject ?? []).slice(0, 30),
       url: `https://openlibrary.org${d.key}`,
     };
-    if (d.subtitle) r.subtitle = d.subtitle;
+    if (d.subtitle) r.subtitle = decodeEntities(d.subtitle);
     if (typeof d.first_publish_year === 'number') r.firstPublishYear = d.first_publish_year;
     if (typeof d.number_of_pages_median === 'number' && d.number_of_pages_median > 0)
       r.pages = d.number_of_pages_median;

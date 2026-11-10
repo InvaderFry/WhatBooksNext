@@ -26,3 +26,27 @@ export function parseJson<T>(text: string | null | undefined, fallback: T): T {
     return fallback;
   }
 }
+
+/**
+ * Decodes the HTML character references some catalogue entries carry as plain text
+ * ("Mrzyg&#322;ód" → "Mrzygłód"). Text only: nothing is ever rendered as HTML (§6.3).
+ */
+export function decodeEntities(s: string): string {
+  if (!s.includes('&')) return s;
+  const named: Record<string, string> = {
+    amp: '&',
+    lt: '<',
+    gt: '>',
+    quot: '"',
+    apos: "'",
+    nbsp: ' ',
+  };
+  return s.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (m, code: string) => {
+    if (code[0] === '#') {
+      const n =
+        code[1] === 'x' || code[1] === 'X' ? parseInt(code.slice(2), 16) : Number(code.slice(1));
+      return Number.isInteger(n) && n > 0 && n <= 0x10ffff ? String.fromCodePoint(n) : m;
+    }
+    return named[code.toLowerCase()] ?? m;
+  });
+}

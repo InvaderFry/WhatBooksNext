@@ -21,9 +21,11 @@ import { normalizeForCompare, titleCompareKey } from './filename.ts';
  * Version 11: different story names are different books ("Series: Falling Sun" vs "Series,
  * Vol. 2: Dark Days"), and "Archangel 8 #1" is no longer series "Archangel". A named book
  * with no number ("Series: Art Book") is none of the series' numbered volumes.
- * (Version 12 adds that last rule.)
+ * (Version 12 adds that last rule.) Version 13: several candidates that each match only part
+ * of the title, with nothing else agreeing, are "not found" rather than a tie; one book listed
+ * twice with a misspelt or HTML-encoded author name is one book.
  */
-export const MATCH_VERSION = 12;
+export const MATCH_VERSION = 13;
 
 export interface MatchFacts {
   title: string;
@@ -57,6 +59,11 @@ export interface MatchEvidence {
   author: 'agrees' | 'conflicts' | 'unknown';
   isbn: 'strong' | 'candidate' | 'none';
   notes: string[];
+  /**
+   * Our title names something (a subtitle) the record's title lacks, and nothing else —
+   * author, ISBN, year, run — agrees. Several such candidates mean "not found", not a tie.
+   */
+  weak?: boolean;
 }
 
 export interface ScoredCandidate {
@@ -390,7 +397,28 @@ export function scoreCandidate(f: MatchFacts, r: SourceRecord): ScoredCandidate 
   if (author === 'agrees') notes.push('Author matches.');
   if (author === 'conflicts') notes.push('Author differs.');
   if (author === 'unknown' && f.authors.length === 0) notes.push('No author to check against.');
-  return { record: r, score: round(score), evidence: { title: round(title), author, isbn, notes } };
+  const corroborated =
+    author === 'agrees' ||
+    isbn !== 'none' ||
+    notes.some((n) => n === 'Year matches.' || n.startsWith('Same run'));
+  return {
+    record: r,
+    score: round(score),
+    evidence: {
+      title: round(title),
+      author,
+      isbn,
+      notes,
+      // Our title names something the record's doesn't ("Batter Up: Charlie Brown" against
+      // "Batter Up!"). A shorter title of ours against longer records ("Lamplighting" against
+      // its "Volume One" and "Volume Two") is a real question, so it isn't weak.
+      weak:
+        title < 1 &&
+        !corroborated &&
+        ourStory !== null &&
+        !titleCompareKey(fullTitleOf(r)).includes(titleCompareKey(ourStory)),
+    },
+  };
 }
 
 const round = (n: number) => Math.round(n * 1000) / 1000;
@@ -429,6 +457,15 @@ export function sameWork(a: SourceRecord, b: SourceRecord): boolean {
     );
   const sa = surnames(a);
   if ([...surnames(b)].some((x) => x !== '' && sa.has(x))) return true;
+  // The same full title and a surname spelt almost alike: one book entered twice with a
+  // misspelt name ("Mrzygód" / "Mrzygłód").
+  if (
+    fa === fb &&
+    [...surnames(b)].some(
+      (x) => x.length >= 5 && [...sa].some((y) => y.length >= 5 && similarity(x, y) >= 0.75),
+    )
+  )
+    return true;
   // One volume entered twice ("Series Vol. 2: Arc" and "Series - 2"), one record with no author.
   if (sameVolume(a, b) && (a.authors.length === 0 || b.authors.length === 0)) return true;
   // The same full title, and one record has no author at all: one book entered twice.
@@ -490,6 +527,12 @@ export function decideRanked(ranked: ScoredCandidate[]): {
   // The next *different* work: duplicates of the top one say nothing about a rival, and must
   // not hide one (two copies of A, then B, all scoring alike, is still A-or-B).
   const rival = ranked.slice(1).find((c) => !sameWork(top.record, c.record));
-  if (rival && top.score - rival.score < MATCH_TIE_MARGIN) return { decision: 'tie', best: null };
+  if (rival && top.score - rival.score < MATCH_TIE_MARGIN) {
+    // Different books that each share only part of the title, with nothing else to go on
+    // ("Batter Up: Charlie Brown" against three unrelated "Batter Up!"s): not found, not a
+    // question for the owner.
+    if (top.evidence.weak && rival.evidence.weak) return { decision: 'unidentified', best: null };
+    return { decision: 'tie', best: null };
+  }
   return { decision: top.score >= MATCH_ACCEPT ? 'accepted' : 'provisional', best: top };
 }

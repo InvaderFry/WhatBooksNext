@@ -6,6 +6,7 @@ import { kindFromEvidence, techTitle } from '../identify/kinds.ts';
 import { picturesFile } from '../identify/lookups.ts';
 import { decide, numberIn, scoreCandidate, type MatchFacts } from '../identify/match.ts';
 import { memoryDb } from '../testing/helpers.ts';
+import { decodeEntities } from '../util.ts';
 import { parseAniList } from './anilist.ts';
 import { SourceClient } from './client.ts';
 import { Hardcover, normaliseToken, parseHardcover } from './hardcover.ts';
@@ -391,6 +392,36 @@ describe('matching (§11.2)', () => {
     });
     expect(eight.evidence.title).toBeLessThan(same.evidence.title);
     expect(eight.score).toBeLessThan(same.score);
+  });
+
+  it('calls several part-title matches with nothing else agreeing "not found", not a tie', () => {
+    const base = { ...tm[0]!, isbns: [], rating: undefined, subtitle: undefined };
+    const r = decide(facts({ title: 'Pitch In: Wren Hollow', titleSource: 'filename' }), [
+      { ...base, sourceId: 'a', title: 'Pitch In!', authors: ['Ada Fen'] },
+      { ...base, sourceId: 'b', title: 'Pitch In', authors: ['Ivo Brask'] },
+    ]);
+    expect(r.decision).toBe('unidentified');
+    // An exact title still asks the owner (two real runs with one name).
+    const exact = decide(facts({ title: 'Pitch In', titleSource: 'filename' }), [
+      { ...base, sourceId: 'a', title: 'Pitch In', authors: ['Ada Fen'] },
+      { ...base, sourceId: 'b', title: 'Pitch In', authors: ['Ivo Brask'] },
+    ]);
+    expect(exact.decision).toBe('tie');
+  });
+
+  it('treats one book listed twice with a misspelt or HTML-encoded author as one book', () => {
+    const base = { ...tm[0]!, isbns: [], rating: undefined, subtitle: undefined };
+    const r = decide(facts({ title: 'Cloud Widgets for Builders', titleSource: 'filename' }), [
+      { ...base, sourceId: 'a', title: 'Cloud Widgets for Builders', authors: ['Kaja Wrzosód'] },
+      {
+        ...base,
+        sourceId: 'b',
+        title: 'Cloud Widgets for Builders',
+        authors: [decodeEntities('Kaja Wrzos&#322;ód')],
+      },
+    ]);
+    expect(r.decision).not.toBe('tie');
+    expect(decodeEntities('A &amp; B &#x141;ódź')).toBe('A & B Łódź');
   });
 
   it('never matches a different volume of the same series', () => {
