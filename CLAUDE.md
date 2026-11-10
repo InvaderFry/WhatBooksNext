@@ -25,6 +25,8 @@ owner has already made. Don't reopen those decisions. Then read the latest
   table (`app.release.test.ts` — a new table must get a row there), Diagnostics' last Open, the
   accessibility sweep in `npm run screenshots`, README for a stranger. Open: the owner's second
   quality session and a stranger-install try (§21); Windows checks in the M4/M6 notes.
+- **Next:** `docs/plans/online-ratings-and-refreshes.md` (rating choice and Hidden gems, ratings
+  by source, a Google Books trial, automatic refresh), one pull request per stage, in order.
 - Series rows are rebuilt by `syncSeries` (`server/src/identify/series.ts`) from stored facts
   and owner corrections. Call it after anything that changes items' names, numbers, kinds or
   matches. Gap rules are pure, in `server/src/lib/series.ts`.

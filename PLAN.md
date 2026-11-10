@@ -676,7 +676,7 @@ its adapter.**
 | --- | --- | --- |
 | **Open Library** | Book search, ISBN, subjects, covers, first publication year | No key. Descriptive User-Agent; about 1 request/second. Cover lookups by ISBN/OLID had a much tighter limit (about 100 per 5 minutes per IP) — **verify**, and prefer covers from the files themselves. |
 | **AniList** | Manga: score, tags, genres, volumes, publication status, reading direction | No key. GraphQL. Per-minute limit (90 nominal, lowered to 30 at times) — obey the response headers. |
-| **Google Books** | Planned: book/edition search, ISBN, categories, pages, ratings and counts | Optional Books API key in Settings; public requests require an API key or OAuth identifier in Google's documented setup. See the [ratings and refresh implementation plan](docs/plans/online-ratings-and-refreshes.md). |
+| **Google Books** | Trial first: book/edition search, ISBN, categories, pages, ratings and counts | Optional Books API key in Settings. Measured on the owner's library before it becomes a regular source; see the [ratings and refresh plan](docs/plans/online-ratings-and-refreshes.md). |
 | **Hardcover** | Book ratings + counts, series, genres | Free token from the user's account. GraphQL, labelled beta — expect changes. |
 | **Metron** | Comics: series, issues, creators, arcs; possibly collected-edition contents | Free account. Little or no rating data. |
 | **ComicVine** | Comics fallback | Free key; unique User-Agent; about 200 requests per resource per hour. |
@@ -712,11 +712,11 @@ keys.
   books from one source and few from another.
 - **Your rating and the community rating are shown separately.** Your rating, when present, is what
   the ranking uses.
-- Current community rating preference: Hardcover → AniList → Open Library. Google Books is not
-  implemented yet. The [ratings and refresh implementation plan](docs/plans/online-ratings-and-refreshes.md)
-  replaces this fixed preference with match confidence, vote support and scope, adds alternative
-  ratings and periodic refreshes, and includes optional Google Books. **A series score is never
-  shown as a volume's score.**
+- Current community rating preference: Hardcover → AniList → Open Library. The
+  [ratings and refresh plan](docs/plans/online-ratings-and-refreshes.md) replaces this fixed order
+  with match strength, number of ratings and scope, shows the other sources' ratings, keeps Hidden
+  gems honest ("few ratings everywhere we looked"), adds automatic refreshes and a Google Books
+  trial. **A series score is never shown as a volume's score.**
 - Unknown rating: neutral in the blend; **fails** any "highly rated" filter.
 
 ### 12.3 Duration
@@ -1306,6 +1306,7 @@ plainly at the start of your message, with what to do and roughly how long it ta
 | **End of M3** | First ~20-minute recommendation quality session (§17.2). |
 | **During M1–M6, as they come up** | Check the "needs checking on the owner's machine" items on the Windows PC. |
 | **End of M6** | Second quality session; try installing from the README as a stranger would. |
+| **Google Books trial** (when its stage is merged; [plan](docs/plans/online-ratings-and-refreshes.md)) | Create a Google Cloud project, enable the Books API and make an API key restricted to it (about 15 minutes, steps in the pull request). Enter it in Settings (never in chat), press Run trial, and share Diagnostics → Copy report. Decides whether Google Books becomes a regular source. |
 
 ### Still to confirm (not blocking)
 

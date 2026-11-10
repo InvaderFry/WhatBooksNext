@@ -1,190 +1,286 @@
-# Online ratings, alternative sources and automatic refreshes
+# Online ratings, a Google Books trial and automatic refreshes
 
-Status: implementation plan; no application changes made. Researched 2026-11-10.
+Status: implementation plan; no application changes made. Researched 2026-11-10; revised the same
+day against `main` after M6 (modes, taste, stats, export and full snapshots are all built).
 
-## Agreed scope
+## Decisions the owner has made
 
 - Keep Open Library, AniList, Hardcover, Metron and ComicVine.
-- Choose a community rating using match confidence, sample size and what the rating covers.
-- Show the other source ratings and explain the selected one.
-- Refresh automatically while the app is running: every seven days for currently reading or
-  shortlisted items, every 30 days for the rest, in small batches.
-- Add optional Google Books support, including API-key setup in Settings. The owner approved
-  this setup route; the key is entered in the app, never in chat.
+- Choose the community rating by match strength, number of ratings and what the rating covers,
+  instead of a fixed source order. Show the other sources' ratings and say why one was chosen.
+- **Keep Hidden gems**, adjusted so it stays honest under the new choice (stage 1, below).
+- **Google Books is a trial first.** Build only what is needed to measure it on the owner's
+  library with their own key. Build the full integration (Google's caching, attribution and
+  backup rules) only if the trial shows it is worth it.
+- Refresh automatically while the app runs: every 7 days for books in progress or on the
+  shortlist, every 30 days for the rest, in small batches.
 
-This extends PLAN.md §12 and replaces its fixed rating-source order when implemented. Existing
-personal ratings, confirmed identities, rejections, reading history and manual scans keep their
-current authority. Missing community ratings remain neutral.
+Decisions made in this plan on the owner's behalf (say so if any should change):
 
-## What the current implementation needs
+- Unconfirmed ("provisional") matches still supply a rating, but only when nothing better exists,
+  labelled as unconfirmed, and never for Hidden gems. Today they count fully; dropping them
+  outright could empty modes that passed the first quality session.
+- Each stage is its own pull request against `main`, in the order below.
 
-`sources/index.ts` already routes by format. `identify/lookups.ts` queries those sources and
-keeps their selected records. `lib/ratings.ts` chooses Hardcover before AniList before Open
-Library regardless of vote count or match quality. `lib/rankData.ts` supplies that selection to
-recommendations. `routes/reading.ts` and `web/src/pages/OnlineCard.tsx` expose one community
-rating. Ordinary source cache entries and completed lookup states have no age-based expiry.
+This extends PLAN.md §12 and replaces its fixed rating-source order once stage 1 is merged.
+Personal ratings, confirmed matches, rejections, reading history and owner corrections keep their
+authority. A missing community rating stays unknown and neutral.
 
-The matching score is a heuristic, not a probability. The new policy must not describe 0.90
-as a 90% chance of being correct or multiply it by the number of votes as if it were one.
+## What the code does today (on `main` after M6)
 
-## 1. Represent the evidence and choose a rating
+- `lib/ratings.ts`: `communityRating` picks Hardcover → AniList → Open Library regardless of
+  votes or match strength. `ratingStats` builds each source's mean, median votes, "highly rated"
+  line and "few votes" line (M5) from **one entry per item and source**, so an AniList series
+  score attached to twelve owned volumes is counted twelve times.
+- `identify/lookups.ts`: `chooseUsed` returns the owner-confirmed match, then each source's
+  accepted **or provisional** best candidate. Ties and rejections are already left out.
+- `lib/rankData.ts` drops series-scope ratings for items outside a series, then calls
+  `communityRating`. Its `matchConfirmed` flag (owner override or strong ISBN) already exists.
+- Everything that reads the chosen rating: the blend and its reasons/limits in
+  `lib/recommend.ts`; **Waiting on your shelf**, **Hidden gems** and **Classics** in
+  `lib/modes.ts`; sorting in `routes/reading.ts`; the item page (`OnlineCard.tsx`); and the
+  CSV export (`lib/export.ts`).
+- `source_cache` keeps raw answers with `fetched_at` and no expiry; it is not backed up.
+  `item_matches` (normalised records, including ratings) **is** in backups, and M6's full
+  snapshot copies the whole database except `secrets`. `lookup_state` records when each item
+  and source was last looked up.
+- The library is about 2,700 items (M1). A 30-day cycle over it is roughly 90–180 requests a
+  day across all sources, well inside every source's limits; the budgets below are a safeguard,
+  not the main constraint.
 
-Extend the rating input with the source record ID, match decision/evidence, owner confirmation,
-rating target, source link and actual last successful network check. Retain each raw rating,
-scale and count. Keep missing counts distinct from zero.
+The match score is a heuristic, not a probability. Never describe 0.90 as a 90% chance of being
+right, and never multiply it by a vote count.
 
-Distinguish an edition, an individual book/collected volume and an entire series. Google calls
-every catalog record a "Volume"; that alone does not mean a numbered comic/manga volume.
-Store a target ID where available so the same AniList series rating attached to many owned
-volumes is counted once in source statistics. Never add together votes from editions or sites.
+## Stage 1 — choose the rating (pure, no network changes)
 
-Proposed deterministic selection policy:
+### Evidence
 
-1. Exclude rejected records, unresolved ties, invalid ratings and records that conflict with
-   the item's identity, number, run or known edition. A confirmation for one source does not
-   automatically confirm another source's record. Require independent agreement for alternatives.
-2. Use owner-confirmed or automatically accepted matches for the main community rating and
-   recommendation component. Show provisional matches as unconfirmed alternatives, without
-   allowing a popular but uncertain match to drive recommendations. If nothing qualifies,
-   the community component is unknown/neutral.
-3. Start with a configurable minimum of **20 votes** for a supported sample. This is a proposed
-   product default, not a statistical guarantee. Prefer a supported individual-book/volume
-   score; otherwise a supported series score can be a clearly labelled fallback for an item
-   verified to belong to that series. Otherwise use the best sparse eligible individual score,
-   then a sparse series fallback. Label sparse or unknown-count evidence explicitly.
-4. Within the same scope/sample tier, prefer stronger matching evidence, then greater known
-   vote support. Cap the vote comparison at 1,000 initially so enormous popularity does not
-   provide unlimited advantage. Use the legacy source preference only as a final stable tie
-   breaker: Hardcover, AniList, Google Books, Open Library, demo.
-5. Preserve source-specific Bayesian adjustment and source-relative "highly rated" thresholds.
-   Compute their statistics from eligible, deduplicated rating targets. Never average different
-   sites into a combined star rating. Keep raw displayed values unchanged. Personal ratings
-   continue to override the community component in recommendations.
+Extend what the selector receives per rating: source, source record id, scope, raw value and
+scale, vote count (missing stays `null`, distinct from 0), this source's decision for the item
+(`confirmed` by the owner, `accepted`, or `provisional`), whether an ISBN agreed strongly, the
+record's link, and when that source last answered successfully. Add `'edition'` to
+`SourceRating.scope` for sources that rate one printing (Google). It is an item-level scope,
+labelled "this edition".
 
-Return the primary rating, eligible alternatives, excluded/provisional alternatives and concise
-reason codes from one pure selector. Use that same output for item details and recommendations.
-Calibrate the proposed 20/1,000 constants against edge-case fixtures and a private sample before
-finalizing them; place them in config.ts and record them in PLAN.md §20.
+### Selection (one pure function in `lib/ratings.ts`)
 
-Acceptance examples using invented fixtures:
+Eligible: a rating whose match is owner-confirmed, accepted or provisional; not rejected, not a
+tie; a valid value and scale; and, for a series score, an item that belongs to that series.
+Confirming one source's match does not confirm another source's record.
 
-- A securely matched Open Library book with 3,000 votes beats the same book's Hardcover score
-  with three votes.
-- A million votes cannot rescue an uncertain or wrong-volume match.
-- A supported manga volume score wins over a series score; a supported series score can replace
-  a three-vote volume score, with "Whole series; individual volume has few ratings" visible.
-- No eligible source rating means unknown, not a fabricated score or zero.
+Take the first non-empty tier:
 
-## 2. Show alternatives and freshness
+1. Confirmed/accepted, item scope, at least `RATING_SUPPORTED_VOTES` (20) ratings.
+2. Confirmed/accepted, series scope, supported. Shown as "Whole series; this volume has few
+   ratings" (or "…has no rating").
+3. Confirmed/accepted, item scope, fewer or an unknown number of ratings ("Few ratings" /
+   "Number of ratings unknown").
+4. Confirmed/accepted, series scope, sparse.
+5. Provisional, any scope that is allowed, labelled "Unconfirmed match" with a link to confirm.
 
-Keep the chosen score on recommendation cards with its source, count and scope. On the item
-page, add an expandable "Ratings by source" list showing raw score/scale, number of ratings,
-book/edition/volume/series target, match status, source link and last successful check. Mark the
-one used for recommendations and give a short reason, such as "More ratings for this book".
-Show uncertain matches separately with a confirm action; do not present them as verified facts.
+Within a tier: owner-confirmed, then strong ISBN, then accepted; then more ratings, compared up
+to `RATING_VOTES_CAP` (1,000) so huge popularity gives no further edge; then the higher match
+score; then the old order as a last stable tie-break (Hardcover, AniList, Google Books, Open
+Library, demo). Nothing eligible means unknown, never zero.
 
-Expose "Few ratings", "Vote count unavailable", "Whole-series fallback", "Refresh due" and
-"Refresh failed; showing the previous result" where applicable. Refreshing or a provider failure
-must not blank the page. Distinguish a rating count from a count of written reviews.
+Return the chosen rating, the other eligible ratings, the excluded ones with why, and a short
+reason code (`more_ratings`, `only_rating`, `series_fallback`, `unconfirmed_only`, …). Item
+details, recommendations, modes and export all use this one result.
 
-Settings should expose automatic refresh on/off, the agreed intervals, pause/resume and
-"Refresh due items now". Diagnostics should show per-source pending work, last success, request
-usage, quota pauses and failures. Keep explanations in ordinary language and make the source
-list usable on phone, with keyboard access, light/dark and reduced motion.
+### Source statistics
 
-## 3. Refresh without rescanning or exhausting quotas
+Build `ratingStats` from unique rating targets, `source:sourceId`, so one series score is counted
+once. Keep Bayesian shrinkage and each source's own "highly rated" and "few votes" lines. Never
+average different sites into one score and never add vote counts across sites or editions. Raw
+displayed values stay as the source gave them. Personal ratings still replace the community
+part of the blend.
 
-Add a small scheduler around the existing LookupManager, not a second concurrent lookup engine.
-Check due work after startup and periodically while running. Run no background work in demo
-mode, after shutdown or when automatic refresh is disabled. Defer automatic batches during
-scanning/manual lookups. Resume overdue work gradually after a long period with the app closed.
+### Hidden gems, Classics and Waiting on your shelf
 
-- Persist last attempt, last successful network check, retry-after/next eligible time and failure
-  state per source/query or matched record. Separate those times from local candidate rescoring.
-- Fetch only due sources. Deduplicate shared queries and series IDs across items. Prefer stable
-  record-ID refresh where a provider supports it; otherwise re-search and reconcile cautiously.
-- Start with batches of up to 25 due source jobs, constrained by remaining per-source request
-  budgets. Newly added items and explicit user actions take priority, then active/shortlisted
-  items, then the oldest due backlog. Reserve most daily capacity for manual/new-item use;
-  initially allow automatic refresh to consume at most 20% of the configured daily allowance.
-  Enforce budgets on actual requests, including secondary lookups, not just item counts.
-- Reuse pacing, Retry-After, quota checks and circuit breakers. Automatic batches must not reset
-  circuit breakers repeatedly. Retry transient failures with bounded backoff and jitter; daily
-  quota exhaustion pauses that source rather than repeatedly retrying it.
-- Explicit refresh bypasses a fresh cache; normal reuse does not. Preserve actual response dates
-  so parsing an old cached answer cannot make it appear freshly checked. Use conditional requests
-  where supported. Cache expiration and scheduling are distinct, provider-specific policies.
-- Failures retain the last usable result where provider retention rules permit. A valid refreshed
-  record that no longer has a rating becomes unrated; it must not silently keep its old rating.
-  Empty/ambiguous searches do not silently replace a confirmed identity. Keep the previous match
-  with a verification warning and schedule review/retry.
-- Recheck the current item/query before committing a response, preserving the existing protection
-  against merges, splits and edits while requests are in flight. Preserve owner decisions.
-- Keep Metron first and ComicVine as fallback. Refreshing does not mean calling both every time.
-  Coordinate with existing seven-day published-series checks so requests are not duplicated.
+- **Hidden gems**: the chosen rating is highly rated for its source, item scope (never series),
+  from a confirmed or accepted match, with at least `HIDDEN_GEM_MIN_VOTES` (5) ratings and at or
+  below its source's few-votes line, **and** every other eligible rating with a known count is
+  also at or below its own source's few-votes line ("few ratings everywhere we looked"). The new
+  choice makes this more honest: a book with 8 Hardcover ratings but 3,000 on Open Library is no
+  longer called hidden. Keep the reason "Only N ratings on Source — few for your library" and add
+  "and few elsewhere" when another source agrees.
+- **Classics** and **Waiting on your shelf** keep using "highly rated" on the chosen rating. A
+  provisional-only rating may still qualify but its card says "Unconfirmed match".
+- Recommendation limits gain "rating is from an unconfirmed match" next to the existing "rating
+  is for the whole series".
+- Export: keep the existing column names and order; append `community_scope` and
+  `community_match` (`confirmed`, `accepted`, `provisional`).
+- Diagnostics: how many items' ratings now rest on each tier, especially tier 5, so the owner can
+  confirm matches where it matters.
 
-A fresh-install backfill starts gradually and is resumable. No library file reads or scheduled
-file scans are needed. The app cannot refresh while it is closed; it catches up when reopened.
+### Checks (invented fixtures)
 
-## 4. Google Books research and integration
+- A securely matched Open Library book with 3,000 ratings beats the same book's Hardcover score
+  with 3.
+- A million ratings cannot rescue a tie, a rejected candidate or a wrong-volume match.
+- A supported manga volume score beats a series score; a supported series score replaces a
+  3-rating volume score with the fallback label.
+- A provisional rating is used only when nothing confirmed or accepted exists, and never makes a
+  Hidden gem.
+- Twelve volumes sharing one AniList series score count once in that source's statistics.
+- Hidden gems: still has a populated and an empty demo case (M5's done-when); a book that is
+  sparse on one source but popular on another is left out.
+- No eligible rating: unknown, neutral in the blend, fails "highly rated".
+- Personal rating still overrides; existing scenario tests still pass.
 
-### Finding
+No migration is needed for stage 1. Do not raise `MATCH_VERSION`: matching does not change.
+Put the new constants in `config.ts` and PLAN.md §20, marked as assumptions until calibrated
+against the owner's library (Diagnostics' tier counts help).
 
-Google Books is technically suitable as an optional sixth catalog/ratings source. Its public
-API provides search and record retrieval. Useful fields include ISBNs, authors, categories,
-description, edition publication date, pages, language, averageRating and ratingsCount. These
-fields are optional. There is no general public review-text collection in the Volume resource;
-userInfo.review refers to an individual user's review. This does not guarantee Amazon-sized
-rating coverage or provide Amazon/Goodreads reviews.
+## Stage 2 — "Ratings by source" on the item page
 
-Official setup identifies public requests using an API key or OAuth token. Use a Books-enabled
-Google Cloud project and a server-held API key; OAuth/library syncing is unnecessary for this
-feature. The original PLAN.md claim that keyless low-volume use is sufficient is not the setup
-we should rely on. Verify the owner's actual daily/minute quotas in Cloud Console rather than
-promise a fixed universal quota or automatic quota increases. No key exists in this environment,
-so authenticated responses, live coverage and project quota have not been verified.
+- Cards keep one rating, with its source, count and scope, and a short label when it is sparse,
+  a series fallback or unconfirmed.
+- The item page gets an expandable **Ratings by source** list: raw score and scale, number of
+  ratings (a rating count, not a review count), what it rates (edition / book / volume /
+  series), match status, link, when last checked, and which one is used with its reason
+  ("More ratings for this book"). Unconfirmed ones are listed apart with the existing confirm
+  action; they are never shown as verified.
+- Phone-width, keyboard, light/dark and reduced motion; check with `npm run screenshots` and its
+  accessibility sweep.
+- Refresh-related labels ("Refresh due", "Refresh failed; showing the previous result") arrive
+  with stage 4, not here.
 
-### Adapter and routing
+## Stage 3 — Google Books trial
 
-- Add `googlebooks.ts` using the existing SourceAdapter and polite client. Search with `isbn:`
-  first when available, then a bounded `intitle:`/`inauthor:` query; permit a bounded plain-text
-  fallback if constrained search finds nothing. Compare title, author, language, edition and
-  volume/omnibus numbers using the shared matching rules. Do not select the first hit blindly.
-- Use GET /books/v1/volumes with printType=books, relevance order, a modest maxResults and a
-  fields mask that retains ratings/counts and required attribution/link information. Use
-  GET /books/v1/volumes/{id} for matched-record refresh. Sanitize descriptions as plain text.
-- Add Google Books alongside the book sources for books, collected comics and manga volumes,
-  paced under its own quota. Do not restrict it to "nothing else matched": it must have an
-  opportunity to supply a better-supported rating even when Hardcover found the book.
-  Automatic single-issue identification continues to use the comic sources.
-- Treat publishedDate as this edition's date, not the work's first publication year. Use pages
-  only for the matched edition, with provenance. Prefer measured local length information.
-  Do not import Google series completion/order claims that the API does not supply.
-- Add enable/disable, masked-key storage, connection test and usage/error status to Settings and
-  Diagnostics. Keep the key in secrets and redact key= parameters from errors/logs; exclude keys
-  from backups, fixtures, browser responses and committed files. Restrict the key to Books API.
-- Run a private, small keyed pilot across books, collected comics and manga. Measure matching
-  precision, availability of ratings/counts, useful metadata gained, votes compared with existing
-  sources, duplicate editions and requests per usable match. Record only title-free summaries
-  publicly. Keyed smoke/coverage checks are validation work, not a prerequisite for drafting code.
+### What is known
 
-### Provider-specific requirements
+Google Books' public API can search (`GET /books/v1/volumes`) and fetch one record
+(`GET /books/v1/volumes/{id}`). Useful fields: ISBNs, authors, categories, description, this
+edition's published date, pages, language, `averageRating` and `ratingsCount`. All are optional,
+and how often the rating fields are filled for this library is unknown; that is what the trial
+measures. There is no public review text (`userInfo.review` is one user's own review). Google
+calls every record a "volume"; that does not mean a numbered manga or comic volume.
 
-Google requires attribution and prominent links. Show its search results in a separate branded
-group in Google order, not interleaved/reordered with other providers. Distinguish Google's raw
-results and ratings from the app's own recommendation explanation. Preserve original values.
+Google's documented setup identifies public requests with an API key, so PLAN.md's old "works
+without a key at low volume" is not something to rely on. Google's terms restrict keeping
+copies beyond what its cache headers allow, require attribution and links, and require Google's
+results to be shown apart from other providers' in Google's order. The trial is designed so
+none of that is needed yet: **nothing from Google is stored or used in recommendations during
+the trial.**
 
-The existing indefinite cache is unsuitable: Google's general terms restrict permanent copies
-and caching beyond allowed headers. Implement provider-specific retention before enabling Google
-in normal use: inspect real response headers, expire/purge both raw and normalized Google-derived
-content, and exclude expiring Google content from permanent backup snapshots unless permitted.
-Keep owner-entered data separate. Verify how derived recommendation use fits the published rules;
-if a planned persistent use is not permitted, use on-demand retrieval/attributed links for that
-part rather than assuming blanket storage permission. Do not repeatedly fetch expired content
-beyond quotas. Google Books also restricts charging for an application without separate
-permission; this plan targets the existing personal-use app.
+### What to build
 
-Official sources checked on 2026-11-10:
+- `sources/googlebooks.ts` on the existing polite client and adapter interface, with its own
+  pacing, Retry-After handling and circuit breaker. ISBN search first (`isbn:`), then a bounded
+  `intitle:`/`inauthor:` query, then a bounded plain query; `printType=books`, a small
+  `maxResults`, a `fields` mask. Score candidates with the shared matching rules (title, author,
+  language, volume and omnibus numbers); never take the first hit blindly. The published date
+  is this edition's, never the first publication year.
+- **Not added to normal lookups.** Its client is created with no database, so `source_cache`,
+  `item_matches` and `lookup_state` never receive Google data. Off by default, absent in demo
+  mode.
+- Settings → Online sources: a **Google Books (trial)** row: key entry (stored in `secrets`,
+  shown masked), Test connection, and **Run trial**. Errors and logs redact `key=`.
+- The trial samples up to 100 books, 25 collected comics and 25 manga volumes, preferring items
+  that already have a confirmed or accepted match elsewhere (so Google's choice can be checked
+  against a known identity) plus some that have no rating yet. It stops at 300 requests or the
+  first quota error, whichever comes first, and can be cancelled. Results stay in memory.
+- A **title-free report**, shown in Settings and included in Diagnostics → Copy report:
+  requests used, errors and quota pauses; per kind: matched / provisional / tie / none;
+  agreement with the existing identity (same ISBN or same title and author) / disagreement /
+  can't tell; how many matches carry a rating, the spread of `ratingsCount` and how many reach
+  20; how many currently unrated items Google would rate; how many items stage 1's selector
+  would switch to Google (run the pure selector with the Google rating added); pages and
+  categories that would fill gaps; editions returned per query. While the trial results are in
+  memory the owner can open a local-only list of disagreements, titles included, to judge them.
+  It is never written to disk or the repo.
+- Fixtures: Google answers in `fixtures/sources/synthetic/` with invented books, marked as
+  synthetic until real response shapes can be compared, then re-checked once the owner's
+  `Test connection` confirms the shape.
+
+### Deciding after the trial
+
+Proceed to stage 5 only if both hold (the owner can overrule):
+
+- no wrong Google match that the trial would have accepted with high confidence; and
+- Google gives a supported rating (20 or more) to at least 10% of sampled books that are
+  unrated or sparse today, **or** the selector would switch to Google for at least 10% of them.
+
+Otherwise record the title-free findings in the milestone notes and remove the trial code, so
+the app carries no Google obligations it does not use.
+
+## Stage 4 — automatic refresh
+
+Built around the existing `LookupManager`, not as a second lookup engine. Independent of Google.
+
+- **When:** check after startup and periodically while running. Nothing runs in demo mode, after
+  shutdown, when the setting is off, during a scan, or while a manual lookup runs (it defers).
+  After a long time closed, catch up gradually.
+- **What is due:** per item and source, from `lookup_state.looked_up_at`: 7 days for in-progress
+  and shortlisted items (`REFRESH_ACTIVE_DAYS`), 30 for the rest (`REFRESH_OTHER_DAYS`). Add
+  next-eligible time and failure count per item and source in a numbered migration, and keep the
+  time of the last real network answer apart from local re-scoring, so re-reading an old cached
+  answer never looks fresh. Add the new columns to backup (owner-relevant timings) or its
+  commented exclusion list, and to `app.release.test.ts`.
+- **How much:** batches of up to 25 source requests. New items and the owner's own actions
+  first, then in-progress and shortlisted, then the oldest. Automatic work may use at most 20% of
+  a source's daily allowance where it has one (Hardcover, Metron); count every real request,
+  including secondary ones. Skip a source whose circuit breaker is open; never reset breakers
+  from the scheduler. Back off with jitter on transient failures; a daily-quota answer pauses that
+  source until the next day. Metron first and ComicVine only as fallback, as now. Share work with
+  the existing 7-day published-series check so nothing is asked twice.
+- **What a refresh may change:** it re-asks the source and re-scores. It may update the rating,
+  count and other facts of the **same** matched record. It never replaces an owner-confirmed or
+  auto-accepted match with a different record: if a different candidate now wins, keep the
+  current match and add a "Check this match" entry to Needs review. A record that now has no
+  rating becomes unrated (it does not keep the old one). An empty, failed or ambiguous answer
+  keeps the previous result and records the failure. Re-check that the item still exists and is
+  unchanged before saving (merges, splits and edits during a request), as manual lookups already
+  do.
+- **Controls:** Settings: automatic refresh on/off, the two intervals shown, pause/resume and
+  "Refresh due books now". Diagnostics: per source, how many are due, last success, requests used
+  by automatic work, pauses and failures. Item page: "Refresh due" and "Refresh failed; showing
+  the previous result" labels; a refresh never blanks a page.
+- **Checks (fake clock, no network):** due selection by status; priority order; 429, quota and
+  5xx handling; budget enforcement including secondary requests; cancellation and restart;
+  demo/off/scan/manual deferral; a removed rating becomes unrated; a failure keeps the old
+  result; confirmed, accepted and rejected decisions survive a refresh and a restore.
+
+## Stage 5 — Google Books as a regular source (only if the trial passes)
+
+- Add Google alongside the book sources for books, collected comics and manga volumes, so it can
+  supply a better-supported rating even when Hardcover found the book. Single comic issues keep
+  using Metron and ComicVine.
+- Provider-specific retention, built before Google is enabled in normal use: inspect real cache
+  headers; give Google rows an expiry in `source_cache` and in `item_matches`; purge expired
+  raw and normalised Google content; let the stage 4 scheduler re-fetch within quota. Exclude
+  Google content from backups and **delete it from full snapshots** as `secrets` already are,
+  unless Google's terms are confirmed to allow keeping it. Owner-entered data stays separate.
+- Attribution and links on every Google rating and record. Where Google search candidates are
+  listed (Needs review, the match picker), show them as their own labelled group in Google's
+  order. Keep Google's values apart from the app's own explanation.
+- Settings and Diagnostics move from "trial" to an ordinary optional source: enable/disable,
+  masked key, Test connection, usage and errors. Never in backups, fixtures or browser responses.
+- Google's terms also restrict charging for an app without permission; this app is personal and
+  free.
+
+## Documentation for every stage
+
+Update PLAN.md (§12 sources and ratings, §20 values, §21 owner actions), README source coverage,
+`THIRD_PARTY_NOTICES.md` when Google becomes a regular source, Diagnostics text and the
+milestone notes. List live Google checks and Windows checks as open items; neither is proven by
+Linux fakes.
+
+Each pull request must pass `npm test`, `npm run typecheck`, `npm run lint`,
+`npm run format:check`, `npm run build` and `npm run report:matches` (0 wrong high-confidence
+matches), with `npm run screenshots` inspected for UI changes.
+
+## Owner actions (also in PLAN.md §21)
+
+- **When stage 3 is merged:** create a Google Cloud project, enable the Books API, and create an
+  API key restricted to the Books API (about 15 minutes; the pull request will include step-by-step
+  instructions). Enter it in Settings → Online sources → Google Books (trial), never in chat. Note
+  the daily quota Cloud Console shows. Press **Run trial**, then share Diagnostics → Copy report.
+- **After stage 1 or 2:** glance at Diagnostics' count of ratings that rest on unconfirmed matches
+  and confirm any that matter.
+
+## Official Google sources checked on 2026-11-10
 
 - [Using the API: credentials, query operators and location behavior](https://developers.google.com/books/docs/v1/using)
 - [Volume fields: metadata, ratings and user review](https://developers.google.com/books/docs/v1/reference/volumes)
@@ -193,34 +289,3 @@ Official sources checked on 2026-11-10:
 - [Attribution, linking and search-result presentation](https://developers.google.com/books/branding)
 - [Google API content and caching terms, section 5](https://developers.google.com/terms)
 - [Google Books additional terms](https://developers.google.com/books/terms)
-
-## 5. Implementation sequence and verification
-
-1. Extend provenance/target/freshness data and add any numbered SQLite migration. Define backup
-   inclusion/exclusion and restoration defaults, especially Google's expiring content. Recompute
-   rating choices from stored data without a network-wide forced refresh. Change MATCH_VERSION
-   only if identity matching/derived source parsing changes, not just for a rating-policy change.
-2. Implement the pure selector, source-statistics deduplication and API response, then the
-   alternative-ratings UI. Verify that personal ratings and unknown-as-neutral still work.
-3. Add Google Books, credential setup, attribution/presentation, provider cache policy and
-   network-free adapter fixtures; perform the optional keyed pilot when the owner enters a key.
-4. Add the scheduler, persisted due/retry state, source budgets and refresh controls. Roll out
-   with small batches and visible progress; ensure clean cancellation/shutdown.
-5. Update PLAN.md §12/§20, README source coverage, notices, setup instructions, Diagnostics and
-   milestone notes to describe final behavior and any live checks still outstanding.
-
-Meaningful checks: selector scenarios above; invalid/missing counts; a wrong omnibus; Google
-edition-date isolation; multiple editions without vote summing; the same manga score attached
-to multiple volumes; provisional alternatives; unknown ratings; retry after 429/403 quota/5xx;
-malformed responses; correct cache expiry and purging; successful removal of a rating; failed
-refresh retention; restart/cancellation/deduplication; manual work priority; disabled/demo modes;
-and preserving confirmed/rejected matches through refresh and restore. Tests use invented
-network-free fixtures and a fake clock. Live coverage evidence stays separate from fixture tests.
-
-Run the repository checks (tests, typecheck, lint, formatting, web build and match-quality
-report), inspect demo screenshots, and exercise the new controls in a real browser. Record the
-Windows check and authenticated Google pilot separately; neither is proven by Linux fakes.
-
-Done means all existing five still work, Google can be enabled with a key, the rating choice is
-explainable and scope-aware, alternatives are visible, due work refreshes within quotas, failures
-preserve permitted useful data, and owner corrections remain intact.
