@@ -233,7 +233,7 @@ whatBooksNext/
     db/        schema, numbered migrations, snapshots
     scan/      folders, availability, light pass, deep pass, formats/
     identify/  filename parser, candidates, confidence, grouping, merge/split
-    sources/   openlibrary, googlebooks, hardcover, anilist, metron, comicvine
+    sources/   openlibrary, hardcover, anilist, metron, comicvine
     lib/       score, eligibility, modes, taste, progress, backup, import
     platform/  Windows adapters (volumes, file attributes, launching) + fakes
     routes/
@@ -676,7 +676,7 @@ its adapter.**
 | --- | --- | --- |
 | **Open Library** | Book search, ISBN, subjects, covers, first publication year | No key. Descriptive User-Agent; about 1 request/second. Cover lookups by ISBN/OLID had a much tighter limit (about 100 per 5 minutes per IP) — **verify**, and prefer covers from the files themselves. |
 | **AniList** | Manga: score, tags, genres, volumes, publication status, reading direction | No key. GraphQL. Per-minute limit (90 nominal, lowered to 30 at times) — obey the response headers. |
-| **Google Books** | Fallback search, ISBN, categories, page counts | Works without a key at low volume. |
+| ~~Google Books~~ | Dropped | Its terms allow no stored copies beyond each answer's cache header, it has no public review text, and a key is needed in practice. See the end of the [ratings and refresh plan](docs/plans/online-ratings-and-refreshes.md). |
 | **Hardcover** | Book ratings + counts, series, genres | Free token from the user's account. GraphQL, labelled beta — expect changes. |
 | **Metron** | Comics: series, issues, creators, arcs; possibly collected-edition contents | Free account. Little or no rating data. |
 | **ComicVine** | Comics fallback | Free key; unique User-Agent; about 200 requests per resource per hour. |
@@ -712,8 +712,11 @@ keys.
   books from one source and few from another.
 - **Your rating and the community rating are shown separately.** Your rating, when present, is what
   the ranking uses.
-- Community rating preference: Hardcover → AniList → Google Books → Open Library, where the scope
-  matches. **A series score is never shown as a volume's score.**
+- Current community rating preference: Hardcover → AniList → Open Library. The
+  [ratings and refresh plan](docs/plans/online-ratings-and-refreshes.md) replaces this fixed order
+  with scope, then the most ratings among trusted matches; shows every source's rating and the
+  best detail from each source; keeps Hidden gems honest ("few ratings everywhere we looked");
+  and adds automatic refreshes. **A series score is never shown as a volume's score.**
 - Unknown rating: neutral in the blend; **fails** any "highly rated" filter.
 
 ### 12.3 Duration
@@ -1175,7 +1178,8 @@ down and the important ones fixed or scheduled.
 
 ### M4 — Series, other sources and imports
 
-- Google Books, Metron, ComicVine adapters (each optional, verified against current docs).
+- Metron and ComicVine adapters (each optional, verified against current docs). Google Books was
+  dropped (§12.1).
 - Series runs and issues, collection coverage (suggested/confirmed) and its shared reading state
   (§12.5), gaps on cards, publication status.
 - Merge/split with conflict preview, the undo stack and the "edited since" rule.
@@ -1302,7 +1306,7 @@ plainly at the start of your message, with what to do and roughly how long it ta
 | **Start of M3** | **Create a free Hardcover account** and generate an API token (about 5 minutes). Once the adapter is built, enter the token in the app's Settings (never in chat), run Diagnostics → Test Hardcover, and share the copied report. Decides whether Hardcover can be labelled Recommended. |
 | **End of M3** | First ~20-minute recommendation quality session (§17.2). |
 | **During M1–M6, as they come up** | Check the "needs checking on the owner's machine" items on the Windows PC. |
-| **End of M6** | Second quality session; try installing from the README as a stranger would. |
+| **End of M6** | Try installing from the README as a stranger would. The second quality session moves to after stage 3 of the [ratings and refresh plan](docs/plans/online-ratings-and-refreshes.md), so it judges the new ratings and details. |
 
 ### Still to confirm (not blocking)
 
