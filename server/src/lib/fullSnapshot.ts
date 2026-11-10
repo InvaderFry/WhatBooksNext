@@ -57,13 +57,47 @@ export function fullSnapshotsDir(dataDir: string): string {
   return path.join(dataDir, 'full-snapshots');
 }
 
-export async function takeFullSnapshot(db: DB, dataDir: string): Promise<FullSnapshotInfo> {
+/** One snapshot at a time per data folder: two at once would race over files and pruning. */
+const queues = new Map<string, Promise<unknown>>();
+
+export function takeFullSnapshot(db: DB, dataDir: string): Promise<FullSnapshotInfo> {
   const root = fullSnapshotsDir(dataDir);
+  const previous = queues.get(root) ?? Promise.resolve();
+  const next = previous.catch(() => {}).then(() => snapshotNow(db, dataDir, root));
+  queues.set(root, next);
+  // Drop the entry once settled, unless another snapshot has queued behind this one.
+  void next
+    .catch(() => {})
+    .then(() => {
+      if (queues.get(root) === next) queues.delete(root);
+    });
+  return next;
+}
+
+/**
+ * A new folder name nobody else has: created exclusively (no `recursive`), so even another
+ * process taking a snapshot in the same millisecond gets "-2", "-3"… instead of sharing it.
+ */
+function claimName(root: string): string {
+  fs.mkdirSync(root, { recursive: true });
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const name = `full-${stamp}`;
+  for (let n = 1; n < 1000; n++) {
+    const name = n === 1 ? `full-${stamp}` : `full-${stamp}-${n}`;
+    if (fs.existsSync(path.join(root, name))) continue;
+    try {
+      fs.mkdirSync(path.join(root, `${name}.partial`));
+      return name;
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err;
+    }
+  }
+  throw new Error('Could not find a free name for the snapshot folder.');
+}
+
+async function snapshotNow(db: DB, dataDir: string, root: string): Promise<FullSnapshotInfo> {
+  const name = claimName(root);
   const dir = path.join(root, name);
   const partial = `${dir}.partial`;
-  fs.mkdirSync(partial, { recursive: true });
   try {
     const file = path.join(partial, FULL_SNAPSHOT_DB);
     await db.backup(file);
@@ -102,7 +136,8 @@ function infoOf(root: string, name: string): FullSnapshotInfo {
 }
 
 const isSnapshot = (root: string, n: string) =>
-  /^full-\d{4}-\d{2}-\d{2}T[\d-]+Z$/.test(n) && fs.existsSync(path.join(root, n, FULL_SNAPSHOT_DB));
+  /^full-\d{4}-\d{2}-\d{2}T[\d-]+Z(-\d+)?$/.test(n) &&
+  fs.existsSync(path.join(root, n, FULL_SNAPSHOT_DB));
 
 function pruneFullSnapshots(root: string, keep: number): void {
   const mine = fs

@@ -12,6 +12,7 @@ import {
   type VolumeInfo,
 } from './types.ts';
 import { WINDOWS_HELPER_SCRIPT } from './windowsHelper.ps1.ts';
+import { launchDetached } from './launch.ts';
 
 /** A request that takes longer than this is treated as failed (attributes then read as unknown). */
 const HELPER_TIMEOUT_MS = 30_000;
@@ -255,25 +256,17 @@ export class WindowsPlatform implements Platform {
   async openFile(absFile: string): Promise<void> {
     // explorer.exe with a file path opens it with the default app. The path comes from the
     // database, is passed as one argument, and Windows paths cannot contain a double quote.
-    launch('explorer.exe', [absFile], false);
+    await launchDetached('explorer.exe', [absFile], { windowsHide: false });
   }
 
   async showInFolder(absFile: string): Promise<void> {
-    launch('explorer.exe', [`/select,"${absFile.replace(/"/g, '')}"`], true);
+    await launchDetached('explorer.exe', [`/select,"${absFile.replace(/"/g, '')}"`], {
+      windowsHide: false,
+      windowsVerbatimArguments: true,
+    });
   }
 
   close(): Promise<void> {
     return this.helper.close();
   }
-}
-
-function launch(cmd: string, args: string[], verbatim: boolean) {
-  const child = spawn(cmd, args, {
-    detached: true,
-    stdio: 'ignore',
-    windowsHide: false,
-    windowsVerbatimArguments: verbatim,
-  });
-  child.on('error', () => {});
-  child.unref();
 }

@@ -1,5 +1,5 @@
-import { spawn } from 'node:child_process';
 import path from 'node:path';
+import { launchDetached } from './launch.ts';
 import { listWithNode } from './nodeListing.ts';
 import type { DirEntry, Platform, VolumeInfo } from './types.ts';
 
@@ -39,19 +39,13 @@ export class GenericPlatform implements Platform {
   }
 
   async openFile(absFile: string): Promise<void> {
-    launch(process.platform === 'darwin' ? 'open' : 'xdg-open', [absFile]);
+    await launchDetached(process.platform === 'darwin' ? 'open' : 'xdg-open', [absFile]);
   }
 
   async showInFolder(absFile: string): Promise<void> {
-    if (process.platform === 'darwin') launch('open', ['-R', absFile]);
-    else launch('xdg-open', [path.dirname(absFile)]);
+    if (process.platform === 'darwin') await launchDetached('open', ['-R', absFile]);
+    else await launchDetached('xdg-open', [path.dirname(absFile)]);
   }
 
   async close(): Promise<void> {}
-}
-
-function launch(cmd: string, args: string[]) {
-  const child = spawn(cmd, args, { detached: true, stdio: 'ignore' });
-  child.on('error', () => {});
-  child.unref();
 }

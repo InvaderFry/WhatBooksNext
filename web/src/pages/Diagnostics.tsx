@@ -20,7 +20,13 @@ interface Diag {
   lastSnapshot: { kind: string; createdAt: string } | null;
   snapshots: { preMigration: number; preRestore: number; full: number };
   dataFolder: string | null;
-  lastLaunch: { action: 'open' | 'show'; ok: boolean; at: string; error: string | null } | null;
+  lastLaunch: {
+    action: 'open' | 'show';
+    ok: boolean;
+    asked?: boolean;
+    at: string;
+    error: string | null;
+  } | null;
   placeholderDetection: string;
   folders: DiagFolder[];
   deepScan: { filesRead: number; filesHashed: number; problems: number; covers: number };
@@ -236,13 +242,17 @@ function toReport(d: Diag): string {
   return lines.join('\n');
 }
 
-/** "Open works on a chosen file" (§15): how the last Open / Show in folder went. */
+/**
+ * "Open works on a chosen file" (§15): how the last Open / Show in folder went. The app can tell
+ * that the system started the request, not that an app then showed the book, so it says so.
+ */
 function launchText(l: Diag['lastLaunch']): string {
   if (!l) return 'Open: not tried since the app started.';
   const what = l.action === 'open' ? 'Open' : 'Show in folder';
-  return l.ok
-    ? `${what}: worked (${new Date(l.at).toLocaleString()}).`
-    : `${what}: failed (${new Date(l.at).toLocaleString()}): ${l.error ?? 'no detail'}.`;
+  const when = new Date(l.at).toLocaleString();
+  if (l.ok) return `${what}: the system started it (${when}). Check that the book appeared.`;
+  if (l.asked) return `${what}: stopped to ask before downloading from the cloud (${when}).`;
+  return `${what}: failed (${when}): ${l.error ?? 'no detail'}`;
 }
 
 /**

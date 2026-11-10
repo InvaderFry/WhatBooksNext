@@ -585,33 +585,44 @@ export function createApp(ctx: AppContext) {
     return { abs, availability: f.availability };
   };
 
+  // Every attempt is recorded, its file checks included: a drive unplugged since the last
+  // Open must not leave that earlier success showing in Diagnostics.
   app.post(
     '/api/files/:fileId/open',
-    route(async (req) => {
-      const { abs } = await fileForAction(req);
-      // Re-check right now, not the scan's answer (§9.5).
-      const state = platform.supportsPlaceholders
-        ? availabilityFromAttributes(await platform.checkAttributes(abs))
-        : 'present';
-      if (state !== 'present' && req.body?.confirmDownload !== true) {
-        throw new NeedsConfirmation(
-          state === 'placeholder'
-            ? 'This file is in the cloud and will download when opened. Open anyway?'
-            : "This file's download state can't be checked, so opening it may download it. Open anyway?",
-        );
-      }
-      await launched('open', () => platform.openFile(abs));
-      return { ok: true };
-    }),
+    route((req) => launched('open', () => openChecked(req))),
   );
+  const openChecked = async (req: Request) => {
+    const { abs } = await fileForAction(req);
+    // Re-check right now, not the scan's answer (§9.5).
+    const state = platform.supportsPlaceholders
+      ? availabilityFromAttributes(await platform.checkAttributes(abs))
+      : 'present';
+    if (state !== 'present' && req.body?.confirmDownload !== true) {
+      throw new NeedsConfirmation(
+        state === 'placeholder'
+          ? 'This file is in the cloud and will download when opened. Open anyway?'
+          : "This file's download state can't be checked, so opening it may download it. Open anyway?",
+      );
+    }
+    await launchOrExplain(() => platform.openFile(abs));
+  };
+  /** A launcher that won't start is the PC's problem, said plainly — not a server crash. */
+  const launchOrExplain = async (fn: () => Promise<void>) => {
+    try {
+      await fn();
+    } catch (err) {
+      throw new HttpError(500, `The file couldn't be opened. (${(err as Error).message})`);
+    }
+  };
 
   app.post(
     '/api/files/:fileId/show',
-    route(async (req) => {
-      const { abs } = await fileForAction(req);
-      await launched('show', () => platform.showInFolder(abs));
-      return { ok: true };
-    }),
+    route((req) =>
+      launched('show', async () => {
+        const { abs } = await fileForAction(req);
+        await launchOrExplain(() => platform.showInFolder(abs));
+      }),
+    ),
   );
 
   // ---- Backup and restore (§16) ----------------------------------------------------------------

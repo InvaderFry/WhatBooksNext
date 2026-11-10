@@ -88,11 +88,16 @@ export class FakePlatform implements Platform {
     return this.attributes.get(path.resolve(absFile)) ?? 0x20;
   }
 
+  /** Set to make Open / Show in folder fail, as a missing launcher would. */
+  launchError: string | null = null;
+
   async openFile(absFile: string): Promise<void> {
+    if (this.launchError) throw new Error(this.launchError);
     this.opened.push({ action: 'open', path: absFile });
   }
 
   async showInFolder(absFile: string): Promise<void> {
+    if (this.launchError) throw new Error(this.launchError);
     this.opened.push({ action: 'show', path: absFile });
   }
 

@@ -185,6 +185,19 @@ describe('full local snapshot (§16)', () => {
     expect((await api.get('/api/diagnostics')).body.snapshots.full).toBe(3);
   }, 30_000);
 
+  it('takes snapshots asked for at the same moment one after another, each in its own folder', async () => {
+    await demo();
+    const results = await Promise.all([1, 2, 3].map(() => api.post('/api/snapshots/full')));
+    expect(results.map((r) => r.status)).toEqual([200, 200, 200]);
+    const paths = results.map((r) => r.body.snapshot.path as string);
+    expect(new Set(paths).size).toBe(3);
+    for (const p of paths) expect(fs.existsSync(path.join(p, FULL_SNAPSHOT_DB))).toBe(true);
+    const listed = (await api.get('/api/snapshots/full')).body.snapshots.map(
+      (x: { path: string }) => x.path,
+    );
+    expect(listed.sort()).toEqual([...paths].sort());
+  }, 30_000);
+
   it('says so when there is no data folder to save into', async () => {
     await start(await memoryDb(), fakePlatformWithDrives({}), null);
     expect((await api.get('/api/snapshots/full')).body).toEqual({
@@ -257,7 +270,7 @@ describe('Stats route (§15)', () => {
 });
 
 describe('Diagnostics (§15)', () => {
-  it('reports whether the last Open worked', async () => {
+  async function oneBook() {
     const drive = tempDir('wbn-m6-drive-');
     dirs.push(drive);
     fs.writeFileSync(path.join(drive, 'invented.epub'), 'x'.repeat(100));
@@ -266,14 +279,39 @@ describe('Diagnostics (§15)', () => {
     expect((await api.post('/api/folders', { path: drive })).status).toBe(200);
     await api.post('/api/scan', {});
     await made!.scans.wait();
-    expect((await api.get('/api/diagnostics')).body.lastLaunch).toBeNull();
     const item = (await api.get('/api/items')).body.items[0];
     const file = (await api.get(`/api/items/${item.id}`)).body.files[0];
-    expect((await api.post(`/api/files/${file.id}/open`)).status).toBe(200);
-    expect((await api.get('/api/diagnostics')).body.lastLaunch).toMatchObject({
+    return { platform, fileId: file.id as string };
+  }
+  const lastLaunch = async () => (await api.get('/api/diagnostics')).body.lastLaunch;
+
+  it('reports whether the last Open worked', async () => {
+    const { fileId } = await oneBook();
+    expect(await lastLaunch()).toBeNull();
+    expect((await api.post(`/api/files/${fileId}/open`)).status).toBe(200);
+    expect(await lastLaunch()).toMatchObject({ action: 'open', ok: true, error: null });
+  });
+
+  it('reports a failed Open when the launcher fails, never success', async () => {
+    const { platform, fileId } = await oneBook();
+    platform.launchError = 'spawn explorer.exe ENOENT';
+    const r = await api.post(`/api/files/${fileId}/open`);
+    expect(r.status).toBe(500);
+    expect(r.body.error).toMatch(/couldn't be opened.*ENOENT/);
+    expect(await lastLaunch()).toMatchObject({ action: 'open', ok: false });
+  });
+
+  it('replaces an earlier success when the next try fails its file checks', async () => {
+    const { platform, fileId } = await oneBook();
+    expect((await api.post(`/api/files/${fileId}/open`)).status).toBe(200);
+    platform.volumes[0]!.root = null; // drive unplugged
+    expect((await api.post(`/api/files/${fileId}/open`)).status).toBe(409);
+    expect(await lastLaunch()).toMatchObject({
       action: 'open',
-      ok: true,
-      error: null,
+      ok: false,
+      error: 'The external drive is not connected.',
     });
+    expect((await api.post(`/api/files/${fileId}/show`)).status).toBe(409);
+    expect(await lastLaunch()).toMatchObject({ action: 'show', ok: false });
   });
 });
