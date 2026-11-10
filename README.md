@@ -73,6 +73,15 @@ When a book has several files, it opens EPUB first; a comic opens PDF, then CBZ,
 copy first). Every file keeps its own Open button on the book's page. **Triage** sorts books into Want / Maybe / Never / Already read; it's
 optional.
 
+**Series.** Books in a series are offered one at a time: the one you're reading, else the next
+unread one. The series comes from the files' own details (EPUB series, ComicInfo), or from a source
+once the match is certain. If a number is missing ("you own volumes 1, 2 and 4"), the card says
+so **before you start**: _Gap ahead: volume 3 isn't recorded as owned or read._ You can carry on
+anyway, say you read it elsewhere (it fills the gap, is never recommended, and adds no finish
+date), or fix the series on the book's page. There you can also correct a book's series or number,
+take it out of a series, and say whether the story is finished. Single comic issues only count
+gaps between issues you have, because issue runs often start part-way.
+
 To rank books, whatBooksNext looks them up online. Only titles, authors and ISBNs are sent —
 never files or your reading history.
 

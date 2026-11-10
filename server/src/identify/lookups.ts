@@ -27,6 +27,7 @@ import {
   type MatchFacts,
   type ScoredCandidate,
 } from './match.ts';
+import { syncSeries } from './series.ts';
 
 /**
  * Lookups (PLAN.md §12.1, §11.2): for each item, ask the sources for its kind, score the
@@ -354,7 +355,9 @@ export function picturesFile(
 }
 
 /** Kind sources that come from the files themselves (identify/items.ts); these always win. */
-const FILE_KINDS = new Set(['format', 'pdf_type', 'comicinfo']);
+// Kinds that come from the thing itself, not a guess: a file's format or its own metadata, or
+// (for an entry marked read elsewhere) the series it was added to.
+const FILE_KINDS = new Set(['format', 'pdf_type', 'comicinfo', 'series']);
 
 /**
  * Facts that follow from the matches: a kind when the files don't say (§8), the reference
@@ -716,6 +719,7 @@ export class LookupManager {
         this.db,
         this.db.prepare('SELECT id FROM items').pluck().all() as string[],
       );
+      syncSeries(this.db);
     })();
     const ids = opts.itemIds ?? itemsNeedingLookup(this.db, this.sources, opts.refresh);
     const status: LookupStatus = {
@@ -794,6 +798,12 @@ export class LookupManager {
       status.status = 'failed';
       status.error = (err as Error).message;
     } finally {
+      // What the run learned about series (names, order, finished or ongoing) takes effect.
+      try {
+        syncSeries(this.db);
+      } catch (err) {
+        status.errors = [`Series: ${(err as Error).message}`, ...status.errors].slice(0, 5);
+      }
       status.finishedAt = nowIso();
       status.estimateSeconds = null;
       this.db

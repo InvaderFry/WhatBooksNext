@@ -3,6 +3,7 @@ import { groupUnassignedFiles, type GroupingResult } from '../identify/grouping.
 import { refreshAllPrimaries, refreshFactsOfItems } from '../identify/items.ts';
 import { refreshDerivedFacts } from '../identify/lookups.ts';
 import { reconcileIdentity, type ReconcileResult } from '../identify/reconcile.ts';
+import { syncSeries } from '../identify/series.ts';
 import type { Platform } from '../platform/types.ts';
 import { HttpError, newId, nowIso } from '../util.ts';
 import { runDeepPass, type DeepProgress } from './deepPass.ts';
@@ -197,6 +198,8 @@ export class ScanManager {
         refreshFactsOfItems(this.db, [...items]);
         // Facts that follow from titles and matches (kind guesses, the reference flag).
         refreshDerivedFacts(this.db, [...items]);
+        // Series follow the items' names and numbers (§12.5).
+        syncSeries(this.db);
         return r;
       })();
       const { touchedItems: _ignored, ...summary } = identity;

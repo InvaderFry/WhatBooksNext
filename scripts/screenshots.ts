@@ -79,6 +79,26 @@ try {
         await p.getByRole('alertdialog').waitFor();
       },
     ],
+    [
+      'item-series',
+      '/?view=library&q=copperline',
+      async (p) => {
+        await p.getByRole('link', { name: /Copperline #2/ }).click();
+        await p.getByRole('heading', { name: 'Series' }).waitFor();
+        await p.getByRole('button', { name: 'Correct series or number' }).click();
+      },
+    ],
+    [
+      'item-series-finished',
+      '/?view=library&q=clocks',
+      async (p) => {
+        await p
+          .getByRole('link', { name: /River of Clocks/ })
+          .first()
+          .click();
+        await p.getByRole('heading', { name: 'Series' }).waitFor();
+      },
+    ],
     ['shortlist', '/?view=shortlist', async () => {}],
     [
       'keyboard-focus',

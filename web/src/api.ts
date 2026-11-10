@@ -67,7 +67,12 @@ export interface UserData {
   triage: 'want' | 'maybe' | 'never' | null;
   effortOverride: 'light' | 'medium' | 'heavy' | null;
   preferredFileId: string | null;
+  /** The owner's series name ('' = not in a series); null lets the app decide. */
+  seriesOverride: string | null;
+  seriesPositionOverride: number | null;
 }
+
+export type SeriesUnit = 'volume' | 'issue';
 
 export interface ItemSummary {
   id: string;
@@ -77,6 +82,7 @@ export interface ItemSummary {
   kindIsGuess: boolean;
   isReference: boolean;
   seriesHint: string | null;
+  series: { id: string; name: string; position: number | null; unit: SeriesUnit } | null;
   creators: { name: string; role?: string }[];
   /** File whose thumbnail is this item's cover; null when there is none. */
   coverFileId: string | null;
@@ -386,11 +392,48 @@ export interface Card {
   progress: Progress;
   shortlisted: boolean;
   scope: string;
+  series: { id: string; name: string } | null;
+  gaps: CardGap[];
   lengthBasis: string | null;
   fit: 'fits' | 'might_fit' | 'too_long' | 'unknown' | 'any';
   reasons: string[];
   limitations: string[];
   score: number;
+}
+
+export interface CardGap {
+  text: string;
+  from: number;
+  to: number;
+  unit: SeriesUnit;
+  state: 'not_owned' | 'unavailable';
+}
+
+export interface SeriesEntry {
+  id: string;
+  title: string;
+  position: number | null;
+  label: string | null;
+  unit: SeriesUnit;
+  progress: Progress;
+  holding: 'owned' | 'unavailable' | 'read_elsewhere' | null;
+  availabilityLabel: string | null;
+  formats: string[];
+}
+
+export interface SeriesView {
+  id: string;
+  name: string;
+  kind: Kind | null;
+  status: 'finished' | 'ongoing' | 'unknown';
+  statusSource: string | null;
+  ownerStatus: 'finished' | 'ongoing' | null;
+  total: number | null;
+  orderSource: string | null;
+  entries: SeriesEntry[];
+  gaps: CardGap[];
+  missingAfter: { from: number; to: number } | null;
+  unnumbered: number;
 }
 
 export interface TimePreset {

@@ -3,6 +3,15 @@ import { SOURCE_LABELS } from '../sources/types.ts';
 import { formatRange, remaining, type Duration, type Effort } from './estimate.ts';
 import type { AvailabilityView, UserData } from './library.ts';
 import type { CommunityRating } from './ratings.ts';
+import {
+  gapSentence,
+  ownedCount,
+  seriesGaps,
+  type Gap,
+  type Holding,
+  type SeriesMember,
+  type SeriesUnit,
+} from './series.ts';
 
 /**
  * Choosing what to read (PLAN.md §13): eligibility, one-per-series, the weighted blend with
@@ -25,7 +34,17 @@ export interface RankItem {
   matchConfirmed: boolean;
   /** Only read elsewhere, not owned (§7 'history' location). Teaches taste, never recommended. */
   historyOnly: boolean;
-  series: { key: string; name: string; position: number | null; label: string | null } | null;
+  series: {
+    /** The series id: one-per-series and gaps work on it. */
+    key: string;
+    name: string;
+    position: number | null;
+    label: string | null;
+    unit: SeriesUnit;
+    status: 'finished' | 'ongoing' | 'unknown';
+    /** Installments a source says the finished story has; null when not stated. */
+    total: number | null;
+  } | null;
   duration: Duration | null;
   community: CommunityRating | null;
   firstPublishYear: number | null;
@@ -88,13 +107,14 @@ export function ineligibleBecause(i: RankItem): string | null {
 /**
  * One per series (§8): before ranking, each series offers only its next installment — an
  * in-progress one first, else the earliest unread one. Skipping ahead never marks anything read.
- * Items without a series are standalone.
+ * Items without a series, and installments with no number (side stories, specials), are
+ * standalone.
  */
 export function onePerSeries(items: RankItem[]): RankItem[] {
   const out: RankItem[] = [];
   const bySeries = new Map<string, RankItem[]>();
   for (const i of items) {
-    if (!i.series) out.push(i);
+    if (!i.series || i.series.position === null) out.push(i);
     else {
       if (!bySeries.has(i.series.key)) bySeries.set(i.series.key, []);
       bySeries.get(i.series.key)!.push(i);
@@ -102,8 +122,12 @@ export function onePerSeries(items: RankItem[]): RankItem[] {
   }
   for (const group of bySeries.values()) {
     const eligible = group.filter((i) => ineligibleBecause(i) === null);
+    // Volumes before issues when a series has both (collected editions usually come first).
+    const unit = (i: RankItem) => (i.series?.unit === 'issue' ? 1 : 0);
     const pos = (i: RankItem) => i.series?.position ?? Number.POSITIVE_INFINITY;
-    const ordered = [...eligible].sort((a, b) => pos(a) - pos(b) || a.title.localeCompare(b.title));
+    const ordered = [...eligible].sort(
+      (a, b) => unit(a) - unit(b) || pos(a) - pos(b) || a.title.localeCompare(b.title),
+    );
     const next = ordered.find((i) => IN_PROGRESS.includes(i.user.progress)) ?? ordered[0];
     if (next) out.push(next);
   }
@@ -113,12 +137,63 @@ export function onePerSeries(items: RankItem[]): RankItem[] {
 /** Has the owner read or started any other installment of this item's series? */
 function seriesStarted(i: RankItem, all: RankItem[]): boolean {
   if (!i.series) return false;
-  return all.some(
+  return seriesMembers(i, all).some(
     (o) =>
       o.id !== i.id &&
-      o.series?.key === i.series!.key &&
+      !o.historyOnly &&
       (o.user.progress === 'finished' || IN_PROGRESS.includes(o.user.progress)),
   );
+}
+
+/** Every item of each series, indexed once per list (cards look their series up often). */
+const seriesIndexCache = new WeakMap<RankItem[], Map<string, RankItem[]>>();
+function seriesMembers(i: RankItem, all: RankItem[]): RankItem[] {
+  if (!i.series) return [];
+  let idx = seriesIndexCache.get(all);
+  if (!idx) {
+    idx = new Map();
+    for (const o of all) {
+      if (!o.series) continue;
+      if (!idx.has(o.series.key)) idx.set(o.series.key, []);
+      idx.get(o.series.key)!.push(o);
+    }
+    seriesIndexCache.set(all, idx);
+  }
+  return idx.get(i.series.key) ?? [i];
+}
+
+/** What the owner has of an installment, for gaps (§12.5). Null: nothing at all. */
+export function holdingOf(i: Pick<RankItem, 'historyOnly' | 'availability'>): Holding | null {
+  if (i.historyOnly) return 'read_elsewhere';
+  if (i.availability.state === 'missing') return 'unavailable';
+  if (i.availability.state === 'none') return null;
+  return 'owned';
+}
+
+export function asMembers(items: RankItem[]): SeriesMember[] {
+  const out: SeriesMember[] = [];
+  for (const o of items) {
+    const holding = holdingOf(o);
+    if (!o.series || !holding) continue;
+    out.push({ id: o.id, position: o.series.position, unit: o.series.unit, holding });
+  }
+  return out;
+}
+
+export interface CardGap {
+  text: string;
+  /** The numbers the owner can mark as read elsewhere. */
+  from: number;
+  to: number;
+  unit: SeriesUnit;
+  state: Gap['state'];
+}
+
+/** Gaps in this item's series, said from where it sits (§13.4). */
+export function gapsForCard(i: RankItem, all: RankItem[]): CardGap[] {
+  if (!i.series || i.series.position === null) return [];
+  const gaps = seriesGaps(asMembers(seriesMembers(i, all)), i.series.unit);
+  return gaps.map((g) => ({ ...g, text: gapSentence(g, i.series!.position) }));
 }
 
 // ---- Components (§13.7): each 0–1, unknown = neutral ---------------------------------------
@@ -192,6 +267,10 @@ export interface Card {
   shortlisted: boolean;
   /** "Whole book · ~4–5 h", "Next issue · ~15–25 min", "Starts a series · vol. 1". */
   scope: string;
+  /** The series, for the card's link and gap actions. */
+  series: { id: string; name: string } | null;
+  /** Gaps in its series (§13.4): shown as text with an icon, before the owner starts. */
+  gaps: CardGap[];
   lengthBasis: string | null;
   fit: Fit;
   reasons: string[];
@@ -232,11 +311,20 @@ function scopeText(i: RankItem, all: RankItem[], d: Duration | null): string {
     if (left) return `Continue · ${formatRange(left)} left (rough)`;
   }
   if (i.series) {
-    const label = i.series.label ? ` ${i.series.label}` : '';
-    const owned = all.filter((o) => o.series?.key === i.series!.key).length;
-    const unit = d?.unit === 'issue' ? 'issue' : 'vol.';
-    if (seriesStarted(i, all)) return `Next in series ·${label ? ` ${unit}${label}` : ''} · ${len}`;
-    return `Starts a series ·${label ? ` ${unit}${label} ·` : ''} ${owned} owned · ${len}`;
+    const s = i.series;
+    const unit = s.unit === 'issue' ? 'issue' : 'vol.';
+    const label = s.label ? ` ${unit} ${s.label} ·` : '';
+    const story =
+      s.status === 'finished'
+        ? ' · story finished'
+        : s.status === 'ongoing'
+          ? ' · story ongoing'
+          : '';
+    if (seriesStarted(i, all)) return `Next in series ·${label} ${len}${story}`;
+    // "vol. 1 · 3 of 12 owned · story ongoing" (§13.3). Read-elsewhere entries aren't owned.
+    const owned = ownedCount(asMembers(seriesMembers(i, all)));
+    const of = s.total !== null && s.unit === 'volume' ? ` of ${s.total}` : '';
+    return `Starts a series ·${label} ${owned}${of} owned · ${len}${story}`;
   }
   const whole =
     d?.unit === 'issue' ? 'One issue' : d?.unit === 'volume' ? 'One volume' : 'Whole book';
@@ -327,6 +415,8 @@ export function buildCard(i: RankItem, all: RankItem[], s: Situation): Card {
     progress: i.user.progress,
     shortlisted: i.user.shortlistPosition !== null,
     scope: scopeText(i, all, d),
+    series: i.series ? { id: i.series.key, name: i.series.name } : null,
+    gaps: gapsForCard(i, all),
     lengthBasis: d?.basis ?? null,
     fit,
     reasons: reasons

@@ -104,6 +104,17 @@ function driveFiles(): Record<string, Buffer> {
       cover: true,
       seed: 5,
     }),
+    // The second of a three-book series whose third isn't owned (§12.5: "2 of 3 owned").
+    'Novels/thetinkersclock.epub': makeEpub({
+      title: 'The Tinker’s Clock',
+      creators: ['Tamsin Achterberg'],
+      language: 'en',
+      series: 'The Clockwater Books',
+      seriesIndex: '2',
+      chapters: words(61_000),
+      cover: true,
+      seed: 13,
+    }),
     // A translation in the same folder: grouped by name first, then split by language.
     'Translations/saltandember.epub': makeEpub({
       title: 'Salt and Ember',

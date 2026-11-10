@@ -40,6 +40,10 @@ export interface UserPatch {
   effortOverride?: 'light' | 'medium' | 'heavy' | null;
   /** "Use this file by default": one of the item's file ids, or null to let the app choose. */
   preferredFileId?: string | null;
+  /** The series this item belongs to: a name, '' for "not part of a series", null to let the app decide. */
+  seriesOverride?: string | null;
+  /** Its number in the series, or null to let the app decide. */
+  seriesPositionOverride?: number | null;
 }
 
 const MAX_TEXT = 10_000;
@@ -99,6 +103,8 @@ export function validatePatch(body: unknown): UserPatch {
     'triage',
     'effortOverride',
     'preferredFileId',
+    'seriesOverride',
+    'seriesPositionOverride',
   ]);
   for (const k of Object.keys(b))
     if (!allowed.has(k)) throw new HttpError(400, `Unknown field "${k}".`);
@@ -141,6 +147,22 @@ export function validatePatch(body: unknown): UserPatch {
       throw new HttpError(400, 'preferredFileId must be a file id or null.');
     p.preferredFileId = b.preferredFileId as string | null;
   }
+  if ('seriesOverride' in b) {
+    if (b.seriesOverride !== null && typeof b.seriesOverride !== 'string')
+      throw new HttpError(400, 'seriesOverride must be a series name, "" or null.');
+    if (typeof b.seriesOverride === 'string' && b.seriesOverride.length > 500)
+      throw new HttpError(400, 'seriesOverride is too long.');
+    p.seriesOverride = typeof b.seriesOverride === 'string' ? b.seriesOverride.trim() : null;
+  }
+  if ('seriesPositionOverride' in b) {
+    const v = b.seriesPositionOverride;
+    if (v !== null && !(typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 100_000))
+      throw new HttpError(
+        400,
+        'seriesPositionOverride must be a number from 0 to 100000, or null.',
+      );
+    p.seriesPositionOverride = v === null ? null : Math.round((v as number) * 100) / 100;
+  }
   if ('triage' in b) p.triage = oneOf('triage', b.triage, ['want', 'maybe', 'never'] as const);
   if ('effortOverride' in b)
     p.effortOverride = oneOf('effortOverride', b.effortOverride, [
@@ -171,6 +193,8 @@ interface Row {
   triage_at: string | null;
   effort_override: string | null;
   preferred_file_id: string | null;
+  series_override: string | null;
+  series_position_override: number | null;
 }
 
 export function ensureUserRow(db: DB, itemId: string): void {
@@ -246,6 +270,9 @@ export function applyUserPatch(db: DB, itemId: string, p: UserPatch, today = tod
   }
   if (p.effortOverride !== undefined) next.effort_override = p.effortOverride;
   if (p.preferredFileId !== undefined) next.preferred_file_id = p.preferredFileId;
+  if (p.seriesOverride !== undefined) next.series_override = p.seriesOverride;
+  if (p.seriesPositionOverride !== undefined)
+    next.series_position_override = p.seriesPositionOverride;
 
   db.prepare(
     `UPDATE user_item SET progress = @progress, dnf_reason = @dnf_reason, started_on = @started_on,
@@ -255,6 +282,7 @@ export function applyUserPatch(db: DB, itemId: string, p: UserPatch, today = tod
        kind_override = @kind_override, reference_override = @reference_override,
        icloud_override = @icloud_override, triage = @triage, triage_at = @triage_at,
        effort_override = @effort_override, preferred_file_id = @preferred_file_id,
+       series_override = @series_override, series_position_override = @series_position_override,
        updated_at = @updated_at
      WHERE item_id = @item_id`,
   ).run({ ...next, updated_at: now, item_id: itemId });

@@ -1,6 +1,7 @@
 import { RESTORE_SNAPSHOTS_KEPT } from '../config.ts';
 import { schemaVersion, type DB } from '../db/database.ts';
 import { takeSnapshot } from '../db/snapshots.ts';
+import { syncSeries } from '../identify/series.ts';
 import { HttpError, nowIso } from '../util.ts';
 
 /**
@@ -17,6 +18,7 @@ export const BACKUP_TABLES = [
   'settings',
   'folders',
   'series',
+  'series_user',
   'items',
   'files',
   'item_files',
@@ -45,6 +47,7 @@ const ADDED_IN: Record<string, number> = {
   candidates_rejected: 3,
   review_state: 3,
   pick_feedback: 3,
+  series_user: 5,
 };
 
 /**
@@ -209,6 +212,9 @@ export async function restoreBackup(
         400,
         'The backup refers to records it does not contain; nothing was changed.',
       );
+    // A backup from before series had their own rows (version < 5) has none: rebuild them
+    // from the restored items, keeping any series ids the backup does hold.
+    syncSeries(db);
   })();
   return { snapshotPath };
 }

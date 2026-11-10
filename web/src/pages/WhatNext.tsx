@@ -10,6 +10,7 @@ import {
 } from '../components.tsx';
 import { hrefFor, onLinkClick, updateParams, type Params } from '../url.ts';
 import { LookupBanner } from './LookupBanner.tsx';
+import { GapNotice } from './SeriesCard.tsx';
 
 /**
  * What next (PLAN.md §13, §15): Read next with the time control, Ready to read, and cards that
@@ -351,6 +352,14 @@ function PickCard({
             <span className="visually-hidden">Limitations: </span>
             {card.limitations.join(' · ')}
           </p>
+        )}
+        {card.series && (
+          <GapNotice
+            gaps={card.gaps}
+            seriesId={card.series.id}
+            itemId={card.id}
+            onMarked={(msg) => onDone(msg)}
+          />
         )}
         <AvailabilityLabels a={{ ...card.availability, label: null }} />
         <div className="row-actions wrap">

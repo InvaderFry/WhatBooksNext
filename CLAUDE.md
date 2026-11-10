@@ -8,8 +8,12 @@ owner has already made. Don't reopen those decisions. Then read the latest
 
 - **M0–M3** are done and checked on the owner's PC (M3: first real recommendations; Hardcover
   verified; quality session passed, `docs/quality-summary.md`).
-- **Next: M4** (PLAN.md §18): series and collections, Metron/ComicVine (single issues wait for
-  them), merge/split with undo, store titles and imports.
+- **M4 in progress** (`docs/milestones/M4.md`). Part 1, series and gaps, is done. Next: the
+  Metron/ComicVine adapters (tell the owner to make both free accounts first), then merge/split
+  with undo, then store titles and the Calibre import (the owner uses store books and Calibre).
+- Series rows are rebuilt by `syncSeries` (`server/src/identify/series.ts`) from stored facts
+  and owner corrections. Call it after anything that changes items' names, numbers, kinds or
+  matches. Gap rules are pure, in `server/src/lib/series.ts`.
 - Content reads go through `server/src/scan/guard.ts` only. Raise a stage in `STAGE_VERSIONS`
   (`server/src/scan/deepPass.ts`) when its reader changes, so the next scan re-reads files.
 - Online sources live in `server/src/sources/`, one polite client each (rate limit, cache,

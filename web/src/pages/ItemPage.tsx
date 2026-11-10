@@ -20,6 +20,7 @@ import {
 import { AvailabilityLabels, Cover, creatorsText, Notice } from '../components.tsx';
 import { hrefFor, onLinkClick } from '../url.ts';
 import { OnlineCard } from './OnlineCard.tsx';
+import { SeriesSection } from './SeriesCard.tsx';
 
 type Patch = Partial<{
   progress: Progress;
@@ -39,6 +40,8 @@ type Patch = Partial<{
   triage: 'want' | 'maybe' | 'never' | null;
   effortOverride: 'light' | 'medium' | 'heavy' | null;
   preferredFileId: string | null;
+  seriesOverride: string | null;
+  seriesPositionOverride: number | null;
 }>;
 
 export function ItemPage({ id }: { id: string }) {
@@ -292,13 +295,17 @@ export function ItemPage({ id }: { id: string }) {
             />
             Hide from the library
           </label>
-          {item.seriesHint && (
-            <p className="muted small">
-              Series (from the filename, unconfirmed): {item.seriesHint}
-            </p>
-          )}
         </section>
       </div>
+
+      <SeriesSection
+        itemId={item.id}
+        seriesId={item.series?.id ?? null}
+        position={item.series?.position ?? null}
+        seriesOverride={u.seriesOverride}
+        positionOverride={u.seriesPositionOverride}
+        onSave={(patch, message) => save(patch, message)}
+      />
 
       <OnlineCard itemId={item.id} onChanged={() => void load()} />
 
