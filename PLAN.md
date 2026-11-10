@@ -749,6 +749,12 @@ difficulty, so treat the result as rough. Owner overrides win.
   unavailable, and order unknown.
 - **Publication status** (finished / ongoing / unknown) is stored on the series (§7) and is separate
   from what you own: owning every released volume doesn't mean the story is complete.
+- **Published volumes** are checked separately, using Hardcover's explicit, numbered, released
+  primary works for a confidently matched volume. Show missing published volumes even for an
+  ongoing story; never infer them from a book count or create unowned library items. Exclude
+  compilations, partial/merged works and future or unknown dates. An unchecked catalogue stays
+  unknown. Keep source and check date; failed refreshes retain good data. Normal online lookups
+  check each eligible series once, with a manual check/refresh on the item page and no file rescan.
 
 **Collections and issues share reading state:**
 
@@ -1275,6 +1281,7 @@ use. Keep them in one config module, each with its reason in a comment.
 | Scan reminder / snooze | 30 days / 7 days | Monthly, as the owner asked. |
 | Still reading? / snooze | 90 days / 30 days | A quarter untouched usually means stalled. |
 | Undo stack | Last 20 merges/splits | Covers a cleanup session. |
+| Published-volume catalogue | Refresh after 7 days; at most 500 positions and 100 series memberships | Weekly checks avoid repeated requests per owned volume; bounds stay below Hardcover's documented 997-row relation limit and refuse truncated answers. |
 | Pre-migration snapshots kept | 5 | A few versions back, without filling the disk. |
 | Pre-restore snapshots kept | 3, separately | A restore must never push out the migration snapshots, or the other way round. |
 | Server port | 4818, overridable with `PORT` | Unlikely to clash with common dev tools. |

@@ -29,6 +29,7 @@ import {
 } from './match.ts';
 import { addSameMatchSuggestions } from './reconcile.ts';
 import { syncSeries } from './series.ts';
+import { publicationPending, publicationSeries, refreshPublications } from '../lib/publications.ts';
 import { suggestCoverageFromSources } from '../lib/coverage.ts';
 
 /**
@@ -600,6 +601,7 @@ export interface LookupStatus {
   /** Stopped because nothing could be reached (connection down). */
   stoppedOffline?: boolean;
   estimateSeconds: number | null;
+  series?: { done: number; total: number };
   error: string | null;
 }
 
@@ -769,6 +771,10 @@ async function lookUpOnce(
   const fallbacks = all.filter((s) => s.fallback);
   const skipped = foundElsewhere ? fallbacks : [];
   if (!foundElsewhere) settled.push(...(await ask(fallbacks)));
+  // A merge may retire this id while a source request is waiting. A correction or split
+  // may also change its search. Discard the old result; the next pass can use current facts.
+  const currentFacts = matchFactsFor(db, itemId);
+  if (!currentFacts || JSON.stringify(buildQuery(currentFacts)) !== qKey) return [];
   db.transaction(() => {
     for (const r of settled) {
       if (r.status === 'rejected') {
@@ -803,7 +809,7 @@ export class LookupManager {
   private running: Promise<void> | null = null;
   private readonly db: DB;
   private readonly sources: Sources;
-  private pendingCache: { n: number; at: number } | null = null;
+  private pendingCache: { n: number; series: number; at: number } | null = null;
 
   constructor(db: DB, sources: Sources) {
     this.db = db;
@@ -831,8 +837,16 @@ export class LookupManager {
   pending(): number {
     if (this.pendingCache && Date.now() - this.pendingCache.at < 30_000) return this.pendingCache.n;
     const n = itemsNeedingLookup(this.db, this.sources).length;
-    this.pendingCache = { n, at: Date.now() };
+    const series = publicationSeries(this.db, this.sources).filter((id) =>
+      publicationPending(this.db, id),
+    ).length;
+    this.pendingCache = { n, series, at: Date.now() };
     return n;
+  }
+
+  pendingSeries(): number {
+    this.pending();
+    return this.pendingCache!.series;
   }
 
   invalidate(): void {
@@ -931,9 +945,31 @@ export class LookupManager {
       status.status = 'failed';
       status.error = (err as Error).message;
     } finally {
+      const finalStatus = status.status;
+      status.status = 'running';
       // What the run learned about series (names, order, finished or ongoing) takes effect.
       try {
         syncSeries(this.db);
+        if (!this.cancelled && !status.stoppedOffline) {
+          const series = publicationSeries(this.db, this.sources);
+          status.series = { done: 0, total: series.length };
+          status.estimateSeconds = null;
+          let failures = 0;
+          for (const id of series) {
+            if (this.cancelled || failures >= LOOKUP_STOP_AFTER_FAILED_ITEMS) break;
+            try {
+              await refreshPublications(this.db, this.sources, id, refresh);
+              failures = 0;
+            } catch (err) {
+              failures++;
+              status.errors = [
+                `Published volumes: ${(err as Error).message}`,
+                ...status.errors,
+              ].slice(0, 5);
+            }
+            status.series.done++;
+          }
+        }
         // What collected editions reprint, as suggestions (§12.5).
         suggestCoverageFromSources(this.db);
         // Two entries matched to the same book are probably one book (§11.3 rule 4).
@@ -941,6 +977,7 @@ export class LookupManager {
       } catch (err) {
         status.errors = [`Series: ${(err as Error).message}`, ...status.errors].slice(0, 5);
       }
+      status.status = this.cancelled ? 'cancelled' : finalStatus;
       status.finishedAt = nowIso();
       status.estimateSeconds = null;
       this.db

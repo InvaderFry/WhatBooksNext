@@ -111,6 +111,19 @@ try {
       },
     ],
     [
+      'item-published-volumes',
+      '/?view=library&q=copperline',
+      async (p) => {
+        await p
+          .getByRole('link', { name: /Copperline Vol\. 1/ })
+          .first()
+          .click();
+        await p.getByRole('heading', { name: 'Published volumes' }).waitFor();
+        await p.getByText(/Published volumes not recorded as owned or read: volumes 3–4/).waitFor();
+        await p.getByText('Show the 2 missing published volumes').click();
+      },
+    ],
+    [
       'item-merge',
       '/?view=library&q=river',
       async (p) => {

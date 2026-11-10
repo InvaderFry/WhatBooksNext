@@ -437,6 +437,14 @@ export interface SeriesView {
   id: string;
   name: string;
   runLabel?: string | null;
+  publications: null | {
+    source: string;
+    checkedAt: string;
+    volumes: { position: number; title: string; sourceId: string; publishedOn: string }[];
+    missing: { position: number; title: string; sourceId: string; publishedOn: string }[];
+    missingRanges: { from: number; to: number }[];
+  };
+  publicationLookup?: { available: boolean; reason: string | null };
   kind: Kind | null;
   status: 'finished' | 'ongoing' | 'unknown';
   statusSource: string | null;
@@ -505,12 +513,14 @@ export interface LookupStatus {
   outcomes: Record<string, number>;
   errors: string[];
   estimateSeconds: number | null;
+  series?: { done: number; total: number };
   error: string | null;
 }
 
 export interface Lookups {
   status: LookupStatus | null;
   pending: number;
+  pendingSeries: number;
   sources: SourceStatus[];
   afterScan: boolean;
 }

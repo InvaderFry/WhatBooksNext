@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { nowIso } from '../util.ts';
 import type { DB } from '../db/database.ts';
 import { FakePlatform } from '../platform/fake.ts';
 import { ATTR_OFFLINE, ATTR_RECALL_ON_DATA_ACCESS } from '../platform/types.ts';
@@ -346,6 +347,23 @@ export async function buildDemoLibrary(
   setSuggestedCoverage(db, byFile('Copperline Vol. 2 (2021).cbz'), 'demo', [
     { seriesId: copperline, first: 5, last: 8 },
   ]);
+
+  // An ongoing story has more published volumes than the two owned collections.
+  db.prepare(
+    `INSERT INTO series_publications (series_id, source, source_series_id, anchor_book_id, anchor_key, entries, checked_at)
+    VALUES (?, 'demo', 'demo-copperline-volumes', 'demo-trade-1', 'demo', ?, ?)`,
+  ).run(
+    copperline,
+    JSON.stringify(
+      [1, 2, 3, 4].map((position) => ({
+        position,
+        title: `Copperline Vol. ${position}`,
+        sourceId: `demo-trade-${position}`,
+        publishedOn: `${2020 + position}-01-01`,
+      })),
+    ),
+    nowIso(),
+  );
 
   // Books owned in store apps (§14): one the owner can read on the iPad, one not confirmed.
   createStoreItem(db, {

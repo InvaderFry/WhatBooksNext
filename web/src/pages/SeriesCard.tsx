@@ -162,6 +162,7 @@ export function SeriesSection({
   const [s, setS] = useState<SeriesView | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
+  const [checkingPublications, setCheckingPublications] = useState(false);
 
   const load = useCallback(async () => {
     if (!seriesId) return setS(null);
@@ -233,6 +234,67 @@ export function SeriesSection({
               <option value="ongoing">No, it’s ongoing</option>
             </select>
           </div>
+
+          {s.entries.some((e) => e.unit === 'volume') && (
+            <div className="section" aria-labelledby="published-h">
+              <h3 id="published-h">Published volumes</h3>
+              {s.publications?.volumes.length ? (
+                <>
+                  <p className={s.publications.missing.length ? 'warn small' : 'small'}>
+                    {s.publications.missing.length
+                      ? `Published volumes not recorded as owned or read: ${s.publications.missingRanges.map((r) => numbers({ ...r, unit: 'volume' })).join(', ')}.`
+                      : 'No missing volumes among the published volumes verified by this source.'}
+                  </p>
+                  <p className="muted small">
+                    {s.publications.volumes.length} numbered, published volumes verified by{' '}
+                    {SOURCE_TEXT[s.publications.source] ?? s.publications.source}; checked{' '}
+                    {new Date(s.publications.checkedAt).toLocaleDateString()}. This is separate from
+                    whether the story is finished. Unreleased volumes and unverified dates are left
+                    out.
+                  </p>
+                  {s.publications.missing.length > 0 && (
+                    <details>
+                      <summary>
+                        Show the {s.publications.missing.length} missing published volumes
+                      </summary>
+                      <ul className="plain-list small">
+                        {s.publications.missing.map((v) => (
+                          <li key={v.position}>
+                            Vol. {v.position} · {v.title}
+                          </li>
+                        ))}
+                      </ul>
+                    </details>
+                  )}
+                </>
+              ) : (
+                <p className="muted small">
+                  {s.publications
+                    ? 'No numbered volumes with verified publication dates were returned. Later volumes remain unknown.'
+                    : 'Published volumes beyond your files have not been checked yet.'}
+                </p>
+              )}
+              <button
+                type="button"
+                className="secondary small"
+                disabled={checkingPublications || !s.publicationLookup?.available}
+                onClick={async () => {
+                  setCheckingPublications(true);
+                  await act(() => api.post(`/api/series/${s.id}/publications`, {}));
+                  setCheckingPublications(false);
+                }}
+              >
+                {checkingPublications
+                  ? 'Checking published volumes…'
+                  : s.publications
+                    ? 'Refresh published volumes'
+                    : 'Check published volumes'}
+              </button>
+              {!s.publicationLookup?.available && s.publicationLookup?.reason && (
+                <p className="muted small">{s.publicationLookup.reason}</p>
+              )}
+            </div>
+          )}
 
           <ol className="series-list">
             {s.entries.map((e) => (
@@ -333,7 +395,7 @@ export function SeriesSection({
               ))}
             </ul>
           )}
-          {s.missingAfter && (
+          {s.missingAfter && !s.publications?.volumes.length && (
             <p className="muted small">
               Not owned yet: {numbers({ ...s.missingAfter, unit: 'volume' })} of {s.total}.
             </p>

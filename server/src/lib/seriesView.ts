@@ -1,3 +1,4 @@
+import { publicationView } from './publications.ts';
 import type { DB } from '../db/database.ts';
 import { syncSeries } from '../identify/series.ts';
 import { HttpError, newId, nowIso } from '../util.ts';
@@ -47,6 +48,7 @@ export interface SeriesView {
   ownerStatus: 'finished' | 'ongoing' | null;
   /** Installments a source says the finished story has. */
   total: number | null;
+  publications: ReturnType<typeof publicationView>;
   orderSource: string | null;
   entries: SeriesEntry[];
   gaps: (Gap & { text: string })[];
@@ -188,6 +190,7 @@ export function seriesView(db: DB, reach: FolderReachability, id: string): Serie
     statusSource: s.status_source,
     ownerStatus: s.status_override,
     total: s.installments,
+    publications: publicationView(db, id, members),
     orderSource: s.order_source,
     entries,
     gaps,

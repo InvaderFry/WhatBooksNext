@@ -42,6 +42,17 @@ export interface Snapshot {
   ids: string[];
   tables: Record<string, Record<string, unknown>[]>;
   aliases: Record<string, unknown>[];
+  shortlist?: { before: ShortlistPlace[]; after?: ShortlistPlace[] };
+}
+
+type ShortlistPlace = { item_id: string; shortlist_position: number };
+function shortlistState(db: DB): ShortlistPlace[] {
+  return db
+    .prepare(
+      `SELECT item_id, shortlist_position FROM user_item
+    WHERE shortlist_position IS NOT NULL ORDER BY shortlist_position`,
+    )
+    .all() as ShortlistPlace[];
 }
 
 const marks = (n: number) => Array.from({ length: n }, () => '?').join(',');
@@ -57,7 +68,7 @@ export function snapshot(db: DB, ids: string[]): Snapshot {
       `SELECT * FROM id_aliases WHERE old_id IN (${marks(ids.length)}) OR new_id IN (${marks(ids.length)})`,
     )
     .all(...ids, ...ids) as Record<string, unknown>[];
-  return { ids, tables, aliases };
+  return { ids, tables, aliases, shortlist: { before: shortlistState(db) } };
 }
 
 function insertRows(db: DB, table: string, rows: Record<string, unknown>[]): void {
@@ -71,6 +82,10 @@ function insertRows(db: DB, table: string, rows: Record<string, unknown>[]): voi
 
 /** Puts the snapshot's items back exactly, replacing whatever those ids (and `alsoIds`) hold now. */
 function restore(db: DB, snap: Snapshot, alsoIds: string[]): void {
+  // Reverse this operation's compaction only if the owner hasn't since changed the queue.
+  const restoreQueue =
+    snap.shortlist?.after &&
+    JSON.stringify(shortlistState(db)) === JSON.stringify(snap.shortlist.after);
   const ids = [...new Set([...snap.ids, ...alsoIds])];
   const files = snap.tables.item_files!.map((r) => r.file_id as string);
   if (files.length)
@@ -80,18 +95,34 @@ function restore(db: DB, snap: Snapshot, alsoIds: string[]): void {
   db.prepare(
     `DELETE FROM id_aliases WHERE old_id IN (${marks(ids.length)}) OR new_id IN (${marks(ids.length)})`,
   ).run(...ids, ...ids);
+  if (restoreQueue)
+    db.prepare(
+      'UPDATE user_item SET shortlist_position = NULL WHERE shortlist_position IS NOT NULL',
+    ).run();
   // A shortlist place taken since by another book: this one goes to the end of the list.
+  const occupied = new Set(
+    db
+      .prepare('SELECT shortlist_position FROM user_item WHERE shortlist_position IS NOT NULL')
+      .pluck()
+      .all() as number[],
+  );
+  let max = Math.max(0, ...occupied);
   const users = snap.tables.user_item!.map((u) => {
     const pos = u.shortlist_position as number | null;
     if (pos === null) return u;
-    const taken = db.prepare('SELECT 1 FROM user_item WHERE shortlist_position = ?').get(pos);
-    if (!taken) return u;
-    const max =
-      (db.prepare('SELECT MAX(shortlist_position) FROM user_item').pluck().get() as
-        number | null) ?? 0;
-    return { ...u, shortlist_position: max + 1 };
+    const place = occupied.has(pos) ? max + 1 : pos;
+    occupied.add(place);
+    max = Math.max(max, place);
+    return { ...u, shortlist_position: place };
   });
   for (const [t] of ITEM_TABLES) insertRows(db, t, t === 'user_item' ? users : snap.tables[t]!);
+  if (restoreQueue) {
+    db.prepare(
+      'UPDATE user_item SET shortlist_position = NULL WHERE shortlist_position IS NOT NULL',
+    ).run();
+    const set = db.prepare('UPDATE user_item SET shortlist_position = ? WHERE item_id = ?');
+    for (const row of snap.shortlist!.before) set.run(row.shortlist_position, row.item_id);
+  }
   insertRows(db, 'id_aliases', snap.aliases);
   db.prepare(
     `DELETE FROM deletions WHERE entity = 'item' AND entity_id IN (${marks(snap.ids.length)})`,
@@ -125,6 +156,7 @@ export function record(
   after: string[],
 ) {
   const id = newId();
+  if (before.shortlist) before.shortlist.after = shortlistState(db);
   db.prepare(
     `INSERT INTO operations (id, kind, summary, before, item_ids, stamps, created_at)
      VALUES (?, ?, ?, ?, ?, ?, ?)`,

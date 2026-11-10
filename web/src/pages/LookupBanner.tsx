@@ -62,15 +62,17 @@ export function LookupBanner({
 
   if (!data) return null;
   const s = data.status;
-  if (!running && data.pending === 0 && !always) return null;
+  if (!running && data.pending === 0 && data.pendingSeries === 0 && !always) return null;
 
   return (
     <div className="lookup-banner" role="status">
       {running && s ? (
         <>
           <p>
-            <span className="spinner" aria-hidden="true" /> Looking up books online: {s.done} of{' '}
-            {s.total}
+            <span className="spinner" aria-hidden="true" />{' '}
+            {s.series
+              ? `Checking published volumes: ${s.series.done} of ${s.series.total} series`
+              : `Looking up books online: ${s.done} of ${s.total}`}
             {s.estimateSeconds !== null && ` · ${formatDuration(s.estimateSeconds)} left`}.
             <span className="muted"> Picks improve as it goes; you can keep using the app.</span>
           </p>
@@ -95,6 +97,16 @@ export function LookupBanner({
           </p>
           <button type="button" className="small" onClick={() => void start()}>
             Look them up now
+          </button>
+        </>
+      ) : data.pendingSeries > 0 ? (
+        <>
+          <p>
+            Published volumes need checking for {data.pendingSeries.toLocaleString()} series. This
+            checks online sources without rescanning your files.
+          </p>
+          <button type="button" className="small" onClick={() => void start()}>
+            Check published volumes now
           </button>
         </>
       ) : (

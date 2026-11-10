@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createApp } from './app.ts';
 import type { DB } from './db/database.ts';
 import { applyIdentity, usedMatches } from './identify/lookups.ts';
-import { ensureUserRow } from './lib/progress.ts';
+import { ensureUserRow, shortlistAdd, shortlistMove } from './lib/progress.ts';
 import { makeEpub } from './testing/fixtures.ts';
 import { fakePlatformWithDrives, memoryDb, tempDir, writeFiles } from './testing/helpers.ts';
 
@@ -202,6 +202,53 @@ describe('merge (§11.4)', () => {
 });
 
 describe('undo (§11.4)', () => {
+  it('restores the exact shortlist order after reversing its own merge compaction', async () => {
+    const ids = [
+      'harrowfield.epub',
+      'the_salt_ledger.epub',
+      'Harrowfield (Anniversary).epub',
+      'kestrelmoon.epub',
+    ].map(itemOf);
+    for (const id of ids) shortlistAdd(db, id);
+    const queue = () =>
+      db
+        .prepare(
+          'SELECT item_id FROM user_item WHERE shortlist_position IS NOT NULL ORDER BY shortlist_position',
+        )
+        .pluck()
+        .all();
+    const op = (await api.post('/api/merge', { keepId: ids[0], otherId: ids[2], choices: {} })).body
+      .operationId;
+    expect(queue()).toEqual([ids[0], ids[1], ids[3]]);
+    await api.patch(`/api/items/${ids[3]}`, { note: 'Keep this later note' });
+    expect((await api.post(`/api/operations/${op}/undo`)).status).toBe(200);
+    expect(queue()).toEqual(ids);
+    expect(db.prepare('SELECT note FROM user_item WHERE item_id = ?').pluck().get(ids[3])).toBe(
+      'Keep this later note',
+    );
+  });
+
+  it('preserves a later unrelated shortlist reorder when undoing a merge', async () => {
+    const ids = [
+      'harrowfield.epub',
+      'the_salt_ledger.epub',
+      'Harrowfield (Anniversary).epub',
+      'kestrelmoon.epub',
+    ].map(itemOf);
+    for (const id of ids) shortlistAdd(db, id);
+    const op = (await api.post('/api/merge', { keepId: ids[0], otherId: ids[2], choices: {} })).body
+      .operationId;
+    shortlistMove(db, ids[3]!, 'up');
+    expect((await api.post(`/api/operations/${op}/undo`)).status).toBe(200);
+    expect(
+      db
+        .prepare(
+          'SELECT item_id FROM user_item WHERE shortlist_position IS NOT NULL ORDER BY shortlist_position',
+        )
+        .pluck()
+        .all(),
+    ).toEqual([ids[0], ids[3], ids[1], ids[2]]);
+  });
   it('puts a merge back exactly, even after later merges of other books (scenario 13)', async () => {
     const a = itemOf('harrowfield.epub');
     const b = itemOf('Harrowfield (Anniversary).epub');

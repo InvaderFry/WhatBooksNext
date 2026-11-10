@@ -207,6 +207,7 @@ export function registerReadingRoutes(app: Express, d: ReadingDeps): void {
     route(() => ({
       status: lookups.status(),
       pending: lookups.pending(),
+      pendingSeries: lookups.pendingSeries(),
       sources: sources.status(),
       afterScan: getSetting(db, 'lookupsAfterScan', true),
     })),

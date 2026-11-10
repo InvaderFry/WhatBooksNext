@@ -112,7 +112,7 @@ export function createApp(ctx: AppContext) {
       if (ctx.autoLookups === false) return;
       if (s.status === 'failed' || lookups.isRunning()) return;
       if (!getSetting<boolean>(db, 'lookupsAfterScan', true)) return;
-      if (lookups.pending() > 0) lookups.start();
+      if (lookups.pending() > 0 || lookups.pendingSeries() > 0) lookups.start();
     },
   });
   const reach = new Reachability(ctx);
@@ -152,7 +152,7 @@ export function createApp(ctx: AppContext) {
     reach: () => reach.get(),
     itemIdOr404,
   });
-  registerSeriesRoutes(app, { db, reach: () => reach.get(), itemIdOr404 });
+  registerSeriesRoutes(app, { db, sources, reach: () => reach.get(), itemIdOr404 });
   registerOperationRoutes(app, { db, scans, itemIdOr404 });
   registerStoreRoutes(app, { db, sources, itemIdOr404 });
   registerHistoryImportRoutes(app, db);

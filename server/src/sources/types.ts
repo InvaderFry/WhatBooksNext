@@ -91,6 +91,20 @@ export interface SourceRecord {
   url?: string;
 }
 
+/** Explicit primary volumes with a release date; never inferred from an aggregate count. */
+export interface PublishedVolume {
+  position: number;
+  title: string;
+  sourceId: string;
+  publishedOn: string;
+}
+export interface PublishedSeries {
+  source: 'hardcover' | 'demo';
+  sourceSeriesId: string;
+  name: string;
+  entries: PublishedVolume[];
+}
+
 /** A fetch function the adapters use; tests pass a fake that replays recorded responses. */
 export type Fetcher = (url: string, init: RequestInit) => Promise<Response>;
 

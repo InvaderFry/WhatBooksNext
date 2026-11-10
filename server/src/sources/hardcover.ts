@@ -1,5 +1,13 @@
-import { HARDCOVER_DAILY_LIMIT, HARDCOVER_MIN_INTERVAL_MS, SEARCH_RESULTS } from '../config.ts';
+import {
+  HARDCOVER_DAILY_LIMIT,
+  HARDCOVER_MIN_INTERVAL_MS,
+  SEARCH_RESULTS,
+  SERIES_PUBLICATION_LIMIT,
+  SERIES_MEMBERSHIP_LIMIT,
+} from '../config.ts';
 import type { DB } from '../db/database.ts';
+import { titleCompareKey } from '../identify/filename.ts';
+import { todayLocal } from '../util.ts';
 import { SourceClient } from './client.ts';
 import { DailyUsage } from './usage.ts';
 import {
@@ -8,6 +16,8 @@ import {
   type SourceAdapter,
   type SourceQuery,
   type SourceRecord,
+  type PublishedSeries,
+  type PublishedVolume,
 } from './types.ts';
 
 /**
@@ -37,6 +47,105 @@ export const HARDCOVER_NEW_TOKEN_URL =
 const SEARCH = `query Search($q: String!, $n: Int!) {
   search(query: $q, query_type: "Book", per_page: $n, page: 1) { results }
 }`;
+
+// Hardcover's GettingBooksInSeries guide: exclude compilations, partial and merged books,
+// and pick the most popular work at each position. Release dates exclude announcements.
+const SERIES_MEMBERSHIP = `query SeriesMembership($book: Int!, $limit: Int!) {
+  book_series(where: {book_id: {_eq: $book}, series: {canonical_id: {_is_null: true}}}, limit: $limit) {
+    position featured compilation series { id name }
+  }
+}`;
+const SERIES_PUBLICATIONS = `query PublishedSeries($id: Int!, $today: date!, $limit: Int!) {
+  series_by_pk(id: $id) {
+    id name
+    book_series(
+      distinct_on: position
+      order_by: [{position: asc}, {book: {users_count: desc}}]
+      where: {compilation: {_eq: false}, position: {_gte: 1},
+        book: {canonical_id: {_is_null: true}, is_partial_book: {_eq: false}, release_date: {_lte: $today}}}
+      limit: $limit
+    ) {
+      position compilation
+      book { id title release_date canonical_id is_partial_book }
+    }
+  }
+}`;
+
+export function parsePublishedSeries(
+  payload: unknown,
+  expectedId: string,
+  expectedName: string,
+  today = todayLocal(),
+): PublishedSeries {
+  const series = (
+    payload as { data?: { series_by_pk?: { id?: unknown; name?: unknown; book_series?: unknown } } }
+  )?.data?.series_by_pk;
+  if (
+    !series ||
+    String(series.id) !== expectedId ||
+    typeof series.name !== 'string' ||
+    titleCompareKey(series.name) !== titleCompareKey(expectedName) ||
+    !Array.isArray(series.book_series)
+  )
+    throw new SourceError('hardcover', 'Couldn’t verify this series catalogue.', false);
+  if (series.book_series.length > SERIES_PUBLICATION_LIMIT)
+    throw new SourceError(
+      'hardcover',
+      'This series catalogue is too large to verify in one request.',
+      false,
+    );
+  const entries = new Map<number, PublishedVolume>();
+  for (const raw of series.book_series) {
+    if (!raw || typeof raw !== 'object') continue;
+    const row = raw as {
+      position?: unknown;
+      compilation?: unknown;
+      book?: {
+        id?: unknown;
+        title?: unknown;
+        release_date?: unknown;
+        canonical_id?: unknown;
+        is_partial_book?: unknown;
+      };
+    };
+    const b = row.book;
+    if (
+      !Number.isInteger(row.position) ||
+      (row.position as number) < 1 ||
+      row.compilation !== false ||
+      !b ||
+      b.canonical_id !== null ||
+      b.is_partial_book !== false ||
+      typeof b.title !== 'string' ||
+      !b.title.trim() ||
+      !/^\d+$/.test(String(b.id)) ||
+      typeof b.release_date !== 'string'
+    )
+      continue;
+    const date = b.release_date;
+    if (
+      !/^\d{4}-\d{2}-\d{2}$/.test(date) ||
+      !Number.isFinite(Date.parse(date)) ||
+      new Date(date).toISOString().slice(0, 10) !== date ||
+      date > today
+    )
+      continue;
+    const position = row.position as number;
+    if (!entries.has(position))
+      entries.set(position, {
+        position,
+        title: b.title,
+        sourceId: String(b.id),
+        publishedOn: date,
+      });
+  }
+  return {
+    source: 'hardcover',
+    sourceSeriesId: expectedId,
+    name: series.name,
+    entries: [...entries.values()].sort((a, b) => a.position - b.position),
+  };
+}
 
 interface HcDocument {
   id?: number | string;
@@ -159,6 +268,107 @@ export class Hardcover implements SourceAdapter {
 
   /** Requests made today, against the free daily allowance (kept across restarts). */
   private readonly usage: DailyUsage;
+
+  private async query(
+    query: string,
+    variables: Record<string, unknown>,
+    key: string,
+    refresh = false,
+  ): Promise<unknown> {
+    const token = this.getToken();
+    if (!token) throw new SourceError('hardcover', 'No Hardcover token in Settings.', false);
+    if (!refresh) {
+      const hit = this.client.cached(key);
+      if (hit !== undefined && !graphqlError(hit)) return hit;
+    }
+    if (this.usageToday() >= HARDCOVER_DAILY_LIMIT - 200)
+      throw new SourceError(
+        'hardcover',
+        'Reached today’s Hardcover allowance; carrying on tomorrow.',
+        true,
+      );
+    this.usage.count();
+    const payload = await this.client.json(
+      HARDCOVER_URL,
+      {
+        method: 'POST',
+        headers: { authorization: `Bearer ${normaliseToken(token)}` },
+        body: { query, variables },
+      },
+      null,
+      { refresh: true },
+    );
+    const err = graphqlError(payload);
+    if (err) throw new SourceError('hardcover', `Hardcover said: ${err}`, false);
+    this.client.store(key, payload);
+    return payload;
+  }
+
+  async publishedSeries(
+    bookId: string,
+    name: string,
+    position: number | null,
+    opts: { refresh?: boolean; today?: string } = {},
+  ): Promise<PublishedSeries> {
+    const id = Number(bookId);
+    if (!/^\d+$/.test(bookId) || !Number.isSafeInteger(id) || id < 1 || id > 2147483647)
+      throw new SourceError('hardcover', 'This book has no usable Hardcover id.', false);
+    const memberships = await this.query(
+      SERIES_MEMBERSHIP,
+      { book: id, limit: SERIES_MEMBERSHIP_LIMIT },
+      `series-membership:v2:${id}`,
+      opts.refresh,
+    );
+    const rows = (
+      memberships as {
+        data?: {
+          book_series?: {
+            position?: number;
+            featured?: boolean;
+            compilation?: boolean;
+            series?: { id: number; name: string };
+          }[];
+        };
+      }
+    )?.data?.book_series;
+    if (!Array.isArray(rows) || rows.length >= SERIES_MEMBERSHIP_LIMIT)
+      throw new SourceError(
+        'hardcover',
+        'Couldn’t verify which series this book belongs to.',
+        false,
+      );
+    const matching = rows.filter(
+      (r) =>
+        r?.series &&
+        r.compilation === false &&
+        Number.isInteger(r.series.id) &&
+        r.series.id > 0 &&
+        typeof r.series.name === 'string' &&
+        titleCompareKey(r.series.name) === titleCompareKey(name) &&
+        (position === null || r.position === position),
+    );
+    const candidates = [...new Map(matching.map((r) => [r.series!.id, r])).values()];
+    const featured = candidates.filter((r) => r.featured === true);
+    const chosen =
+      candidates.length === 1 ? candidates[0] : featured.length === 1 ? featured[0] : undefined;
+    if (!chosen?.series)
+      throw new SourceError(
+        'hardcover',
+        'Couldn’t confidently identify this series. Check the book’s online match and series number.',
+        false,
+      );
+    const payload = await this.query(
+      SERIES_PUBLICATIONS,
+      {
+        id: chosen.series.id,
+        today: opts.today ?? todayLocal(),
+        limit: SERIES_PUBLICATION_LIMIT + 1,
+      },
+      `series-publications:v1:${chosen.series.id}`,
+      opts.refresh,
+    );
+    return parsePublishedSeries(payload, String(chosen.series.id), name, opts.today);
+  }
 
   usageToday(): number {
     return this.usage.today();

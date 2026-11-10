@@ -317,3 +317,10 @@ export const SAME_AUTHOR_PENALTY = 0.04;
 
 /** Undo stack: the last 20 merges and splits (§20 "covers a cleanup session"). */
 export const UNDO_STACK_SIZE = 20;
+
+/** Assumption: bound catalogue responses below Hardcover's documented 997-row relation limit. */
+export const SERIES_PUBLICATION_LIMIT = 500;
+// Refuse a truncated membership list instead of choosing an unverified series.
+export const SERIES_MEMBERSHIP_LIMIT = 100;
+/** Assumption: weekly catalogue refresh catches new volumes without repeated requests per book. */
+export const SERIES_PUBLICATION_CACHE_DAYS = 7;

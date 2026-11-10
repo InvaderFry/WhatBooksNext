@@ -5,6 +5,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createApp } from './app.ts';
 import type { DB } from './db/database.ts';
 import { createBackup } from './lib/backup.ts';
+import { createStoreItem } from './lib/store.ts';
+import { mergeItems } from './lib/operations.ts';
 import type { Fetcher } from './sources/types.ts';
 import { makeCbz, makeEpub, makeImage, makePdf } from './testing/fixtures.ts';
 import { fakePlatformWithDrives, memoryDb, tempDir, writeFiles } from './testing/helpers.ts';
@@ -91,6 +93,25 @@ const timeMachine = () =>
   makeEpub({ title: 'The Time Machine', creators: ['H. G. Wells'], chapters: [1500, 1500] });
 
 describe('lookups', () => {
+  it('continues with later books when a merge retires the item awaiting an online response', async () => {
+    const keep = createStoreItem(db, { title: 'Rain Ledger', store: 'kindle' });
+    const other = createStoreItem(db, { title: 'Rain Ledger Copy', store: 'apple_books' });
+    let release!: () => void;
+    gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    made.lookups.start({ itemIds: [other, keep] });
+    try {
+      await expect.poll(() => requests.length).toBeGreaterThan(0);
+      mergeItems(db, keep, other, {});
+    } finally {
+      release();
+      gate = null;
+    }
+    expect(await made.lookups.wait()).toMatchObject({ status: 'completed', done: 2, total: 2 });
+    expect(db.prepare('SELECT 1 FROM lookup_state WHERE item_id = ?').get(other)).toBeUndefined();
+    expect(db.prepare('SELECT 1 FROM lookup_state WHERE item_id = ?').get(keep)).toBeDefined();
+  });
   it('looks new books up after a scan and uses an accepted match’s rating', async () => {
     await addAndScan({ 'thetimemachine.epub': timeMachine() });
     const online = (await api.get(`/api/items/${itemIdOf('thetimemachine.epub')}/online`)).body;

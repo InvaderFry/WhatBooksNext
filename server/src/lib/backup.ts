@@ -19,6 +19,7 @@ export const BACKUP_TABLES = [
   'folders',
   'series',
   'series_user',
+  'series_publications',
   'items',
   'files',
   'item_files',
@@ -50,6 +51,7 @@ const ADDED_IN: Record<string, number> = {
   review_state: 3,
   pick_feedback: 3,
   series_user: 5,
+  series_publications: 9,
   collection_coverage: 6,
   import_keys: 8,
 };

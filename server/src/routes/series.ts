@@ -1,4 +1,7 @@
 import type { Express } from 'express';
+import { publicationLookup, refreshPublications } from '../lib/publications.ts';
+import { SourceError } from '../sources/types.ts';
+import type { Sources } from '../sources/index.ts';
 import type { DB } from '../db/database.ts';
 import { seriesRunLabel } from '../identify/series.ts';
 import type { FolderReachability } from '../lib/library.ts';
@@ -15,6 +18,7 @@ import { route } from './route.ts';
 
 export interface SeriesDeps {
   db: DB;
+  sources: Sources;
   reach: () => Promise<FolderReachability>;
   itemIdOr404: (raw: string) => string;
 }
@@ -29,7 +33,30 @@ export function registerSeriesRoutes(app: Express, d: SeriesDeps): void {
       const row = db
         .prepare('SELECT match_key, source_ids FROM series WHERE id = ?')
         .get(view.id) as { match_key: string | null; source_ids: string };
-      return { ...view, runLabel: seriesRunLabel(row) };
+      return {
+        ...view,
+        runLabel: seriesRunLabel(row),
+        publicationLookup: publicationLookup(db, d.sources, view.id),
+      };
+    }),
+  );
+
+  app.post(
+    '/api/series/:id/publications',
+    route(async (req) => {
+      const id = String(req.params.id);
+      seriesView(db, await d.reach(), id);
+      try {
+        await refreshPublications(db, d.sources, id, true);
+      } catch (err) {
+        if (err instanceof SourceError)
+          throw new HttpError(
+            503,
+            `Couldn’t check published volumes. Saved catalogue data was kept. ${err.message}`,
+          );
+        throw err;
+      }
+      return { ok: true };
     }),
   );
 
