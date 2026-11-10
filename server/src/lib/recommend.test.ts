@@ -348,8 +348,12 @@ describe('Read next', () => {
     const c = buildCard(manga, [manga], situation());
     expect(c.reasons[0]).toBe('Series rated 88/100 on AniList from 9,000 ratings');
     expect(c.limitations).toEqual(
-      expect.arrayContaining(['unconfirmed match', 'rating is for the whole series']),
+      expect.arrayContaining([
+        'rating is from an unconfirmed match',
+        'rating is for the whole series',
+      ]),
     );
+    expect(c.limitations).not.toContain('unconfirmed match');
   });
 
   it('mixes authors: one author’s bundle doesn’t fill the top of the list', () => {

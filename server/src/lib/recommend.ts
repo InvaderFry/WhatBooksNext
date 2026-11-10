@@ -9,7 +9,7 @@ import {
 import { SOURCE_LABELS } from '../sources/types.ts';
 import { formatRange, remaining, type Duration, type Effort } from './estimate.ts';
 import type { AvailabilityView, UserData } from './library.ts';
-import type { CommunityRating } from './ratings.ts';
+import { displayRaw, type CommunityRating } from './ratings.ts';
 import { tasteFor, type TasteModel } from './taste.ts';
 import {
   coveredNumbers,
@@ -417,10 +417,11 @@ function sessionText(m: number): string {
 }
 
 const fmt = (n: number) => n.toLocaleString('en-US');
+const lowerFirst = (s: string) => s.charAt(0).toLowerCase() + s.slice(1);
 
 function ratingReason(c: CommunityRating): string {
   const src = SOURCE_LABELS[c.source];
-  const raw = `${c.raw}/${c.scale}`;
+  const raw = displayRaw(c.raw, c.scale);
   const votes = c.votes !== null ? ` from ${fmt(c.votes)} rating${c.votes === 1 ? '' : 's'}` : '';
   return c.scope === 'series'
     ? `Series rated ${raw} on ${src}${votes}`
@@ -533,13 +534,18 @@ export function buildCard(i: RankItem, all: RankItem[], s: Situation): Card {
   const limits: string[] = [];
   if (!d) limits.push('length unknown');
   else if (!d.measured) limits.push('rough length');
-  if (i.identity === 'provisional' && !i.matchConfirmed) limits.push('unconfirmed match');
+  // When the rating itself rests on the unconfirmed match, its own note below says so once.
+  if (i.identity === 'provisional' && !i.matchConfirmed && i.community?.match !== 'provisional')
+    limits.push('unconfirmed match');
   if (i.identity === 'tie') limits.push('two possible matches — check in Needs review');
   if (i.identity === 'unidentified' && i.kind !== 'comic')
     limits.push('not identified online: details from the file only');
-  if (i.community?.scope === 'series') limits.push('rating is for the whole series');
-  if (i.community?.match === 'provisional') limits.push('rating is from an unconfirmed match');
-  if (i.community?.label && i.community.match !== 'provisional') limits.push(i.community.label);
+  // One note per rating caveat: the selector's label is the specific form of the series note.
+  const c = i.community;
+  const label = c?.label && c.match !== 'provisional' ? lowerFirst(c.label) : null;
+  if (c?.match === 'provisional') limits.push('rating is from an unconfirmed match');
+  if (c?.scope === 'series') limits.push(label ?? 'rating is for the whole series');
+  else if (label) limits.push(label);
   // "On external drive…" → "on external drive…", keeping names such as iCloud as they are.
   if (i.availability.label)
     limits.push(i.availability.label.charAt(0).toLowerCase() + i.availability.label.slice(1));

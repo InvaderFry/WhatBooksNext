@@ -14,7 +14,7 @@ import { fakePlatformWithDrives, memoryDb, tempDir } from './testing/helpers.ts'
 import { page, situation } from './testing/rank.ts';
 import { rating } from './testing/ratings.ts';
 import type { RatedFrom } from './lib/ratings.ts';
-import { compareRatings } from '../../scripts/ratingComparison.ts';
+import { compareRatings } from './lib/ratingComparison.ts';
 import { ratingCases } from './testing/ratingCases.ts';
 
 let db: DB;
@@ -227,6 +227,22 @@ describe('Stage 1 rating integration', () => {
     ).toHaveLength(d.ratings.whatNext.provisional);
   });
 
+  it('compares the old and new rating choice on the stored library, with counts and no titles', async () => {
+    const id = book();
+    save(id, [rating({ count: 3 }), rating({ source: 'openlibrary', count: 3000 })]);
+    book();
+    const before = db.prepare('SELECT * FROM item_matches').all();
+    const r = (await post('/api/diagnostics/rating-changes', {})).body;
+    expect(r).toMatchObject({ items: 2, changedSource: 1, gained: 0, lost: 0 });
+    expect(r.modes.map((m: { mode: string }) => m.mode)).toEqual([
+      'hidden_gems',
+      'classics',
+      'waiting',
+    ]);
+    expect(JSON.stringify(r)).not.toContain('Observatory');
+    expect(db.prepare('SELECT * FROM item_matches').all()).toEqual(before);
+  });
+
   it('keeps populated and empty Hidden gems cases in the generated demo', async () => {
     const root = tempDir('wbn-ratings-demo-');
     try {
@@ -247,7 +263,7 @@ describe('Stage 1 rating integration', () => {
   }, 30000);
 
   it('makes the title-free comparison reproducible over invented fixtures', () => {
-    const report = compareRatings(ratingCases());
+    const report = compareRatings(ratingCases(), situation());
     expect(report).toMatchObject({
       items: 59,
       changedSource: 38,
