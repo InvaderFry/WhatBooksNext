@@ -24,8 +24,8 @@ reviews whose corrections are folded in.
   30 days where a source that rates this kind of book has no match, no rating or few ratings, 90
   days otherwise.
 - **A background refresh never switches a match the app accepted on its own**; it asks the owner
-  through Needs review. Two explicit buttons start fresh: **Refresh from all sources** on a book
-  page, and **Refresh all books from all sources** in Settings (stage 4).
+  through Needs review. Two explicit buttons start fresh: the existing **Look up again** on a book
+  page, enhanced, and a new **Look up all books again** in Settings (stage 4).
 - The second quality session (§17.2, open since M6) moves to after stage 3, so it judges the new
   ratings and details.
 - Unconfirmed ("provisional") matches still supply a rating, but only when nothing trusted
@@ -294,12 +294,13 @@ corrections (`user_item`) are never touched.
 
 ### Starting fresh (owner's explicit actions)
 
-- **Book page → Refresh from all sources** (replaces "Look up again"). Asks every source again
-  for this book now, ignoring stored answers, and lets the app choose its matches afresh from the
-  new answers: the app's remembered choices for this book are released. Kept: confirmed matches,
+- **Book page → Look up again** (the existing button and name, enhanced). It already asks every
+  source again for this book, ignoring cached answers. It now also lets the app choose its matches
+  afresh from the new answers: the app's remembered choices for this book are released. Kept: confirmed matches,
   rejections and the owner's edits. Afterwards it says what changed ("Rating now from Open
   Library, 3,104 ratings"). A source that fails keeps its previous answer.
-- **Settings → Online sources → Refresh all books from all sources.** The same for the whole
+- **Settings → Online sources → Look up all books again** (new; the server already supports it
+  through `POST /api/lookups` with `refresh`). The same for the whole
   library, in the background. A confirmation first says what it keeps, roughly how many requests
   and how long it will take (it can take more than a day because of daily limits), and that a
   snapshot is taken first (like before a restore). Then: progress in the lookup banner;
@@ -312,8 +313,7 @@ corrections (`user_item`) are never touched.
 ### Controls
 
 Settings: automatic refresh on/off (on by default; off in demo), the three intervals shown
-(fixed, from `config.ts`), pause/resume, "Refresh due books now", and Refresh all books from all
-sources. Diagnostics: per source, how many are due, last answer, requests used by automatic work,
+(fixed, from `config.ts`), pause/resume, "Refresh due books now", and Look up all books again. Diagnostics: per source, how many are due, last answer, requests used by automatic work,
 pauses and failures. Book page: "Refresh due" and "Refresh failed; showing the previous result";
 a refresh never blanks a page.
 
@@ -324,7 +324,7 @@ became supported → 90 days; Metron-only comics → 90 days); backoff after fai
 order; 429, quota and 5xx handling; budget counting every request; cancellation and restart;
 demo/off/scan/manual deferral; a removed rating becomes unrated; a failure keeps the old result;
 an app-accepted match survives a background refresh and a `MATCH_VERSION` re-score, and a rival
-winner adds a Needs review entry; both "Refresh from all sources" actions release app choices
+winner adds a Needs review entry; both "Look up again" actions release app choices
 but keep confirmed and rejected decisions; a cancelled full refresh leaves untouched books as
 they were; everything survives a backup and restore without becoming due at once.
 
