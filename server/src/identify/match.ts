@@ -18,8 +18,10 @@ import { normalizeForCompare, titleCompareKey } from './filename.ts';
  * Bump when scoring or derived source fields change: the next lookup rebuilds from the cache.
  * Version 9 also brings explicit comic run start years into existing stored matches.
  * Version 10 reads volume numbers written as words ("Book Two") on both sides.
+ * Version 11: different story names are different books ("Series: Falling Sun" vs "Series,
+ * Vol. 2: Dark Days"), and "Archangel 8 #1" is no longer series "Archangel".
  */
-export const MATCH_VERSION = 10;
+export const MATCH_VERSION = 11;
 
 export interface MatchFacts {
   title: string;
@@ -159,14 +161,34 @@ function ourNumber(f: MatchFacts): string | null {
 
 /** The title without its volume marker and number, for comparing the series part. */
 function withoutNumber(t: string): string {
-  return t
+  const marked = t
     .replace(/[\s,:(]*(?:vol(?:ume)?\.?|book|no\.?|#)\s*\d+(?:\.\d+)?\)?/gi, ' ')
     .replace(
       new RegExp(`[\\s,:(]*(?:vol(?:ume)?\\.?|book)\\s+(?:${WORD_NUMBERS.join('|')})\\b\\)?`, 'gi'),
       ' ',
+    );
+  // A bare trailing number is the volume only when nothing else marked one: in "Archangel 8 #1"
+  // the 8 is part of the series' name, and "Archangel 8" is not "Archangel".
+  return (marked === t ? marked.replace(TRAILING_NUMBER, ' ') : marked).replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * The story name after the main title ("Series: Falling Sun", "Series, Vol. 2: Dark Days" →
+ * "Falling Sun", "Dark Days"), without volume numbers; null when there's none. Generic
+ * descriptions ("A Novel", "Stories") don't name a story.
+ */
+function storyName(t: string): string | null {
+  const m = /[:—–]| - /.exec(t);
+  if (!m) return null;
+  const rest = withoutNumber(t.slice(m.index + m[0].length)).replace(/^[\s,:-]+/, '');
+  if (!titleCompareKey(rest)) return null;
+  if (
+    /^(?:an? )?(?:novel|novella|memoir|stories|short stories|graphic novel|collection)s?$/i.test(
+      rest,
     )
-    .replace(TRAILING_NUMBER, ' ')
-    .trim();
+  )
+    return null;
+  return rest;
 }
 
 /**
@@ -326,6 +348,23 @@ export function scoreCandidate(f: MatchFacts, r: SourceRecord): ScoredCandidate 
   if (ours && theirs && ours !== theirs && title >= 0.75) {
     score = Math.min(score, 0.3);
     notes.push(`Volume ${theirs}, not ${ours}.`);
+  }
+
+  // Two different story names are two different books ("Series: Falling Sun" is not "Series,
+  // Vol. 2: Dark Days"), unless both carry the same volume number. Only for comics and numbered
+  // volumes, where a subtitle names the story; a prose book's subtitle varies between editions.
+  const ourStory = storyName(f.title.replace(EDITION_SUFFIX, ''));
+  const theirStory = storyName(fullTitleOf(r));
+  if (
+    ourStory &&
+    theirStory &&
+    title >= 0.75 &&
+    !(ours && theirs && ours === theirs) &&
+    (isVisual(f) || ours || theirs) &&
+    similarity(titleCompareKey(ourStory), titleCompareKey(theirStory)) < 0.5
+  ) {
+    score = Math.min(score, 0.3);
+    notes.push(`A different story: “${theirStory}”, not “${ourStory}”.`);
   }
 
   if (isbn === 'strong') {

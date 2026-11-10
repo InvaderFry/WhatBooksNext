@@ -333,6 +333,50 @@ describe('matching (§11.2)', () => {
     expect(same.ranked[0]!.evidence.title).toBe(1);
   });
 
+  it('keeps two different story names apart, and a series named with a number apart from one without', () => {
+    const base = { ...tm[0]!, isbns: [], rating: undefined, authors: ['Odo Venn'] };
+    const comic = facts({
+      title: 'Night Harbor: Falling Tide',
+      titleSource: 'filename',
+      kind: 'comic',
+    });
+    const plain = scoreCandidate(comic, { ...base, sourceId: 'p', title: 'Night Harbor' });
+    const other = scoreCandidate(comic, {
+      ...base,
+      sourceId: 'v2',
+      title: 'Night Harbor, Vol. 2: Dark Tides',
+    });
+    expect(other.score).toBeLessThanOrEqual(0.3);
+    expect(other.evidence.notes.join(' ')).toMatch(/different story/);
+    expect(plain.score).toBeGreaterThan(other.score);
+    // A prose subtitle like "A Novel" names no story.
+    const novel = scoreCandidate(
+      facts({ title: 'Glass Bells: A Novel', titleSource: 'filename' }),
+      {
+        ...base,
+        sourceId: 'n',
+        title: 'Glass Bells: Stories',
+      },
+    );
+    expect(novel.score).toBeGreaterThan(0.3);
+
+    const issue = facts({ title: 'Lantern Ward #1', titleSource: 'filename', kind: 'comic' });
+    const same = scoreCandidate(issue, {
+      ...base,
+      authors: [],
+      sourceId: 'a',
+      title: 'Lantern Ward #1',
+    });
+    const eight = scoreCandidate(issue, {
+      ...base,
+      authors: [],
+      sourceId: 'b',
+      title: 'Lantern Ward 8 #1',
+    });
+    expect(eight.evidence.title).toBeLessThan(same.evidence.title);
+    expect(eight.score).toBeLessThan(same.score);
+  });
+
   it('never matches a different volume of the same series', () => {
     const base = { ...tm[0]!, isbns: [], rating: undefined, authors: ['Rin Okabe'] };
     const records = [
