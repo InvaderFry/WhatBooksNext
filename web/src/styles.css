@@ -1216,3 +1216,16 @@ kbd {
   padding: 0.3rem 0;
   border-bottom: 1px solid var(--border);
 }
+
+.stack {
+  display: grid;
+  gap: 0.5rem;
+  justify-items: start;
+  border: 0;
+  padding: 0;
+  margin: 0.75rem 0;
+}
+.stack legend {
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+}

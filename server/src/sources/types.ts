@@ -5,7 +5,8 @@
  * Everything a source says is untrusted text. It is stored and shown as text, never as HTML.
  */
 
-export type SourceName = 'openlibrary' | 'anilist' | 'hardcover' | 'metron' | 'comicvine' | 'demo';
+export type SourceName =
+  'openlibrary' | 'anilist' | 'hardcover' | 'metron' | 'comicvine' | 'calibre' | 'demo';
 
 export const SOURCE_LABELS: Record<SourceName, string> = {
   openlibrary: 'Open Library',
@@ -13,6 +14,8 @@ export const SOURCE_LABELS: Record<SourceName, string> = {
   hardcover: 'Hardcover',
   metron: 'Metron',
   comicvine: 'ComicVine',
+  // The owner's own Calibre library (§14): curated metadata, read from a copy of metadata.db.
+  calibre: 'Calibre',
   demo: 'Demo source (invented)',
 };
 

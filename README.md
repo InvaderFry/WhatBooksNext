@@ -115,6 +115,19 @@ settings with only the "read catalog" permission (Settings links straight to tha
 it in **Settings → Online lookups**. It stays on this PC: it's never in a backup, an export or the
 Diagnostics report. Then press **Diagnostics → Test Hardcover**.
 
+## Store books, spreadsheets and Calibre
+
+- **Store books** (Kindle, Apple Books, Google Play, Kobo, GlobalComix): Library → **Add a store
+  book…**, found online or typed in. They're recommended like any book, labelled "In Kindle"
+  and so on, and count as ready to read once you tick "I can read it there now".
+- **A spreadsheet of store books:** Settings → **Store books from a spreadsheet**. A CSV with the
+  columns `title, author, store, kind, progress, isbn, series, series_index, rating, note` (only
+  `title` is needed). You see what would happen first; importing the same file again adds
+  nothing twice and never overwrites your edits.
+- **Calibre:** Settings → **Calibre**. Paste your Calibre library folder. The app reads a copy of
+  Calibre's `metadata.db` and changes nothing in Calibre. Your ratings and a "read" column come
+  across only if you choose them.
+
 ## Backups
 
 Go to **Settings → Download a backup** for a JSON file of your library, progress, ratings, notes
