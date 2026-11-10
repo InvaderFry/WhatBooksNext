@@ -1,0 +1,121 @@
+{
+  "numFound": 103,
+  "start": 0,
+  "numFoundExact": true,
+  "num_found": 103,
+  "documentation_url": "https://openlibrary.org/dev/docs/api/search",
+  "q": "",
+  "offset": null,
+  "docs": [
+    {
+      "author_name": ["H. G. Wells"],
+      "cover_i": 9009316,
+      "edition_count": 1146,
+      "first_publish_year": 1895,
+      "isbn": [
+        "1722144181",
+        "9781424213351",
+        "9781936594115",
+        "1537187317",
+        "8601404223327",
+        "9781983416088",
+        "9780874067262",
+        "9781518619373"
+      ],
+      "key": "/works/OL52267W",
+      "language": ["ita", "rus", "ger", "epo", "chi", "und", "spa", "tam"],
+      "number_of_pages_median": 120,
+      "title": "The Time Machine",
+      "subject": [
+        "Self-experimentation in medicine in fiction",
+        "Fiction",
+        "Time travel in fiction",
+        "Dystopias in fiction",
+        "Literature",
+        "Scientists",
+        "Classic Literature",
+        "Open Library Staff Picks"
+      ],
+      "ratings_average": 4.0149255,
+      "ratings_count": 134
+    },
+    {
+      "author_name": ["H. G. Wells"],
+      "cover_i": 877708,
+      "edition_count": 39,
+      "first_publish_year": 1946,
+      "isbn": [
+        "9781561005895",
+        "9781590862865",
+        "0449300102",
+        "9781111549749",
+        "9780736638463",
+        "9785557128872",
+        "9781597371490",
+        "1593352085"
+      ],
+      "key": "/works/OL52148W",
+      "language": ["eng"],
+      "number_of_pages_median": 276,
+      "title": "The War Of The Worlds/The Time Machine",
+      "subject": [
+        "Fiction",
+        "English Science fiction",
+        "Space warfare",
+        "Time travel",
+        "British and irish fiction (fictional works by one author)",
+        "Fiction, science fiction, general",
+        "science fiction",
+        "aliens"
+      ],
+      "ratings_average": 5.0,
+      "ratings_count": 1
+    },
+    {
+      "author_name": ["H. G. Wells    adapted by Shirley Bogart"],
+      "cover_i": 7343927,
+      "edition_count": 6,
+      "first_publish_year": 1992,
+      "isbn": ["7009700224", "1591972124", "0866119833", "9780866119832", "9781591972129"],
+      "key": "/works/OL43376548W",
+      "language": ["eng"],
+      "number_of_pages_median": 240,
+      "title": "The Time Machine [adaptation]",
+      "ratings_average": 5.0,
+      "ratings_count": 2
+    },
+    {
+      "author_name": ["Terry Davis", "H. G. Wells"],
+      "cover_i": 2972258,
+      "edition_count": 1,
+      "first_publish_year": 2007,
+      "isbn": ["9781598898897", "1598898892"],
+      "key": "/works/OL15119490W",
+      "language": ["eng"],
+      "number_of_pages_median": 63,
+      "title": "The Time Machine (Graphic Novel)",
+      "subject": [
+        "graphic novel",
+        "Juvenile fiction",
+        "Graphic novels",
+        "Comic books, strips",
+        "Science fiction",
+        "Cartoons and comics",
+        "Science fiction comic books, strips",
+        "Scientists"
+      ],
+      "ratings_average": 0.0,
+      "ratings_count": 0
+    },
+    {
+      "author_name": ["H. G. Wells"],
+      "edition_count": 6,
+      "first_publish_year": 1935,
+      "key": "/works/OL381761W",
+      "language": ["eng"],
+      "number_of_pages_median": 303,
+      "title": "The Wheels of Chance / The Time Machine",
+      "subject": ["English Science fiction"]
+    }
+  ]
+}

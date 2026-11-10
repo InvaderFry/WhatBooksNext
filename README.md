@@ -5,10 +5,11 @@ they already own. It's a local web app for Windows. It lists your folders, works
 file is, and tracks your reading with one tap. It isn't a reader: you keep reading in your usual
 apps.
 
-**Status: Milestone 2 of 6.** This version has the library and tracking (folders, scanning,
-progress, the shortlist, backup and restore) and reads inside your files: titles and authors,
-word and page counts, covers, what kind of PDF each one is, and fingerprints that recognise moved
-and copied files. Recommendations arrive in Milestone 3.
+**Status: Milestone 3 of 6.** This version has the library and tracking (folders, scanning,
+progress, the shortlist, backup and restore), reads inside your files (titles, authors, word and
+page counts, covers, fingerprints that recognise moved and copied files), and gives **first real
+recommendations**: it looks your books up online for ratings and details, and **What next**
+suggests what to read for the time you have, with the reasons behind each pick.
 The full plan is in [`PLAN.md`](PLAN.md), and milestone notes are in
 [`docs/milestones/`](docs/milestones/).
 
@@ -61,10 +62,47 @@ labelled demo library of invented books at <http://localhost:4819>.
   or iPad, tick this on the folder in Settings. Its books then count as **Ready to read** even
   while the drive is unplugged. You can override it for any single book.
 
+## Recommendations and online lookups
+
+**What next** ranks the books you own and haven't finished. Choose how long you have, and whether
+you want to _read for_ that long or _finish something_ in that time. Each pick says what it is
+("Whole book · ~4–5 h"), why it was picked, and what it rests on less firmly ("rough length",
+"unconfirmed match", "on external drive (not connected)"). **Not this, because…** on any card
+tells the app why not. **What kind?** narrows the picks to Books, Tech, Comics and manga, or All.
+When a book has several files, it opens EPUB first; a comic opens PDF, then CBZ, then EPUB (an HD
+copy first). Every file keeps its own Open button on the book's page. **Triage** sorts books into Want / Maybe / Never / Already read; it's
+optional.
+
+To rank books, whatBooksNext looks them up online. Only titles, authors and ISBNs are sent —
+never files or your reading history.
+
+| Source       | Key                 | Used for                                                |
+| ------------ | ------------------- | ------------------------------------------------------- |
+| Open Library | none                | books: ratings (some), subjects, first publication year |
+| AniList      | none                | manga: series scores, genres, publication status        |
+| Hardcover    | optional free token | book ratings with vote counts, series, genres           |
+
+Everything works without a key. Lookups run after each scan (you can turn that off in
+**Settings → Online lookups**), about one book a second, and pick up where they stopped. **Sources
+fail soft:** if one is down or refuses requests, it's paused for ten minutes after five failures
+in a row, the rest carries on, and nothing already found is lost. Western comics have almost no
+community ratings anywhere; Metron and ComicVine lookups come in Milestone 4.
+
+When a match isn't certain, the book is still recommended, marked "unconfirmed", and listed in
+**Needs review**, where you can confirm it, pick another, search, or leave it unidentified. Your
+answers always win over later lookups. A book with no rating or length counts as average, never
+last.
+
+**Hardcover token:** make a free account at hardcover.app, then create a token in its account
+settings with only the "read catalog" permission (Settings links straight to that form). Paste
+it in **Settings → Online lookups**. It stays on this PC: it's never in a backup, an export or the
+Diagnostics report. Then press **Diagnostics → Test Hardcover**.
+
 ## Backups
 
 Go to **Settings → Download a backup** for a JSON file of your library, progress, ratings, notes
-and settings. It doesn't include book files, cover images or API keys. **Restoring replaces
+and settings, including your answers in Needs review and the matches found online. It doesn't
+include book files, cover images, API keys or the raw responses from online sources. **Restoring replaces
 everything** after showing you a preview and saving a safety copy first. It works without
 connecting any drive, and the next scan reconnects the files.
 
@@ -112,7 +150,12 @@ four on Ubuntu and Windows.
 
 `npm run screenshots` drives the demo library in Chromium and saves screenshots to
 `screenshots/`. It needs Playwright, which isn't a dependency. `npm run benchmark` times a
-scan of 5,000 generated files and how quickly the app answers during it.
+scan of 5,000 generated files and how quickly the app answers during it. `npm run
+report:matches` runs the matching over labelled examples (recorded source responses, no network)
+and reports precision and wrong high-confidence matches.
+
+Online sources are built against recorded responses in `fixtures/sources/`. The demo
+(`DEMO=1`) never goes online: it uses an invented source for its invented books.
 
 Reading files uses pdf.js (`pdfjs-dist`) for PDFs, `@napi-rs/canvas` to draw covers, `yauzl`
 for ZIP-based files and `node-unrar-js` (WebAssembly) for RAR. None needs a compiler or an

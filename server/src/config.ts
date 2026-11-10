@@ -159,3 +159,139 @@ export const PDF_RANGE_CHUNK = 64 * 1024;
  * owner's drive.
  */
 export const EXTERNAL_READ_CONCURRENCY = 1;
+
+// ---- Lookups (M3, PLAN.md §12) ---------------------------------------------------------------
+
+/**
+ * Identifies the app to online sources. Open Library asks for the app's name and a contact
+ * (verified November 2026); the project page is the contact, never the owner's email (§5).
+ */
+export const USER_AGENT =
+  'whatBooksNext/0.3 (personal reading tool; github.com/InvaderFry/whatBooksNext)';
+
+/**
+ * Open Library: 1 request per second for requests without a contact email, 3 with one
+ * (openlibrary.org/developers/api, verified November 2026). We send no email, so 1 per second.
+ */
+export const OPENLIBRARY_MIN_INTERVAL_MS = 1000;
+
+/**
+ * AniList: 90 requests a minute nominally, 30 while degraded; the live API answered with
+ * X-RateLimit-Limit: 30 in November 2026. One request every 2.1 s stays under 30 a minute, and
+ * the client also obeys X-RateLimit-Remaining and Retry-After.
+ */
+export const ANILIST_MIN_INTERVAL_MS = 2100;
+
+/**
+ * Hardcover: free tokens get 60 requests a minute, a burst of 10 and 5,000 a day
+ * (hardcover-docs Getting-Started, verified November 2026). One a second, one top-level field
+ * per request, so a 4,000-book library fits in one day's allowance.
+ */
+export const HARDCOVER_MIN_INTERVAL_MS = 1000;
+
+/** Hardcover's daily allowance on a free token; lookups stop for the day before reaching it. */
+export const HARDCOVER_DAILY_LIMIT = 5000;
+
+/** Give up on one request after this long. Hardcover's own limit is 30 s (2 s for search). */
+export const SOURCE_TIMEOUT_MS = 20_000;
+
+/**
+ * Circuit breaker: after this many failures in a row a source is paused (§5 "flaky sources
+ * fail soft"), so a site that is down isn't hammered and the rest of the lookup carries on.
+ */
+export const CIRCUIT_FAILURES = 5;
+
+/** How long a tripped source stays paused before one trial request. */
+export const CIRCUIT_PAUSE_MS = 10 * 60_000;
+
+/**
+ * A lookup run stops after this many books in a row couldn't reach any of their sources:
+ * the connection is down (Wi-Fi, a VPN switching over), and carrying on would only mark the
+ * rest of the library "failed". The next run carries on where it stopped.
+ */
+export const LOOKUP_STOP_AFTER_FAILED_ITEMS = 10;
+
+/** Search results considered per source. More rarely helps and costs rate limit. */
+export const SEARCH_RESULTS = 5;
+
+/** Match thresholds (§11.2, §20): cautious, because a wrong match hurts more than none. */
+export const MATCH_ACCEPT = 0.9;
+export const MATCH_REVIEW = 0.6;
+
+/** Two candidates closer than this are a tie: neither is accepted (§11.2, §20). */
+export const MATCH_TIE_MARGIN = 0.05;
+
+// ---- Estimates (§12.3, §20) ------------------------------------------------------------------
+
+/** Brysbaert (2019) meta-analysis of adult silent reading: ~260 wpm fiction, ~238 nonfiction. */
+export const WPM_FICTION = 260;
+export const WPM_NONFICTION = 238;
+/** Assumption: code, diagrams and rereading slow technical reading a lot. */
+export const WPM_TECH = 150;
+/** Assumption; calibrate. */
+export const COMIC_SECONDS_PER_PAGE = 20;
+/** Assumption: fewer words per page than Western comics; calibrate. */
+export const MANGA_SECONDS_PER_PAGE = 10;
+/** Assumption: a typical trade paperback page. Marks the estimate rough. */
+export const WORDS_PER_PAGE = 275;
+/** Assumption: speed varies by book and mood, so a ±20% range, never a measured confidence. */
+export const ESTIMATE_SPREAD = 0.2;
+
+/** "An evening" and "a weekend" (§13.2, §20). Shown in the UI. */
+export const EVENING_MINUTES = 3 * 60;
+export const WEEKEND_MINUTES = 10 * 60;
+
+// ---- Ranking (§12.2, §13.7, §20) -------------------------------------------------------------
+
+/** Ratings lead; recency stays a nudge (§20). Adjustable under Tune (M5). */
+export const WEIGHTS = {
+  rating: 0.35,
+  timeFit: 0.2,
+  taste: 0.15,
+  momentum: 0.15,
+  triage: 0.1,
+  recency: 0.05,
+} as const;
+
+/**
+ * "Highly rated": at or above this percentile of one source's shrunk scores in this library;
+ * with fewer than HIGHLY_RATED_MIN_ITEMS rated items from that source, ≥ 80 / 100 instead.
+ * Star averages cluster near 4 / 5, so a fixed cut-off would pass most books from one source.
+ */
+export const HIGHLY_RATED_PERCENTILE = 0.7;
+export const HIGHLY_RATED_MIN_ITEMS = 30;
+export const HIGHLY_RATED_FALLBACK = 80;
+
+/** Read next shows this many cards; "Show more" adds as many again (§20). */
+export const READ_NEXT_PAGE = 10;
+
+/** Recency boost: acquired within this many days (§13.7, §20). */
+export const RECENT_DAYS = 60;
+
+/** A library folder where over this share of files share one day's date is a bulk copy (§20). */
+export const BULK_COPY_SHARE = 0.5;
+
+/** The first triage session's length (§20): enough to help, short enough to finish. */
+export const TRIAGE_SESSION = 15;
+
+/** "Defer" in Needs review hides a row for this long unless the owner picks a date. */
+export const REVIEW_DEFER_DAYS = 30;
+
+/**
+ * A PDF with at least PICTURE_MIN_PAGES pages and fewer than PICTURE_WORDS_PER_PAGE words a page
+ * is mostly pictures: its length comes from its pages, and its kind is guessed as comic. Prose
+ * runs to 250–400 words a page; a comic's text layer (balloons, credits, captions) stays below 150.
+ * From the owner's first quality check: a comic PDF read as "~5 min from 741 words", and comics
+ * with lettered speech balloons came to about 60 words a page, and wordy ones over 100, so the
+ * line is at 150, still below prose. (Sparse poetry could fall under it; the owner's kind
+ * correction then wins.)
+ */
+export const PICTURE_MIN_PAGES = 20;
+export const PICTURE_WORDS_PER_PAGE = 150;
+
+/**
+ * Author variety in Read next: each earlier card in the list that shares an author lowers a card's
+ * score by this much. A bundle of one author's books downloaded on one day otherwise filled five
+ * of the top seven (owner's first quality check). Small, so a clearly better book still leads.
+ */
+export const SAME_AUTHOR_PENALTY = 0.04;

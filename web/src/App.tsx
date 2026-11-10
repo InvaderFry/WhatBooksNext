@@ -8,11 +8,15 @@ import { ItemPage } from './pages/ItemPage.tsx';
 import { Library } from './pages/Library.tsx';
 import { Settings } from './pages/Settings.tsx';
 import { Shortlist } from './pages/Shortlist.tsx';
+import { Triage } from './pages/Triage.tsx';
+import { WhatNext } from './pages/WhatNext.tsx';
 import { ScanProgress } from './ScanProgress.tsx';
 import { hrefFor, onLinkClick, useParams } from './url.ts';
 
 const NAV = [
+  { view: 'next', label: 'What next' },
   { view: 'library', label: 'Library' },
+  { view: 'triage', label: 'Triage' },
   { view: 'shortlist', label: 'Shortlist' },
   { view: 'review', label: 'Needs review' },
   { view: 'settings', label: 'Settings' },
@@ -21,8 +25,9 @@ const NAV = [
 
 export function App() {
   const params = useParams();
-  const view = params.view ?? 'library';
   const [state, setState] = useState<AppState | null>(null);
+  // Home is What next once there is a library; before that, the Library's welcome page.
+  const view = params.view ?? (state && state.folders === 0 ? 'library' : 'next');
   const [scan, setScan] = useState<ScanStatus | null>(null);
   const [dataVersion, setDataVersion] = useState(0);
 
@@ -69,6 +74,8 @@ export function App() {
 
   useEffect(() => {
     const titles: Record<string, string> = {
+      next: 'What next',
+      triage: 'Triage',
       library: 'Library',
       shortlist: 'Shortlist',
       settings: 'Settings',
@@ -77,7 +84,7 @@ export function App() {
       health: 'Library health',
       item: 'Book',
     };
-    document.title = `${titles[view] ?? 'Library'} · whatBooksNext`;
+    document.title = `${titles[view] ?? 'What next'} · whatBooksNext`;
   }, [view]);
 
   const scanStarted = () => {
@@ -133,6 +140,10 @@ export function App() {
         <ReminderBanner key={dataVersion} onScanStarted={scanStarted} />
       )}
       <main id="main" tabIndex={-1}>
+        {view === 'next' && state && (
+          <WhatNext key={dataVersion} params={params} onChanged={() => void refreshState()} />
+        )}
+        {view === 'triage' && <Triage key={dataVersion} onChanged={() => void refreshState()} />}
         {view === 'library' && (
           <Library key={dataVersion} state={state} onScanStarted={scanStarted} />
         )}

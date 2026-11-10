@@ -4,7 +4,7 @@ import path from 'node:path';
 import { MAX_JSON_BODY, SCAN_REMINDER_DAYS, SCAN_REMINDER_SNOOZE_DAYS } from './config.ts';
 import { schemaVersion, type DB } from './db/database.ts';
 import { listSnapshots } from './db/snapshots.ts';
-import { refreshFactsOfItems, removeOrphanItems } from './identify/items.ts';
+import { refreshFactsOfItems, refreshPrimary, removeOrphanItems } from './identify/items.ts';
 import { healthProblemCount, libraryHealth } from './lib/health.ts';
 import { actOnReview, listReview, openReviewCount } from './lib/review.ts';
 import { coverPath } from './scan/deepPass.ts';
@@ -35,6 +35,11 @@ import {
 } from './scan/folders.ts';
 import { ScanManager } from './scan/scanManager.ts';
 import { requestGuard, securityHeaders } from './security.ts';
+import { LookupManager } from './identify/lookups.ts';
+import { getSetting, registerReadingRoutes } from './routes/reading.ts';
+import { route } from './routes/route.ts';
+import { Sources } from './sources/index.ts';
+import type { Fetcher } from './sources/types.ts';
 import { HttpError, nowIso, parseJson, todayLocal } from './util.ts';
 
 export interface AppContext {
@@ -50,6 +55,10 @@ export interface AppContext {
   demo?: boolean;
   /** Content-reading pool for the deep pass (tests pass a small one). */
   runner?: TaskRunner;
+  /** How online sources are reached (tests replay recorded responses). */
+  fetcher?: Fetcher;
+  /** Look new books up after each scan (default: the owner's setting). Tests of other things turn it off. */
+  autoLookups?: boolean;
 }
 
 /** Folder reachability, refreshed at most every few seconds (a check asks the platform). */
@@ -75,15 +84,6 @@ class Reachability {
   }
 }
 
-type Handler = (req: Request, res: Response) => Promise<unknown> | unknown;
-const route =
-  (fn: Handler) =>
-  (req: Request, res: Response, next: NextFunction): void => {
-    Promise.resolve(fn(req, res)).then((body) => {
-      if (!res.headersSent) res.json(body ?? { ok: true });
-    }, next);
-  };
-
 const str = (v: unknown): string | undefined => (typeof v === 'string' && v !== '' ? v : undefined);
 const bool = (v: unknown): boolean | undefined => (v === '1' || v === 'true' ? true : undefined);
 const int = (v: unknown): number | undefined =>
@@ -92,7 +92,20 @@ const int = (v: unknown): number | undefined =>
 export function createApp(ctx: AppContext) {
   const { db, platform } = ctx;
   const coversDir = ctx.dataDir ? path.join(ctx.dataDir, 'covers') : null;
-  const scans = new ScanManager(db, platform, { runner: ctx.runner, coversDir });
+  const sources = new Sources(db, { demo: ctx.demo, fetcher: ctx.fetcher });
+  const lookups = new LookupManager(db, sources);
+  const scans = new ScanManager(db, platform, {
+    runner: ctx.runner,
+    coversDir,
+    // After a scan, look up what's new — unless the owner turned that off (§12.1).
+    onFinished: (s) => {
+      lookups.invalidate();
+      if (ctx.autoLookups === false) return;
+      if (s.status === 'failed' || lookups.isRunning()) return;
+      if (!getSetting<boolean>(db, 'lookupsAfterScan', true)) return;
+      if (lookups.pending() > 0) lookups.start();
+    },
+  });
   const reach = new Reachability(ctx);
   const app = express();
   app.disable('x-powered-by');
@@ -118,8 +131,18 @@ export function createApp(ctx: AppContext) {
       scanRunning: scans.isRunning(),
       reviewOpen: openReviewCount(db),
       healthProblems: healthProblemCount(db),
+      lookupsRunning: lookups.isRunning(),
     })),
   );
+
+  registerReadingRoutes(app, {
+    db,
+    sources,
+    lookups,
+    scans,
+    reach: () => reach.get(),
+    itemIdOr404,
+  });
 
   // ---- Scan reminder (§9.7) -------------------------------------------------------------------
   // A folder whose last complete scan is over 30 days old, unless the banner was dismissed in
@@ -427,7 +450,22 @@ export function createApp(ctx: AppContext) {
     route((req) => {
       const id = itemIdOr404(String(req.params.id));
       const patch = validatePatch(req.body);
-      db.transaction(() => applyUserPatch(db, id, patch, todayLocal()))();
+      db.transaction(() => {
+        if (
+          patch.preferredFileId &&
+          !db
+            .prepare('SELECT 1 FROM item_files WHERE item_id = ? AND file_id = ?')
+            .get(id, patch.preferredFileId)
+        )
+          throw new HttpError(400, 'That file isn’t one of this book’s files.');
+        applyUserPatch(db, id, patch, todayLocal());
+        // Comics and books open different formats first, and the owner may choose a file:
+        // either re-picks the main file now, and its cover and details follow.
+        if (patch.kindOverride !== undefined || patch.preferredFileId !== undefined) {
+          refreshPrimary(db, id);
+          refreshFactsOfItems(db, [id]);
+        }
+      })();
       return { ok: true };
     }),
   );
@@ -543,12 +581,16 @@ export function createApp(ctx: AppContext) {
     '/api/restore',
     route(async (req) => {
       if (scans.isRunning()) throw new HttpError(409, 'Wait for the scan to finish.');
+      // A lookup still running would write its answers into the restored data.
+      if (lookups.isRunning())
+        throw new HttpError(409, 'Online lookups are running. Stop them, or wait, then restore.');
       if (req.body?.confirm !== true)
         throw new HttpError(400, 'Restoring replaces all app data; confirm first.');
       const backup = validateBackup(db, req.body?.backup);
       try {
         const r = await restoreBackup(db, backup, ctx.snapshotDir);
         reach.invalidate();
+        lookups.invalidate();
         return { ok: true, snapshotPath: r.snapshotPath };
       } catch (err) {
         if (err instanceof HttpError) throw err;
@@ -627,7 +669,17 @@ export function createApp(ctx: AppContext) {
           problems: healthProblemCount(db),
           covers: db.prepare('SELECT COUNT(*) FROM files WHERE has_thumbnail = 1').pluck().get(),
         },
-        sources: 'No online sources yet (they arrive in Milestone 3).',
+        sources: sources.status().map((x) => ({
+          label: x.label,
+          configured: x.configured,
+          state: x.state,
+          lastError: x.lastError,
+          lastErrorAt: x.lastErrorAt,
+          lastSuccessAt: x.lastSuccessAt,
+          requests: x.requests,
+          note: x.note,
+        })),
+        lookups: { pending: lookups.pending(), running: lookups.isRunning() },
       };
     }),
   );
@@ -678,7 +730,9 @@ export function createApp(ctx: AppContext) {
   return {
     app,
     scans,
+    lookups,
     close: async () => {
+      await lookups.close();
       await scans.close();
       await platform.close();
     },

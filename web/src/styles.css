@@ -907,3 +907,223 @@ legend {
 nav .count {
   font-weight: 600;
 }
+
+/* ---- M3: What next, triage, lookups, identity review ---------------------------------- */
+.time-control {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin: 0.5rem 0 1rem;
+}
+.segmented {
+  border: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+.segmented legend {
+  font-weight: 600;
+  margin-bottom: 0.3rem;
+  padding: 0;
+}
+.segmented label {
+  position: relative;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: 999px;
+  padding: 0.3rem 0.8rem;
+  cursor: pointer;
+  font-size: 0.92rem;
+}
+.segmented label.on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text);
+}
+.segmented label:has(input:focus-visible) {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+.segmented input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+.segmented:disabled label {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.coverage-line {
+  margin: 0 0 0.75rem;
+}
+.cards {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+.pick {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+}
+.pick-main {
+  flex: 1;
+  min-width: 0;
+}
+.pick h3 {
+  font-size: 1.05rem;
+  margin: 0 0 0.15rem;
+}
+.pick h3 a {
+  color: var(--text);
+  text-decoration: none;
+}
+.pick h3 a:hover {
+  text-decoration: underline;
+}
+.scope {
+  margin: 0.3rem 0;
+}
+.reasons {
+  list-style: none;
+  padding: 0;
+  margin: 0.3rem 0;
+  color: var(--ok);
+}
+.limits {
+  margin: 0.3rem 0;
+  color: var(--warn);
+  font-size: 0.9rem;
+}
+.pick .row-actions {
+  margin-top: 0.5rem;
+}
+.not-this {
+  margin-top: 0.5rem;
+  padding: 0.5rem 0.6rem;
+  background: var(--surface-2);
+  border-radius: var(--radius);
+}
+.lookup-banner,
+.offer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--accent-soft);
+  border-radius: var(--radius);
+  padding: 0.6rem 0.85rem;
+  margin: 0 0 1rem;
+}
+.lookup-banner p {
+  margin: 0;
+  flex: 1 1 20rem;
+}
+.offer {
+  display: block;
+}
+.might-fit {
+  margin-top: 1.5rem;
+}
+.triage-card {
+  display: flex;
+  gap: 1.25rem;
+  align-items: flex-start;
+  margin-bottom: 1rem;
+}
+.triage-card h2:focus {
+  outline: none;
+}
+.description {
+  white-space: pre-line;
+  max-height: 14rem;
+  overflow: auto;
+}
+.triage-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+kbd {
+  font: inherit;
+  font-size: 0.75rem;
+  border: 1px solid currentColor;
+  border-radius: 4px;
+  padding: 0 0.3rem;
+  margin-left: 0.2rem;
+  opacity: 0.75;
+}
+.bulk-bar {
+  margin-bottom: 0.75rem;
+}
+.candidates {
+  margin: 0.5rem 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.candidate {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.4rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.5rem 0.65rem;
+}
+.candidate > div:first-child {
+  flex: 1 1 18rem;
+  min-width: 0;
+}
+.later {
+  margin-top: 0.4rem;
+}
+.match-summary {
+  margin-bottom: 1rem;
+}
+.match-summary summary {
+  cursor: pointer;
+}
+.online-card {
+  margin-bottom: 1.5rem;
+}
+.facts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.25rem 1rem;
+  margin: 0 0 0.75rem;
+}
+.facts dt {
+  font-weight: 600;
+}
+.facts dd {
+  margin: 0;
+}
+.source-row {
+  padding: 0.6rem 0.8rem;
+}
+.hardcover {
+  margin-top: 1rem;
+}
+.hardcover .inline-form {
+  align-items: center;
+  flex-wrap: wrap;
+}
+@media (max-width: 30rem) {
+  .pick,
+  .triage-card {
+    flex-direction: column;
+  }
+  .facts {
+    grid-template-columns: 1fr;
+  }
+  .facts dd {
+    margin-bottom: 0.35rem;
+  }
+}

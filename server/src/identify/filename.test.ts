@@ -238,3 +238,9 @@ describe("display titles for patterns found in the owner's first scan (invented 
     expect(p.editionNote).toBe('new edition');
   });
 });
+
+describe('word splitting of names the dictionary lacks', () => {
+  it('keeps a name whole instead of splitting off a single letter', () => {
+    expect(parseFilename('pickleandmorty_vol2.pdf').series?.value).toBe('pickle and morty');
+  });
+});

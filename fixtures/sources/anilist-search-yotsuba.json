@@ -1,0 +1,438 @@
+{
+  "data": {
+    "Page": {
+      "media": [
+        {
+          "id": 30104,
+          "siteUrl": "https://anilist.co/manga/30104",
+          "format": "MANGA",
+          "status": "RELEASING",
+          "volumes": null,
+          "averageScore": 89,
+          "popularity": 64703,
+          "countryOfOrigin": "JP",
+          "startDate": {
+            "year": 2003
+          },
+          "title": {
+            "romaji": "Yotsuba to!",
+            "english": "Yotsuba&!",
+            "native": "よつばと！"
+          },
+          "synonyms": ["Yotsuba and!", "Yotsuba!", "Yotsubato", "Ёцуба!", "요츠바랑!", "四葉妹妹!"],
+          "genres": ["Comedy", "Slice of Life"],
+          "tags": [
+            {
+              "name": "Family Life",
+              "rank": 99,
+              "isGeneralSpoiler": false
+            },
+            {
+              "name": "Iyashikei",
+              "rank": 96,
+              "isGeneralSpoiler": false
+            },
+            {
+              "name": "Episodic",
+              "rank": 89,
+              "isGeneralSpoiler": false
+            },
+            {
+              "name": "Parenthood",
+              "rank": 87,
+              "isGeneralSpoiler": false
+            },
+            {
+              "name": "Female Protagonist",
+              "rank": 86,
+              "isGeneralSpoiler": false
+            },
+            {
+              "name": "Shounen",
+              "rank": 79,
+              "isGeneralSpoiler": false
+            },
+            {
+              "name": "Outdoor Activities",
+              "rank": 79,
+              "isGeneralSpoiler": false
+            },
+            {
+              "name": "Cute Girls Doing Cute Things",
+              "rank": 79,
+              "isGeneralSpoiler": false
+            },
+            {
+              "name": "Slapstick",
+              "rank": 79,
+              "isGeneralSpoiler": false
+            },
+            {
+              "name": "Adoption",
+              "rank": 64,
+              "isGeneralSpoiler": false
+            },
+            {
+              "name": "Rural",
+              "rank": 64,
+              "isGeneralSpoiler": false
+            },
+            {
+              "name": "Primarily Female Cast",
+              "rank": 55,
+              "isGeneralSpoiler": false
+            },
+            {
+              "name": "Tomboy",
+              "rank": 54,
+              "isGeneralSpoiler": false
+            },
+            {
+              "name": "Yuri",
+              "rank": 20,
+              "isGeneralSpoiler": false
+            },
+            {
+              "name": "Fishing",
+              "rank": 20,
+              "isGeneralSpoiler": false
+            }
+          ],
+          "stats": {
+            "scoreDistribution": [
+              {
+                "score": 10,
+                "amount": 96
+              },
+              {
+                "score": 20,
+                "amount": 8
+              },
+              {
+                "score": 30,
+                "amount": 31
+              },
+              {
+                "score": 40,
+                "amount": 47
+              },
+              {
+                "score": 50,
+                "amount": 176
+              },
+              {
+                "score": 60,
+                "amount": 267
+              },
+              {
+                "score": 70,
+                "amount": 994
+              },
+              {
+                "score": 80,
+                "amount": 2494
+              },
+              {
+                "score": 90,
+                "amount": 5431
+              },
+              {
+                "score": 100,
+                "amount": 6498
+              }
+            ]
+          },
+          "staff": {
+            "edges": [
+              {
+                "role": "Story & Art",
+                "node": {
+                  "name": {
+                    "full": "Kiyohiko Azuma"
+                  }
+                }
+              },
+              {
+                "role": "Translator (English: vols 2, 3, 10-)",
+                "node": {
+                  "name": {
+                    "full": "Stephen Paul"
+                  }
+                }
+              },
+              {
+                "role": "Translator (English: vols 1, 4-9)",
+                "node": {
+                  "name": {
+                    "full": "Amy Forsyth"
+                  }
+                }
+              },
+              {
+                "role": "Translator (French)",
+                "node": {
+                  "name": {
+                    "full": "Eve Chauviré"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "id": 36604,
+          "siteUrl": "https://anilist.co/manga/36604",
+          "format": "ONE_SHOT",
+          "status": "FINISHED",
+          "volumes": null,
+          "averageScore": 69,
+          "popularity": 2864,
+          "countryOfOrigin": "JP",
+          "startDate": {
+            "year": 2001
+          },
+          "title": {
+            "romaji": "Try! Try! Try!",
+            "english": "Try! Try! Try!",
+            "native": "Try! Try! Try!"
+          },
+          "synonyms": ["Yotsuba&! Pilot"],
+          "genres": ["Comedy"],
+          "tags": [
+            {
+              "name": "Female Protagonist",
+              "rank": 80,
+              "isGeneralSpoiler": false
+            },
+            {
+              "name": "Family Life",
+              "rank": 79,
+              "isGeneralSpoiler": false
+            },
+            {
+              "name": "Cute Girls Doing Cute Things",
+              "rank": 79,
+              "isGeneralSpoiler": false
+            },
+            {
+              "name": "Rural",
+              "rank": 79,
+              "isGeneralSpoiler": false
+            },
+            {
+              "name": "Iyashikei",
+              "rank": 75,
+              "isGeneralSpoiler": false
+            }
+          ],
+          "stats": {
+            "scoreDistribution": [
+              {
+                "score": 10,
+                "amount": 5
+              },
+              {
+                "score": 20,
+                "amount": 4
+              },
+              {
+                "score": 30,
+                "amount": 19
+              },
+              {
+                "score": 40,
+                "amount": 19
+              },
+              {
+                "score": 50,
+                "amount": 138
+              },
+              {
+                "score": 60,
+                "amount": 278
+              },
+              {
+                "score": 70,
+                "amount": 447
+              },
+              {
+                "score": 80,
+                "amount": 264
+              },
+              {
+                "score": 90,
+                "amount": 132
+              },
+              {
+                "score": 100,
+                "amount": 61
+              }
+            ]
+          },
+          "staff": {
+            "edges": [
+              {
+                "role": "Story & Art",
+                "node": {
+                  "name": {
+                    "full": "Kiyohiko Azuma"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "id": 117316,
+          "siteUrl": "https://anilist.co/manga/117316",
+          "format": "ONE_SHOT",
+          "status": "FINISHED",
+          "volumes": null,
+          "averageScore": null,
+          "popularity": 60,
+          "countryOfOrigin": "JP",
+          "startDate": {
+            "year": 2020
+          },
+          "title": {
+            "romaji": "Yotsuba wo Kimi ni",
+            "english": null,
+            "native": "四つ葉を君に"
+          },
+          "synonyms": [],
+          "genres": ["Comedy", "Romance"],
+          "tags": [
+            {
+              "name": "Josei",
+              "rank": 20,
+              "isGeneralSpoiler": false
+            }
+          ],
+          "stats": {
+            "scoreDistribution": []
+          },
+          "staff": {
+            "edges": [
+              {
+                "role": "Story & Art",
+                "node": {
+                  "name": {
+                    "full": "Shiho Komiyuno"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "id": 127033,
+          "siteUrl": "https://anilist.co/manga/127033",
+          "format": "MANGA",
+          "status": "FINISHED",
+          "volumes": 1,
+          "averageScore": null,
+          "popularity": 52,
+          "countryOfOrigin": "JP",
+          "startDate": {
+            "year": 2012
+          },
+          "title": {
+            "romaji": "Onajikaera de Dekite Iru",
+            "english": null,
+            "native": "同じかけらでできている"
+          },
+          "synonyms": [
+            "Mo Ichido Waratte",
+            "Wan! Fine Day!",
+            "Kazehiki Johnny",
+            "Fujunai Prelude",
+            "Fujunai Rhapsody",
+            "Onaji Kakera de Dekiteiru",
+            "Akiramesasete",
+            "Only Lonely",
+            "Yotsuba-shi Dayori"
+          ],
+          "genres": ["Slice of Life"],
+          "tags": [
+            {
+              "name": "Boys' Love",
+              "rank": 79,
+              "isGeneralSpoiler": false
+            },
+            {
+              "name": "Anthology",
+              "rank": 20,
+              "isGeneralSpoiler": false
+            }
+          ],
+          "stats": {
+            "scoreDistribution": [
+              {
+                "score": 10,
+                "amount": 2
+              },
+              {
+                "score": 100,
+                "amount": 1
+              }
+            ]
+          },
+          "staff": {
+            "edges": [
+              {
+                "role": "Story & Art",
+                "node": {
+                  "name": {
+                    "full": "Koma Kawakami"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "id": 120444,
+          "siteUrl": "https://anilist.co/manga/120444",
+          "format": "MANGA",
+          "status": "FINISHED",
+          "volumes": 3,
+          "averageScore": null,
+          "popularity": 29,
+          "countryOfOrigin": "JP",
+          "startDate": {
+            "year": 2014
+          },
+          "title": {
+            "romaji": "Yotsuba Danshiryou Sensen",
+            "english": null,
+            "native": "よつば男子寮戦線"
+          },
+          "synonyms": [],
+          "genres": ["Comedy", "Slice of Life"],
+          "tags": [
+            {
+              "name": "Shoujo",
+              "rank": 20,
+              "isGeneralSpoiler": false
+            }
+          ],
+          "stats": {
+            "scoreDistribution": []
+          },
+          "staff": {
+            "edges": [
+              {
+                "role": "Story & Art",
+                "node": {
+                  "name": {
+                    "full": "Youko Tamotsu"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  }
+}

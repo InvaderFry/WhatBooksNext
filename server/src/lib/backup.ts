@@ -26,13 +26,26 @@ export const BACKUP_TABLES = [
   'deletions',
   'file_user',
   'review_items',
+  'item_matches',
+  'lookup_state',
+  'candidates_rejected',
+  'review_state',
+  'pick_feedback',
 ] as const;
 
 /**
  * Tables a backup from an older schema may lack, with the schema version that added them.
  * Restoring such a backup leaves them empty. (M1 backups were made at version 1.)
  */
-const ADDED_IN: Record<string, number> = { file_user: 2, review_items: 2 };
+const ADDED_IN: Record<string, number> = {
+  file_user: 2,
+  review_items: 2,
+  item_matches: 3,
+  lookup_state: 3,
+  candidates_rejected: 3,
+  review_state: 3,
+  pick_feedback: 3,
+};
 
 /**
  * Tables deliberately left out. The backup-coverage test fails on any table that is in
@@ -44,6 +57,13 @@ export const BACKUP_EXCLUDED: Record<string, string> = {
   // Which directories were completely listed, and when. Rebuilt by the next scan; restoring an
   // old one could make files look "missing" against a directory listing that is out of date.
   directory_scans: 'rebuilt by the next scan',
+  // Raw source responses. Can be fetched again, and would make backups large. The matches
+  // derived from them (item_matches) are in the backup, so recommendations survive a restore.
+  source_cache: 'raw responses, fetched again when needed',
+  // API keys and tokens never leave the PC in a backup or export (§6.3).
+  secrets: 'API keys are never exported',
+  // Operational log of past lookups, like scan_runs.
+  enrich_runs: 'lookup history only',
 };
 
 export interface Backup {
@@ -66,7 +86,7 @@ export function createBackup(db: DB): Backup {
     formatVersion: BACKUP_FORMAT_VERSION,
     schemaVersion: schemaVersion(db),
     createdAt: nowIso(),
-    note: 'API keys, book files and cover images are not included in this backup.',
+    note: 'API keys, book files, cover images and raw online-source responses are not included in this backup.',
     tables,
   };
 }

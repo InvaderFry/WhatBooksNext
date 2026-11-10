@@ -49,6 +49,9 @@ export interface UserData {
   kindOverride: string | null;
   referenceOverride: boolean | null;
   icloudOverride: 'in' | 'not_in' | null;
+  triage: 'want' | 'maybe' | 'never' | null;
+  effortOverride: 'light' | 'medium' | 'heavy' | null;
+  preferredFileId: string | null;
   updatedAt: string | null;
 }
 
@@ -99,6 +102,9 @@ const DEFAULT_USER: UserData = {
   kindOverride: null,
   referenceOverride: null,
   icloudOverride: null,
+  triage: null,
+  effortOverride: null,
+  preferredFileId: null,
   updatedAt: null,
 };
 
@@ -120,6 +126,9 @@ interface UserRow {
   kind_override: string | null;
   reference_override: number | null;
   icloud_override: 'in' | 'not_in' | null;
+  triage: 'want' | 'maybe' | 'never' | null;
+  effort_override: 'light' | 'medium' | 'heavy' | null;
+  preferred_file_id: string | null;
   updated_at: string;
 }
 
@@ -142,6 +151,9 @@ export function userFromRow(r: UserRow | undefined): UserData {
     kindOverride: r.kind_override,
     referenceOverride: r.reference_override === null ? null : r.reference_override === 1,
     icloudOverride: r.icloud_override,
+    triage: r.triage,
+    effortOverride: r.effort_override,
+    preferredFileId: r.preferred_file_id,
     updatedAt: r.updated_at,
   };
 }
@@ -155,6 +167,7 @@ interface ItemRow {
   series_hint: string | null;
   creators: string;
   created_at: string;
+  online_title: string | null;
 }
 
 interface FileJoinRow {
@@ -239,8 +252,16 @@ export function loadLibrary(db: DB, reach: FolderReachability, onlyIds?: string[
     (db.prepare('SELECT * FROM folders').all() as FolderRow[]).map((f) => [f.id, f]),
   );
   const filter = onlyIds ? `WHERE i.id IN (${onlyIds.map(() => '?').join(',')})` : '';
+  // A title guessed from a filename gives way to the title of a certain online match
+  // ("rickandmorty_presents_vol2" → the source's own title). The file's title stays the fact;
+  // the owner's own title wins over both.
   const items = db
-    .prepare(`SELECT i.* FROM items i ${filter}`)
+    .prepare(
+      `SELECT i.*, CASE WHEN i.identity = 'accepted' AND COALESCE(i.title_source, 'filename') != 'embedded'
+           THEN json_extract(m.data, '$.title') END AS online_title
+       FROM items i LEFT JOIN item_matches m ON m.item_id = i.id AND m.source = i.match_source
+         AND m.source_id = i.match_source_id ${filter}`,
+    )
     .all(...(onlyIds ?? [])) as ItemRow[];
   const users = new Map(
     (db.prepare('SELECT * FROM user_item').all() as UserRow[]).map((u) => [u.item_id, u]),
@@ -303,7 +324,7 @@ export function loadLibrary(db: DB, reach: FolderReachability, onlyIds?: string[
     const kind = user.kindOverride ?? i.kind;
     return {
       id: i.id,
-      title: user.titleOverride ?? i.title,
+      title: user.titleOverride ?? i.online_title ?? i.title,
       factTitle: i.title,
       kind,
       kindIsGuess: !user.kindOverride && i.kind !== null,

@@ -1,0 +1,91 @@
+/**
+ * One adapter interface for every online source (PLAN.md §12.1): caching, polite per-source
+ * rate limits, a circuit breaker, and a recorded source for each field used.
+ *
+ * Everything a source says is untrusted text. It is stored and shown as text, never as HTML.
+ */
+
+export type SourceName = 'openlibrary' | 'anilist' | 'hardcover' | 'demo';
+
+export const SOURCE_LABELS: Record<SourceName, string> = {
+  openlibrary: 'Open Library',
+  anilist: 'AniList',
+  hardcover: 'Hardcover',
+  demo: 'Demo source (invented)',
+};
+
+/** What we ask a source: built from the item's facts. */
+export interface SourceQuery {
+  title: string;
+  /** Raw run-together title from the filename, when the split guess may be wrong. */
+  rawTitle?: string;
+  author?: string;
+  isbn?: string;
+  /** Manga or comics: the series name and a volume number. */
+  series?: string;
+  volume?: string;
+}
+
+/** A rating as the source states it, with what it rates (§12.2). */
+export interface SourceRating {
+  /** Raw average on the source's scale. */
+  value: number;
+  /** Largest possible value: 5 for star ratings, 100 for AniList. */
+  scale: number;
+  /** Number of votes; null when the source doesn't say. */
+  count: number | null;
+  /** What the score is for. A series score is never shown as a volume's (§12.2). */
+  scope: 'book' | 'volume' | 'series';
+}
+
+/** One candidate from a source, normalised. Unknown stays undefined — never invented. */
+export interface SourceRecord {
+  source: SourceName;
+  sourceId: string;
+  title: string;
+  subtitle?: string;
+  /** Other names for the same work (AniList's romaji/English titles, Hardcover's alternatives). */
+  alternativeTitles?: string[];
+  authors: string[];
+  firstPublishYear?: number;
+  isbns: string[];
+  /** Subjects, genres and tags, as the source names them. */
+  subjects: string[];
+  /** Page count of a typical edition. Always a rough length basis (§12.3). */
+  pages?: number;
+  rating?: SourceRating;
+  series?: {
+    name: string;
+    position?: number;
+    /** Installments the source says exist (finished series), when it states it. */
+    total?: number;
+    status?: 'finished' | 'ongoing' | 'unknown';
+  };
+  /** Source's own format hint, e.g. AniList MANGA / NOVEL / ONE_SHOT, Hardcover's category. */
+  format?: string;
+  /** e.g. 'JP' for manga, from AniList. */
+  country?: string;
+  description?: string;
+  /** Public page for this record, shown as a link (text, never raw HTML). */
+  url?: string;
+}
+
+/** A fetch function the adapters use; tests pass a fake that replays recorded responses. */
+export type Fetcher = (url: string, init: RequestInit) => Promise<Response>;
+
+export class SourceError extends Error {
+  readonly source: SourceName;
+  /** True for problems worth retrying later (timeouts, 429, 5xx). */
+  readonly transient: boolean;
+  constructor(source: SourceName, message: string, transient: boolean) {
+    super(message);
+    this.source = source;
+    this.transient = transient;
+  }
+}
+
+export interface SourceAdapter {
+  readonly name: SourceName;
+  /** Search by title/author (and ISBN where the source supports it). */
+  search(q: SourceQuery, opts?: { refresh?: boolean }): Promise<SourceRecord[]>;
+}

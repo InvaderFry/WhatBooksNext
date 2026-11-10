@@ -19,6 +19,7 @@ import {
 } from '../api.ts';
 import { AvailabilityLabels, Cover, creatorsText, Notice } from '../components.tsx';
 import { hrefFor, onLinkClick } from '../url.ts';
+import { OnlineCard } from './OnlineCard.tsx';
 
 type Patch = Partial<{
   progress: Progress;
@@ -35,6 +36,9 @@ type Patch = Partial<{
   kindOverride: string | null;
   referenceOverride: boolean | null;
   icloudOverride: 'in' | 'not_in' | null;
+  triage: 'want' | 'maybe' | 'never' | null;
+  effortOverride: 'light' | 'medium' | 'heavy' | null;
+  preferredFileId: string | null;
 }>;
 
 export function ItemPage({ id }: { id: string }) {
@@ -96,7 +100,7 @@ export function ItemPage({ id }: { id: string }) {
           } else onLinkClick({ view: 'library' })(e);
         }}
       >
-        ← Library
+        ← Back
       </a>
       <div className="item-head">
         <Cover fileId={item.coverFileId} kind={item.kind} size="large" />
@@ -217,9 +221,7 @@ export function ItemPage({ id }: { id: string }) {
               onChange={(e) => void save({ kindOverride: e.target.value || null })}
             >
               <option value="">
-                {item.kind && !u.kindOverride
-                  ? `${KIND_LABELS[item.kind]} (guessed from the files)`
-                  : 'Unknown'}
+                {item.kind && !u.kindOverride ? `${KIND_LABELS[item.kind]} (guessed)` : 'Unknown'}
               </option>
               {Object.entries(KIND_LABELS).map(([k, v]) => (
                 <option key={k} value={k}>
@@ -250,6 +252,38 @@ export function ItemPage({ id }: { id: string }) {
               <option value="not_in">No, not in iCloud</option>
             </select>
           </div>
+          <div className="field inline">
+            <label htmlFor="triage">Triage</label>
+            <select
+              id="triage"
+              value={u.triage ?? ''}
+              onChange={(e) =>
+                void save({ triage: (e.target.value || null) as 'want' | 'maybe' | 'never' | null })
+              }
+            >
+              <option value="">Not decided</option>
+              <option value="want">Want</option>
+              <option value="maybe">Maybe</option>
+              <option value="never">Never (not recommended)</option>
+            </select>
+          </div>
+          <div className="field inline">
+            <label htmlFor="effort">Effort</label>
+            <select
+              id="effort"
+              value={u.effortOverride ?? ''}
+              onChange={(e) =>
+                void save({
+                  effortOverride: (e.target.value || null) as 'light' | 'medium' | 'heavy' | null,
+                })
+              }
+            >
+              <option value="">Guess from its kind</option>
+              <option value="light">Light</option>
+              <option value="medium">Medium</option>
+              <option value="heavy">Heavy</option>
+            </select>
+          </div>
           <label className="check">
             <input
               type="checkbox"
@@ -266,13 +300,32 @@ export function ItemPage({ id }: { id: string }) {
         </section>
       </div>
 
+      <OnlineCard itemId={item.id} onChanged={() => void load()} />
+
       <FromTheFile file={item.files.find((f) => f.isPrimary) ?? item.files[0]} />
 
       <section aria-labelledby="files-h">
         <h2 id="files-h">Files</h2>
         <ul className="file-list">
           {item.files.map((f) => (
-            <FileRow key={f.id} file={f} onChanged={load} />
+            <FileRow
+              key={f.id}
+              file={f}
+              onChanged={load}
+              choice={
+                item.files.length > 1
+                  ? {
+                      chosen: u.preferredFileId === f.id,
+                      anyChosen: u.preferredFileId !== null,
+                      choose: (v) =>
+                        save(
+                          { preferredFileId: v },
+                          v ? `${f.name} now opens by default` : 'The app chooses again',
+                        ),
+                    }
+                  : null
+              }
+            />
           ))}
         </ul>
       </section>
@@ -536,7 +589,22 @@ function FromTheFile({ file }: { file: FileDetail | undefined }) {
   );
 }
 
-function FileRow({ file, onChanged }: { file: FileDetail; onChanged: () => Promise<void> }) {
+/** "Use this file by default" (owner's choice of which copy opens), when a book has several. */
+interface FileChoice {
+  chosen: boolean;
+  anyChosen: boolean;
+  choose: (fileId: string | null) => Promise<void>;
+}
+
+function FileRow({
+  file,
+  onChanged,
+  choice,
+}: {
+  file: FileDetail;
+  onChanged: () => Promise<void>;
+  choice: FileChoice | null;
+}) {
   const [message, setMessage] = useState<{ kind: 'error' | 'info'; text: string } | null>(null);
   const [confirm, setConfirm] = useState<string | null>(null);
 
@@ -574,7 +642,10 @@ function FileRow({ file, onChanged }: { file: FileDetail; onChanged: () => Promi
     <li className="file-row">
       <div>
         <div className="file-name">
-          {file.name} {file.isPrimary && <span className="tag">Primary</span>}
+          {file.name}{' '}
+          {file.isPrimary && (
+            <span className="tag">{choice?.chosen ? 'Default (your choice)' : 'Default'}</span>
+          )}
         </div>
         <div className="muted small path">
           {file.folderPath}
@@ -645,6 +716,25 @@ function FileRow({ file, onChanged }: { file: FileDetail; onChanged: () => Promi
         >
           Show in folder
         </button>
+        {choice && !file.isPrimary && file.availability !== 'missing' && (
+          <button
+            type="button"
+            className="secondary small"
+            aria-label={`Use ${file.name} by default`}
+            onClick={() => void choice.choose(file.id)}
+          >
+            Use this file by default
+          </button>
+        )}
+        {choice?.chosen && (
+          <button
+            type="button"
+            className="link-button small"
+            onClick={() => void choice.choose(null)}
+          >
+            Let the app choose
+          </button>
+        )}
       </div>
       {confirm && (
         <div className="confirm" role="alertdialog" aria-label="Confirm download">

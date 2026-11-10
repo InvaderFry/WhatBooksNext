@@ -1,0 +1,144 @@
+{
+  "about": "Labelled matching examples for `npm run report:matches` (PLAN.md §11.5). Each case gives an item's facts as the app would build them, the recorded source response it is matched against (fixtures/sources), and the right answer: a source id, or null when no candidate is the book. Cases marked heldOut were not used to tune the scoring. The works are public classics, not the owner's library.",
+  "cases": [
+    {
+      "name": "EPUB with title and author",
+      "facts": {
+        "title": "The Time Machine",
+        "titleSource": "embedded",
+        "authors": ["H. G. Wells"]
+      },
+      "response": "ol-search-time-machine.json",
+      "expect": "/works/OL52267W"
+    },
+    {
+      "name": "run-together filename, no author",
+      "facts": {
+        "title": "Time Machine",
+        "titleSource": "filename",
+        "rawTitle": "thetimemachine",
+        "authors": []
+      },
+      "response": "ol-search-time-machine.json",
+      "expect": "/works/OL52267W"
+    },
+    {
+      "name": "right title, wrong author",
+      "facts": {
+        "title": "The Time Machine",
+        "titleSource": "embedded",
+        "authors": ["Mira Example"]
+      },
+      "response": "ol-search-time-machine.json",
+      "expect": null
+    },
+    {
+      "name": "graphic-novel adaptation is a different work",
+      "facts": {
+        "title": "The Time Machine (Graphic Novel)",
+        "titleSource": "embedded",
+        "authors": ["Terry Davis"]
+      },
+      "response": "ol-search-time-machine.json",
+      "expect": "/works/OL15119490W",
+      "heldOut": true
+    },
+    {
+      "name": "the same work entered twice at the source",
+      "facts": {
+        "title": "Pride and Prejudice",
+        "titleSource": "embedded",
+        "authors": ["Jane Austen"]
+      },
+      "response": "ol-search-pride-prejudice.json",
+      "expect": "/works/OL66554W"
+    },
+    {
+      "name": "a parody sharing most of the title",
+      "facts": {
+        "title": "Pride and Prejudice and Zombies",
+        "titleSource": "embedded",
+        "authors": ["Seth Grahame-Smith"]
+      },
+      "response": "ol-search-pride-prejudice.json",
+      "expect": "/works/OL15093171W",
+      "heldOut": true
+    },
+    {
+      "name": "lowercase filename slug",
+      "facts": {
+        "title": "Pride and Prejudice",
+        "titleSource": "filename",
+        "rawTitle": "prideandprejudice",
+        "authors": []
+      },
+      "response": "ol-search-pride-prejudice.json",
+      "expect": "/works/OL66554W",
+      "heldOut": true
+    },
+    {
+      "name": "EPUB's own ISBN",
+      "facts": {
+        "title": "Pride & Prejudice",
+        "titleSource": "embedded",
+        "authors": [],
+        "isbns": ["9781090339799"]
+      },
+      "response": "ol-search-isbn.json",
+      "expect": "/works/OL66554W"
+    },
+    {
+      "name": "a different book entirely",
+      "facts": { "title": "The Glass Lighthouse", "titleSource": "filename", "authors": [] },
+      "response": "ol-search-time-machine.json",
+      "expect": null,
+      "heldOut": true
+    },
+    {
+      "name": "nothing found",
+      "facts": { "title": "Nothing Like It", "titleSource": "embedded", "authors": [] },
+      "response": "ol-search-none.json",
+      "expect": null
+    },
+    {
+      "name": "manga volume by series name (English title)",
+      "facts": {
+        "title": "Yotsuba&! Vol. 3",
+        "titleSource": "filename",
+        "authors": [],
+        "seriesHint": "Yotsuba&!",
+        "volume": "3",
+        "kind": "manga"
+      },
+      "response": "anilist-search-yotsuba.json",
+      "expect": "30104"
+    },
+    {
+      "name": "manga volume by its romaji name",
+      "facts": {
+        "title": "Yotsuba to! v05",
+        "titleSource": "filename",
+        "authors": [],
+        "seriesHint": "Yotsuba to!",
+        "volume": "5",
+        "kind": "manga"
+      },
+      "response": "anilist-search-yotsuba.json",
+      "expect": "30104",
+      "heldOut": true
+    },
+    {
+      "name": "manga with its author from ComicInfo",
+      "facts": {
+        "title": "Vagabond #1",
+        "titleSource": "embedded",
+        "authors": ["Takehiko Inoue"],
+        "seriesHint": "Vagabond",
+        "issue": "1",
+        "kind": "manga"
+      },
+      "response": "anilist-search-vagabond.json",
+      "expect": "30656"
+    }
+  ]
+}

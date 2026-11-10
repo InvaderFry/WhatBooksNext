@@ -1,0 +1,168 @@
+{
+  "numFound": 2362,
+  "start": 0,
+  "numFoundExact": true,
+  "num_found": 2362,
+  "documentation_url": "https://openlibrary.org/dev/docs/api/search",
+  "q": "pride and prejudice",
+  "offset": null,
+  "docs": [
+    {
+      "author_name": ["Jane Austen"],
+      "cover_i": 14348537,
+      "edition_count": 4042,
+      "first_publish_year": 1813,
+      "isbn": [
+        "9781090339799",
+        "1511413182",
+        "1561036455",
+        "1977774768",
+        "9798737216955",
+        "9798470682239",
+        "9781518878152",
+        "9798542130934"
+      ],
+      "key": "/works/OL66554W",
+      "language": ["ger", "pol", "srp", "mul", "rus", "cze", "fre", "cor"],
+      "number_of_pages_median": 351,
+      "title": "Pride and Prejudice",
+      "subject": [
+        "Fiction, Romance, Historical, Regency",
+        "British and Irish fiction (fictional works by one author)",
+        "Brothers and sisters",
+        "Courtship",
+        "Drama",
+        "English fiction",
+        "English literature",
+        "Families"
+      ],
+      "ratings_average": 4.199519,
+      "ratings_count": 416
+    },
+    {
+      "author_name": ["Jane Austen"],
+      "cover_i": 13148521,
+      "edition_count": 132,
+      "first_publish_year": 1813,
+      "isbn": [
+        "9798583924769",
+        "9781774819593",
+        "0785846239",
+        "1398839140",
+        "1515005747",
+        "9781543289046",
+        "1520819633",
+        "1549883097"
+      ],
+      "key": "/works/OL15165350W",
+      "language": ["eng", "ger", "fre", "por"],
+      "number_of_pages_median": 358,
+      "title": "Pride and Prejudice",
+      "subject": [
+        "British and irish fiction (fictional works by one author)",
+        "Brothers and sisters",
+        "Children's fiction",
+        "Courtship",
+        "Drama",
+        "English fiction",
+        "English literature",
+        "Families"
+      ],
+      "ratings_average": 4.0,
+      "ratings_count": 28
+    },
+    {
+      "author_name": ["Seth Grahame-Smith", "Jane Austen", "Katherine Kellgren"],
+      "cover_i": 6260257,
+      "edition_count": 19,
+      "first_publish_year": 2009,
+      "isbn": [
+        "9780606171106",
+        "9780545206785",
+        "1594743355",
+        "9781594744518",
+        "9781594748899",
+        "9782266234139",
+        "9782081229495",
+        "9788489367715"
+      ],
+      "key": "/works/OL15093171W",
+      "language": ["fre", "spa", "eng"],
+      "number_of_pages_median": 320,
+      "title": "Pride and Prejudice and Zombies",
+      "subject": [
+        "Parodies, imitations",
+        "nyt:e-book_fiction=2011-07-16",
+        "Fitzwilliam Darcy (Fictitious character)",
+        "Darcy, Fitzwilliam (Fictitious character) $v Fiction",
+        "Social classes",
+        "Bennet, Elizabeth (Fictitious character) $v Fiction",
+        "Open Library Staff Picks",
+        "New York Times bestseller"
+      ],
+      "ratings_average": 3.0625,
+      "ratings_count": 16
+    },
+    {
+      "author_name": ["Fern Siegel"],
+      "cover_i": 14348568,
+      "edition_count": 4,
+      "first_publish_year": 1997,
+      "isbn": [
+        "9781590600856",
+        "2894951663",
+        "1590600851",
+        "9782894951668",
+        "0866118713",
+        "9780866118712"
+      ],
+      "key": "/works/OL5738118W",
+      "language": ["eng", "fre"],
+      "number_of_pages_median": 237,
+      "title": "Pride and Prejudice [adaptation]",
+      "subject": [
+        "Courtship",
+        "Family life",
+        "Fiction",
+        "History",
+        "Interpersonal relations",
+        "Sisters",
+        "Social life and customs"
+      ],
+      "ratings_average": 4.5555553,
+      "ratings_count": 9
+    },
+    {
+      "author_name": ["Jane Austen"],
+      "cover_i": 12728748,
+      "edition_count": 28,
+      "first_publish_year": 1949,
+      "isbn": [
+        "9780765199805",
+        "0765199807",
+        "9780681287662",
+        "0394602641",
+        "0312123078",
+        "1860352308",
+        "9781860352300",
+        "0706420934"
+      ],
+      "key": "/works/OL66597W",
+      "language": ["spa", "eng"],
+      "number_of_pages_median": 632,
+      "title": "Novels (Pride and Prejudice / Sense and Sensibility)",
+      "subject": [
+        "British and irish fiction (fictional works by one author)",
+        "Brothers and sisters",
+        "Children's fiction",
+        "Courtship",
+        "Drama",
+        "English fiction",
+        "English literature",
+        "Families"
+      ],
+      "ratings_average": 3.0,
+      "ratings_count": 4
+    }
+  ]
+}
