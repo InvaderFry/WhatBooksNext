@@ -349,6 +349,22 @@ describe('matching (§11.2)', () => {
     expect(other.score).toBeLessThanOrEqual(0.3);
     expect(other.evidence.notes.join(' ')).toMatch(/different story/);
     expect(plain.score).toBeGreaterThan(other.score);
+    // A named book with no number is none of the numbered volumes, unless the story agrees.
+    const artBook = facts({
+      title: 'Night Harbor: Collected Sketches',
+      titleSource: 'filename',
+      kind: 'manga',
+    });
+    expect(
+      scoreCandidate(artBook, { ...base, sourceId: 'v7', title: 'Night Harbor, Vol. 7' }).score,
+    ).toBeLessThanOrEqual(0.3);
+    expect(
+      scoreCandidate(artBook, {
+        ...base,
+        sourceId: 'vs',
+        title: 'Night Harbor, Vol. 9: Collected Sketches',
+      }).score,
+    ).toBeGreaterThan(0.3);
     // A prose subtitle like "A Novel" names no story.
     const novel = scoreCandidate(
       facts({ title: 'Glass Bells: A Novel', titleSource: 'filename' }),

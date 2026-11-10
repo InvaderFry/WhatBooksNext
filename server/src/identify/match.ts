@@ -19,9 +19,11 @@ import { normalizeForCompare, titleCompareKey } from './filename.ts';
  * Version 9 also brings explicit comic run start years into existing stored matches.
  * Version 10 reads volume numbers written as words ("Book Two") on both sides.
  * Version 11: different story names are different books ("Series: Falling Sun" vs "Series,
- * Vol. 2: Dark Days"), and "Archangel 8 #1" is no longer series "Archangel".
+ * Vol. 2: Dark Days"), and "Archangel 8 #1" is no longer series "Archangel". A named book
+ * with no number ("Series: Art Book") is none of the series' numbered volumes.
+ * (Version 12 adds that last rule.)
  */
-export const MATCH_VERSION = 11;
+export const MATCH_VERSION = 12;
 
 export interface MatchFacts {
   title: string;
@@ -365,6 +367,12 @@ export function scoreCandidate(f: MatchFacts, r: SourceRecord): ScoredCandidate 
   ) {
     score = Math.min(score, 0.3);
     notes.push(`A different story: “${theirStory}”, not “${ourStory}”.`);
+  }
+  // A named book with no number ("Series: Exclusive Art Book") is none of the series' numbered
+  // volumes ("Series, Vol. 7") — unless that volume carries the same story name.
+  if (ourStory && !ours && theirs && !theirStory && title >= 0.75) {
+    score = Math.min(score, 0.3);
+    notes.push(`Volume ${theirs} of the series, not “${ourStory}”.`);
   }
 
   if (isbn === 'strong') {
