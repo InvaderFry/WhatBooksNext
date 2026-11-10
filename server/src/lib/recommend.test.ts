@@ -285,12 +285,13 @@ describe('Read next', () => {
     expect(d.basis).toBe('from 120 pages, mostly pictures');
   });
 
-  it('shows books only, comics and manga only, or both', () => {
+  it('shows books, tech books, comics and manga, or everything', () => {
     const all = [
       item({ title: 'Novel', kind: 'fiction' }),
       item({ title: 'Comic', kind: 'comic' }),
       item({ title: 'Manga', kind: 'manga' }),
       item({ title: 'Unknown', kind: null }),
+      item({ title: 'Programming', kind: 'tech' }),
     ];
     const titles = (show: Situation['show']) =>
       readNext(all, situation({ show }), page)
@@ -298,7 +299,8 @@ describe('Read next', () => {
         .sort();
     expect(titles('books')).toEqual(['Novel', 'Unknown']);
     expect(titles('comics')).toEqual(['Comic', 'Manga']);
-    expect(titles('all')).toHaveLength(4);
+    expect(titles('tech')).toEqual(['Programming']);
+    expect(titles('all')).toHaveLength(5);
   });
 
   it('hides a book the owner isn’t in the mood for, for this session only', () => {

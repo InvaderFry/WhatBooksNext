@@ -230,6 +230,11 @@ describe('Needs review: identities (§11.4)', () => {
       identity: 'accepted',
       matchConfirmed: true,
     });
+    // A title guessed from the filename gives way to the confirmed match's own title.
+    expect((await api.get(`/api/items/${id}`)).body).toMatchObject({
+      title: 'Glass Bell',
+      factTitle: 'The Glass Bell',
+    });
     const after = (await api.get('/api/review')).body;
     expect(after.rows.find((r: { id: string }) => r.id === `identity:${id}`)).toBeUndefined();
   });

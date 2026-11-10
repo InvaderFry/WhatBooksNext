@@ -2,7 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { CIRCUIT_FAILURES } from '../config.ts';
-import { kindFromEvidence } from '../identify/kinds.ts';
+import { kindFromEvidence, techTitle } from '../identify/kinds.ts';
+import { picturesFile } from '../identify/lookups.ts';
 import { decide, scoreCandidate, type MatchFacts } from '../identify/match.ts';
 import { memoryDb } from '../testing/helpers.ts';
 import { parseAniList } from './anilist.ts';
@@ -428,5 +429,34 @@ describe('kind guesses (§8)', () => {
         subjects: ['History', 'Biography', 'Civil rights', 'Graphic novels'],
       })?.kind,
     ).toBe('comic');
+  });
+});
+
+describe('files that are mostly pictures', () => {
+  it('spots an image-only EPUB by its few words for its size', () => {
+    const mb = 1024 ** 2;
+    expect(picturesFile({ format: 'epub', word_count: 128, page_count: null, size: 50 * mb })).toBe(
+      true,
+    );
+    expect(
+      picturesFile({ format: 'epub', word_count: 80_000, page_count: null, size: 3 * mb }),
+    ).toBe(false);
+  });
+
+  it('spots a lettered comic PDF but not prose', () => {
+    expect(picturesFile({ format: 'pdf', word_count: 14_000, page_count: 120, size: 1 })).toBe(
+      true,
+    );
+    expect(picturesFile({ format: 'pdf', word_count: 60_000, page_count: 200, size: 1 })).toBe(
+      false,
+    );
+  });
+});
+
+describe('tech books by their titles', () => {
+  it('spots programming titles, and leaves ordinary ones alone', () => {
+    expect(techTitle('Learning Python the Patient Way')).toBe(true);
+    expect(techTitle('Practical Object-Oriented Design')).toBe(true);
+    expect(techTitle('The Gardens of Ostrava')).toBe(false);
   });
 });

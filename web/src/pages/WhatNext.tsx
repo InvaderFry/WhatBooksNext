@@ -38,7 +38,7 @@ export function WhatNext({ params, onChanged }: { params: Params; onChanged: () 
   const time = params.time ?? 'any';
   const mode = params.mode === 'finish_within' ? 'finish_within' : 'read_for';
   const ready = params.ready === '1';
-  const show = params.show === 'books' || params.show === 'comics' ? params.show : 'all';
+  const show = (['books', 'tech', 'comics'] as const).find((x) => x === params.show) ?? 'all';
   const [data, setData] = useState<ReadNext | null>(null);
   const [extra, setExtra] = useState<Card[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -110,9 +110,10 @@ export function WhatNext({ params, onChanged }: { params: Params; onChanged: () 
           <legend>What kind?</legend>
           {(
             [
-              ['all', 'Both'],
               ['books', 'Books'],
+              ['tech', 'Tech'],
               ['comics', 'Comics and manga'],
+              ['all', 'All'],
             ] as const
           ).map(([id, label]) => (
             <label key={id} className={show === id ? 'on' : ''}>

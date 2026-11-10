@@ -23,7 +23,7 @@ const TECH_PUBLISHERS = [
 const RULES: { kind: string; re: RegExp }[] = [
   {
     kind: 'tech',
-    re: /\b(computer|computing|programming|software|python|javascript|typescript|java|rust|golang|kotlin|c\+\+|databases?|sql|machine learning|deep learning|data science|algorithms?|linux|unix|devops|web development|networking|cybersecurity|information technology)\b/i,
+    re: /\b(computer|computing|programming|software|python|javascript|typescript|java|golang|kotlin|c\+\+|databases?|sql|machine learning|deep learning|data science|algorithms?|linux|unix|devops|web development|networking|cybersecurity|information technology)\b/i,
   },
   {
     kind: 'self_help',
@@ -85,4 +85,16 @@ const REFERENCE_WORDS =
 
 export function looksLikeReference(title: string): boolean {
   return REFERENCE_WORDS.test(title);
+}
+
+/**
+ * Programming and computing words in a title (§8 "title words"). Used only when nothing else
+ * says what a book is: many programming PDFs are found nowhere online. Words that are also
+ * ordinary words or names (Rust, Ruby, Swift, React, Elixir) are left out.
+ */
+const TECH_TITLE =
+  /\b(programming|programmers?|python|javascript|typescript|java|kotlin|golang|c\+\+|c#|sql|nosql|databases?|algorithms?|data structures|machine learning|deep learning|neural networks?|data science|kubernetes|docker|devops|linux|unix|node\.?js|swift ?ui|ios development|android development|html5?|css3?|web development|software|coding|compilers?|cybersecurity|penetration testing|regular expressions|api design|microservices|aws|azure|terraform|haskell|clojure|erlang|perl|php|object-oriented|refactoring|test-driven)\b/i;
+
+export function techTitle(title: string): boolean {
+  return TECH_TITLE.test(title);
 }

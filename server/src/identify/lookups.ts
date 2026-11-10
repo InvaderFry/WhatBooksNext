@@ -15,7 +15,7 @@ import {
 import { HttpError, newId, nowIso, parseJson } from '../util.ts';
 import type { ParsedName } from './filename.ts';
 import { refreshPrimary } from './items.ts';
-import { kindFromEvidence, looksLikeReference } from './kinds.ts';
+import { kindFromEvidence, looksLikeReference, techTitle } from './kinds.ts';
 import {
   buildQuery,
   decide,
@@ -296,6 +296,36 @@ export function mostlyPictures(words: number | null, pages: number | null): bool
   );
 }
 
+interface FileCounts {
+  metadata: string | null;
+  format: string;
+  word_count: number | null;
+  page_count: number | null;
+  size: number;
+  is_primary: number;
+}
+
+/**
+ * An EPUB with fewer than this many words per megabyte is page images (a fixed-layout comic):
+ * prose EPUBs carry tens of thousands of words per megabyte; an image EPUB of 50 MB had 128.
+ */
+const EPUB_PICTURE_WORDS_PER_MB = 200;
+const EPUB_PICTURE_MIN_BYTES = 2 * 1024 ** 2;
+
+/** Is this file mostly pictures? A PDF by words per page, an EPUB by words per megabyte. */
+export function picturesFile(
+  f: Pick<FileCounts, 'format' | 'word_count' | 'page_count' | 'size'>,
+): boolean {
+  if (f.format === 'pdf') return mostlyPictures(f.word_count, f.page_count);
+  if (f.format === 'epub')
+    return (
+      f.word_count !== null &&
+      f.size >= EPUB_PICTURE_MIN_BYTES &&
+      f.word_count / (f.size / 1024 ** 2) < EPUB_PICTURE_WORDS_PER_MB
+    );
+  return false;
+}
+
 /** Kind sources that come from the files themselves (identify/items.ts); these always win. */
 const FILE_KINDS = new Set(['format', 'pdf_type', 'comicinfo']);
 
@@ -306,11 +336,11 @@ const FILE_KINDS = new Set(['format', 'pdf_type', 'comicinfo']);
  */
 export function refreshDerivedFacts(db: DB, itemIds: string[]): void {
   const item = db.prepare(
-    'SELECT id, title, kind, kind_source, match_source, identity FROM items WHERE id = ?',
+    'SELECT id, title, kind, kind_source, match_source, identity, issue_label FROM items WHERE id = ?',
   );
-  const primary = db.prepare(
-    `SELECT f.metadata, f.format, f.word_count, f.page_count FROM files f
-     JOIN item_files x ON x.file_id = f.id WHERE x.item_id = ? AND x.is_primary = 1`,
+  const filesOf = db.prepare(
+    `SELECT f.metadata, f.format, f.word_count, f.page_count, f.size, x.is_primary FROM files f
+     JOIN item_files x ON x.file_id = f.id WHERE x.item_id = ? ORDER BY x.is_primary DESC`,
   );
   const update = db.prepare(
     `UPDATE items SET kind = @kind, kind_source = @kindSource, is_reference = @ref,
@@ -327,18 +357,13 @@ export function refreshDerivedFacts(db: DB, itemIds: string[]): void {
           kind_source: string | null;
           match_source: string | null;
           identity: string;
+          issue_label: string | null;
         }
       | undefined;
     if (!i) continue;
     const used = usedMatches(db, id);
-    const p = primary.get(id) as
-      | {
-          metadata: string | null;
-          format: string;
-          word_count: number | null;
-          page_count: number | null;
-        }
-      | undefined;
+    const files = filesOf.all(id) as FileCounts[];
+    const p = files[0];
     const md = parseJson<EmbeddedMetadata | null>(p?.metadata ?? null, null);
     let kind = i.kind;
     let kindSource = i.kind_source;
@@ -355,9 +380,18 @@ export function refreshDerivedFacts(db: DB, itemIds: string[]): void {
       kindSource = k ? `guess:${k.why}` : null;
       // A long PDF that is mostly pictures (a few words a page: credits, captions, a cover) is a
       // comic, whatever its subjects say ("Fiction" fits a graphic novel too). Manga stays manga.
-      if (p?.format === 'pdf' && kind !== 'manga' && mostlyPictures(p.word_count, p.page_count)) {
+      // Any copy counts: an image-only EPUB next to its PDF says the same thing.
+      if (kind !== 'manga' && files.some(picturesFile)) {
         kind = 'comic';
         kindSource = 'guess:mostly pictures';
+      } else if (kind === null && techTitle(i.title)) {
+        kind = 'tech';
+        kindSource = 'guess:programming words in its title';
+      } else if (kind === null && i.issue_label) {
+        // Numbered "#1" and found nowhere: comics and magazines are numbered like that, books
+        // aren't. Still a guess, shown as one, and the owner's correction wins.
+        kind = 'comic';
+        kindSource = 'guess:numbered like a comic issue';
       }
     }
     const years = used

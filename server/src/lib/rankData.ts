@@ -1,7 +1,7 @@
 import { BULK_COPY_SHARE } from '../config.ts';
 import type { DB } from '../db/database.ts';
 import { titleCompareKey } from '../identify/filename.ts';
-import { allMatchInputs, chooseUsed, type MatchRow } from '../identify/lookups.ts';
+import { allMatchInputs, chooseUsed, picturesFile, type MatchRow } from '../identify/lookups.ts';
 import { SOURCE_LABELS } from '../sources/types.ts';
 import { todayLocal } from '../util.ts';
 import { estimateDuration, estimateEffort, unitFor } from './estimate.ts';
@@ -28,6 +28,10 @@ interface ItemFactRow {
   pages: number | null;
   pdf_type: string | null;
   pdf_override: string | null;
+  format: string | null;
+  size: number | null;
+  /** The largest page count among the item's files (another copy may have one). */
+  any_pages: number | null;
 }
 
 export interface RankData {
@@ -73,7 +77,9 @@ export function loadRankData(db: DB, reach: FolderReachability): RankData {
         .prepare(
           `SELECT i.id, i.series_hint, i.volume_label, i.issue_label, i.publication_year, i.identity,
              i.match_source, u.acquired_on, f.word_count AS words, f.page_count AS pages,
-             f.pdf_type, fu.pdf_type_override AS pdf_override
+             f.pdf_type, fu.pdf_type_override AS pdf_override, f.format, f.size,
+             (SELECT MAX(g.page_count) FROM item_files y JOIN files g ON g.id = y.file_id
+              WHERE y.item_id = i.id) AS any_pages
            FROM items i
            LEFT JOIN user_item u ON u.item_id = i.id
            LEFT JOIN item_files x ON x.item_id = i.id AND x.is_primary = 1
@@ -177,9 +183,20 @@ export function loadRankData(db: DB, reach: FolderReachability): RankData {
       duration: estimateDuration(
         {
           kind: i.kind,
-          words: f?.words ?? null,
+          // An image-only EPUB's few words aren't a length; its pages may be on another copy.
+          words:
+            f &&
+            picturesFile({
+              format: f.format ?? '',
+              word_count: f.words,
+              page_count: f.pages,
+              size: f.size ?? 0,
+            }) &&
+            f.format === 'epub'
+              ? null
+              : (f?.words ?? null),
           // A PDF's page count is measured; its words exist only with a text layer.
-          pages: f?.pages ?? null,
+          pages: f?.pages ?? f?.any_pages ?? null,
           pdfType,
           sourcePages: sourcePages?.pages ?? null,
           sourceName: sourcePages ? SOURCE_LABELS[sourcePages.source] : null,

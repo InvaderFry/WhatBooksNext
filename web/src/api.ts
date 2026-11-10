@@ -407,7 +407,7 @@ export interface ReadNext {
     time: string;
     mode: 'read_for' | 'finish_within';
     ready: boolean;
-    show: 'all' | 'books' | 'comics';
+    show: 'all' | 'books' | 'tech' | 'comics';
   };
   presets: TimePreset[];
   lookups: { pending: number; running: boolean };

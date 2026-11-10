@@ -62,6 +62,10 @@ function splitRun(s: string): string[] {
     const prev = merged.at(-1);
     if (prev !== undefined && /^\d+$/.test(prev) && /^\d+$/.test(w))
       merged[merged.length - 1] = prev + w;
+    // A stray single letter is the end of a name the list doesn't know ("morty" → "mort" +
+    // "y"): glue it back on. "a" and "i" are real words and stay apart.
+    else if (prev !== undefined && /^[b-hj-z]$/.test(w) && /^[a-z]{3,}$/.test(prev))
+      merged[merged.length - 1] = prev + w;
     else merged.push(w);
   }
   return merged;

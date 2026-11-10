@@ -13,8 +13,10 @@ import { splitWords, wordRank } from './wordsplit.ts';
  *   ranges, "Book 1 - Title", hyphens inside words, …).  3 — tags removed only where tags appear,
  *   never as title words ("The High Road" no longer matches "The Road").  4 — one shared
  *   trailing-tag rule for titles and grouping (end of name only: "road_to_low_orbit" is a title).
+ *   5 — a stray single letter from the word splitter joins the word before it
+ *   ("rickandmorty" was "Rick and Mort Y").
  */
-export const PARSER_VERSION = 4;
+export const PARSER_VERSION = 5;
 
 export interface Part<T> {
   value: T;

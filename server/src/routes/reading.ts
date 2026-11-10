@@ -16,6 +16,7 @@ import { coverageByKind, matchReport } from '../lib/matchReport.ts';
 import { applyUserPatch } from '../lib/progress.ts';
 import { loadRankData } from '../lib/rankData.ts';
 import {
+  type Show,
   buildCard,
   ineligibleBecause,
   readNext,
@@ -68,8 +69,9 @@ function situationFrom(req: Request) {
     budget: preset.minutes,
     mode,
     readyToRead: req.query.ready === '1',
-    show: (req.query.show === 'books' || req.query.show === 'comics' ? req.query.show : 'all') as
-      'all' | 'books' | 'comics',
+    show: (['books', 'tech', 'comics'].includes(String(req.query.show))
+      ? req.query.show
+      : 'all') as Show,
     exclude,
     today: todayLocal(),
     recentDays: RECENT_DAYS,
