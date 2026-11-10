@@ -7,6 +7,7 @@ import {
   seriesView,
   setSeriesStatus,
 } from '../lib/seriesView.ts';
+import { actOnCoverage, addCoverage } from '../lib/coverage.ts';
 import { HttpError } from '../util.ts';
 import { route } from './route.ts';
 
@@ -52,6 +53,49 @@ export function registerSeriesRoutes(app: Express, d: SeriesDeps): void {
         Number(b.to ?? b.from),
       );
       return { ok: true, itemIds: made };
+    }),
+  );
+
+  // ---- What a collected edition holds (§12.5) ---------------------------------------------
+  app.get(
+    '/api/items/:id/coverage',
+    route((req) => {
+      const id = d.itemIdOr404(String(req.params.id));
+      return {
+        rows: db
+          .prepare(
+            `SELECT c.id, c.series_id AS seriesId, s.name AS seriesName, c.first_num AS first,
+               c.last_num AS last, c.state, c.source
+             FROM collection_coverage c JOIN series s ON s.id = c.series_id
+             WHERE c.item_id = ? AND c.state != 'rejected' ORDER BY s.name, c.first_num`,
+          )
+          .all(id),
+        // Series the owner can pick from: comics and manga.
+        series: db
+          .prepare(
+            "SELECT id, name FROM series WHERE match_key LIKE 'c:%' ORDER BY name COLLATE NOCASE",
+          )
+          .all(),
+      };
+    }),
+  );
+  app.post(
+    '/api/items/:id/coverage',
+    route((req) => {
+      const id = d.itemIdOr404(String(req.params.id));
+      const b = (req.body ?? {}) as Record<string, unknown>;
+      if (typeof b.seriesId !== 'string') throw new HttpError(400, 'Choose a series.');
+      return { ok: true, id: addCoverage(db, id, b.seriesId, b.first, b.last) };
+    }),
+  );
+  app.post(
+    '/api/coverage/:id',
+    route((req) => {
+      const action = (req.body ?? {}).action as unknown;
+      if (action !== 'confirm' && action !== 'reject' && action !== 'remove')
+        throw new HttpError(400, 'action must be confirm, reject or remove.');
+      actOnCoverage(db, String(req.params.id), action);
+      return { ok: true };
     }),
   );
 

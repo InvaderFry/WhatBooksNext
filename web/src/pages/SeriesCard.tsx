@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { api, PROGRESS_LABELS, type CardGap, type SeriesView } from '../api.ts';
+import { api, PROGRESS_LABELS, type CardGap, type CoverageRow, type SeriesView } from '../api.ts';
 import { Notice } from '../components.tsx';
 import { hrefFor, onLinkClick } from '../url.ts';
 
@@ -97,6 +97,32 @@ export function GapNotice({
               }}
             >
               I read {numbers(g)} elsewhere
+            </button>
+          ))}
+        {gaps
+          .filter((g) => g.state === 'maybe_covered' && g.coveredBy)
+          .map((g) => (
+            <button
+              key={`c-${g.coveredBy!.coverageId}-${g.from}`}
+              type="button"
+              className="small secondary"
+              disabled={busy}
+              onClick={async () => {
+                setBusy(true);
+                setError(null);
+                try {
+                  await api.post(`/api/coverage/${g.coveredBy!.coverageId}`, {
+                    action: 'confirm',
+                  });
+                  onMarked(`Confirmed: ${g.coveredBy!.title} holds these issues.`);
+                } catch (e) {
+                  setError((e as Error).message);
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            >
+              Yes, {g.coveredBy!.title} has {numbers(g)}
             </button>
           ))}
         <a
@@ -245,7 +271,11 @@ export function SeriesSection({
                         </>
                       )}
                       {e.holding === 'owned' && e.availabilityLabel && `${e.availabilityLabel} · `}
-                      {PROGRESS_LABELS[e.progress]}
+                      {e.via === 'collection'
+                        ? 'Read in a collection'
+                        : e.via === 'issues'
+                          ? 'Every issue in it read'
+                          : PROGRESS_LABELS[e.progress]}
                     </>
                   )}
                 </span>
@@ -267,6 +297,36 @@ export function SeriesSection({
                     >
                       I read {numbers(g)} elsewhere
                     </button>
+                  )}
+                  {g.state === 'maybe_covered' && g.coveredBy && (
+                    <span className="row-actions wrap inline">
+                      <button
+                        type="button"
+                        className="small secondary"
+                        onClick={() =>
+                          void act(() =>
+                            api.post(`/api/coverage/${g.coveredBy!.coverageId}`, {
+                              action: 'confirm',
+                            }),
+                          )
+                        }
+                      >
+                        Yes, confirm
+                      </button>
+                      <button
+                        type="button"
+                        className="small secondary"
+                        onClick={() =>
+                          void act(() =>
+                            api.post(`/api/coverage/${g.coveredBy!.coverageId}`, {
+                              action: 'reject',
+                            }),
+                          )
+                        }
+                      >
+                        No, it doesn’t
+                      </button>
+                    </span>
                   )}
                 </li>
               ))}
@@ -383,5 +443,167 @@ function SeriesEditor({
         </button>
       </div>
     </form>
+  );
+}
+
+/**
+ * "Collects": what a collected edition (a trade paperback, an omnibus) holds of a series'
+ * issues (§12.5). A source's suggestion waits for the owner; only confirmed ranges fill gaps
+ * and share reading.
+ */
+export function CollectsSection({
+  itemId,
+  ownSeriesId,
+  onChanged,
+}: {
+  itemId: string;
+  ownSeriesId: string | null;
+  onChanged: () => void;
+}) {
+  const [data, setData] = useState<{
+    rows: CoverageRow[];
+    series: { id: string; name: string }[];
+  } | null>(null);
+  const [seriesId, setSeriesId] = useState(ownSeriesId ?? '');
+  const [first, setFirst] = useState('');
+  const [last, setLast] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const load = useCallback(
+    async () => setData(await api.get(`/api/items/${itemId}/coverage`)),
+    [itemId],
+  );
+  useEffect(() => {
+    void load();
+  }, [load]);
+  const act = async (fn: () => Promise<unknown>) => {
+    try {
+      setError(null);
+      await fn();
+      await load();
+      onChanged();
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  };
+  if (!data) return null;
+  return (
+    <section aria-labelledby="collects-h" className="card series-card">
+      <h2 id="collects-h">Collects</h2>
+      <p className="muted small">
+        Which issues this collected edition holds. Once you confirm it, it fills those gaps, and
+        finishing it counts its issues as read (once — nothing is added to the issues’ own
+        progress).
+      </p>
+      {error && <Notice kind="error">{error}</Notice>}
+      {data.rows.length === 0 && <p className="muted">Nothing recorded yet.</p>}
+      <ul className="gap-list plain">
+        {data.rows.map((r) => (
+          <li key={r.id}>
+            {r.state === 'confirmed' ? (
+              <span aria-hidden="true">✓ </span>
+            ) : (
+              <span aria-hidden="true">? </span>
+            )}
+            <strong>
+              {r.seriesName} {r.first === r.last ? `#${r.first}` : `#${r.first}–${r.last}`}
+            </strong>{' '}
+            <span className="muted small">
+              {r.state === 'confirmed'
+                ? r.source === 'owner'
+                  ? '(you said so)'
+                  : '(confirmed)'
+                : `(suggested by ${SOURCE_TEXT[r.source] ?? r.source})`}
+            </span>{' '}
+            {r.state === 'suggested' ? (
+              <span className="row-actions wrap inline">
+                <button
+                  type="button"
+                  className="small secondary"
+                  onClick={() =>
+                    void act(() => api.post(`/api/coverage/${r.id}`, { action: 'confirm' }))
+                  }
+                >
+                  Confirm
+                </button>
+                <button
+                  type="button"
+                  className="small secondary"
+                  onClick={() =>
+                    void act(() => api.post(`/api/coverage/${r.id}`, { action: 'reject' }))
+                  }
+                >
+                  Not right
+                </button>
+              </span>
+            ) : (
+              <button
+                type="button"
+                className="link-button"
+                onClick={() =>
+                  void act(() => api.post(`/api/coverage/${r.id}`, { action: 'remove' }))
+                }
+              >
+                Remove
+              </button>
+            )}
+          </li>
+        ))}
+      </ul>
+      {data.series.length > 0 && (
+        <form
+          className="series-editor"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void act(() =>
+              api.post(`/api/items/${itemId}/coverage`, {
+                seriesId,
+                first: Number(first),
+                last: Number(last || first),
+              }),
+            ).then(() => {
+              setFirst('');
+              setLast('');
+            });
+          }}
+        >
+          <div className="field">
+            <label htmlFor="cov-series">It collects issues of</label>
+            <select id="cov-series" value={seriesId} onChange={(e) => setSeriesId(e.target.value)}>
+              <option value="">Choose a series…</option>
+              {data.series.map((x) => (
+                <option key={x.id} value={x.id}>
+                  {x.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="row-actions wrap">
+            <div className="field">
+              <label htmlFor="cov-first">From issue</label>
+              <input
+                id="cov-first"
+                inputMode="numeric"
+                value={first}
+                onChange={(e) => setFirst(e.target.value)}
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="cov-last">To issue</label>
+              <input
+                id="cov-last"
+                inputMode="numeric"
+                value={last}
+                onChange={(e) => setLast(e.target.value)}
+              />
+            </div>
+          </div>
+          <div>
+            <button type="submit" className="small" disabled={!seriesId || first.trim() === ''}>
+              Add
+            </button>
+          </div>
+        </form>
+      )}
+    </section>
   );
 }

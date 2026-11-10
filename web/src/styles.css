@@ -1197,3 +1197,11 @@ kbd {
     text-align: left;
   }
 }
+
+.gap-list.plain li {
+  color: var(--text);
+}
+.row-actions.inline {
+  display: inline-flex;
+  vertical-align: middle;
+}

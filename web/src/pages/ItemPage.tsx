@@ -20,7 +20,7 @@ import {
 import { AvailabilityLabels, Cover, creatorsText, Notice } from '../components.tsx';
 import { hrefFor, onLinkClick } from '../url.ts';
 import { OnlineCard } from './OnlineCard.tsx';
-import { SeriesSection } from './SeriesCard.tsx';
+import { CollectsSection, SeriesSection } from './SeriesCard.tsx';
 
 type Patch = Partial<{
   progress: Progress;
@@ -48,6 +48,8 @@ export function ItemPage({ id }: { id: string }) {
   const [item, setItem] = useState<ItemDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState<string | null>(null);
+  // Bumped when a collection's coverage changes, so the series list reloads its gaps.
+  const [rev, setRev] = useState(0);
 
   const load = useCallback(async () => {
     try {
@@ -299,6 +301,7 @@ export function ItemPage({ id }: { id: string }) {
       </div>
 
       <SeriesSection
+        key={`${item.series?.id ?? 'none'}-${rev}`}
         itemId={item.id}
         seriesId={item.series?.id ?? null}
         position={item.series?.position ?? null}
@@ -306,6 +309,16 @@ export function ItemPage({ id }: { id: string }) {
         positionOverride={u.seriesPositionOverride}
         onSave={(patch, message) => save(patch, message)}
       />
+      {item.kind === 'comic' && item.series?.unit !== 'issue' && (
+        <CollectsSection
+          itemId={item.id}
+          ownSeriesId={item.series?.id ?? null}
+          onChanged={() => {
+            setRev((r) => r + 1);
+            void load();
+          }}
+        />
+      )}
 
       <OnlineCard itemId={item.id} onChanged={() => void load()} />
 

@@ -1,0 +1,39 @@
+{
+  "count": 2,
+  "next": null,
+  "previous": null,
+  "results": [
+    {
+      "id": 900001,
+      "series": {
+        "id": 9001,
+        "name": "Copperline",
+        "volume": 1,
+        "year_began": 2019
+      },
+      "number": "1",
+      "issue": "Copperline (2019) #1",
+      "cover_date": "2019-04-01",
+      "store_date": "2019-02-27",
+      "image": null,
+      "cover_hash": "",
+      "modified": "2024-01-01T00:00:00-05:00"
+    },
+    {
+      "id": 910001,
+      "series": {
+        "id": 9100,
+        "name": "Copperline",
+        "volume": 1,
+        "year_began": 2020
+      },
+      "number": "1",
+      "issue": "Copperline (2020) #1",
+      "cover_date": "2020-02-01",
+      "store_date": "2020-01-15",
+      "image": null,
+      "cover_hash": "",
+      "modified": "2024-01-01T00:00:00-05:00"
+    }
+  ]
+}

@@ -15,7 +15,7 @@ import { normalizeForCompare, titleCompareKey } from './filename.ts';
  */
 
 /** Bump when the scoring changes: the next lookup re-scores from the cache (no new requests). */
-export const MATCH_VERSION = 7;
+export const MATCH_VERSION = 8;
 
 export interface MatchFacts {
   title: string;
@@ -327,8 +327,8 @@ const round = (n: number) => Math.round(n * 1000) / 1000;
 export function sameWork(a: SourceRecord, b: SourceRecord): boolean {
   // Comic databases list each issue once: two records are two issues ("Batman #1" from 1940
   // and from 2016), so a close score between them is a real tie.
-  if (a.format === 'ISSUE' && b.format === 'ISSUE')
-    return a.source === b.source && a.sourceId === b.sourceId;
+  const comicDb = (r: SourceRecord) => r.format === 'ISSUE' || r.format === 'COLLECTED';
+  if (comicDb(a) && comicDb(b)) return a.source === b.source && a.sourceId === b.sourceId;
   const full = (r: SourceRecord) => titleCompareKey(fullTitle(r));
   const main = (r: SourceRecord) => titleCompareKey(fullTitle(r).split(/[:—–]| - /)[0]!);
   const fa = full(a);

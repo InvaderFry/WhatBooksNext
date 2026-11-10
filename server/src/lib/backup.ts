@@ -33,6 +33,7 @@ export const BACKUP_TABLES = [
   'candidates_rejected',
   'review_state',
   'pick_feedback',
+  'collection_coverage',
 ] as const;
 
 /**
@@ -48,6 +49,7 @@ const ADDED_IN: Record<string, number> = {
   review_state: 3,
   pick_feedback: 3,
   series_user: 5,
+  collection_coverage: 6,
 };
 
 /**

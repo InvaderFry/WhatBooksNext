@@ -1,0 +1,23 @@
+{
+  "id": 9100,
+  "name": "Copperline",
+  "sort_name": "Copperline",
+  "volume": 1,
+  "series_type": {
+    "id": 12,
+    "name": "Trade Paperback"
+  },
+  "status": "Completed",
+  "publisher": {
+    "id": 1,
+    "name": "Invented Press"
+  },
+  "year_began": 2020,
+  "year_end": 2020,
+  "desc": "",
+  "issue_count": 1,
+  "genres": [],
+  "associated": [],
+  "resource_url": "https://metron.cloud/series/copperline-2020/",
+  "modified": "2024-01-01T00:00:00-05:00"
+}

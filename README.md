@@ -80,7 +80,10 @@ so **before you start**: _Gap ahead: volume 3 isn't recorded as owned or read._ 
 anyway, say you read it elsewhere (it fills the gap, is never recommended, and adds no finish
 date), or fix the series on the book's page. There you can also correct a book's series or number,
 take it out of a series, and say whether the story is finished. Single comic issues only count
-gaps between issues you have, because issue runs often start part-way.
+gaps between issues you have, because issue runs often start part-way. A collected edition (a
+trade paperback) can say which issues it holds — you type it in on its page under **Collects**, or
+Metron suggests it and you confirm. Once confirmed, it fills those issue gaps, and finishing it
+counts its issues as read (once: nothing is added to the issues' own progress).
 
 To rank books, whatBooksNext looks them up online. Only titles, authors and ISBNs are sent —
 never files or your reading history.

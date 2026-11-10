@@ -29,6 +29,7 @@ import {
 } from './match.ts';
 import { addSameMatchSuggestions } from './reconcile.ts';
 import { syncSeries } from './series.ts';
+import { suggestCoverageFromSources } from '../lib/coverage.ts';
 
 /**
  * Lookups (PLAN.md §12.1, §11.2): for each item, ask the sources for its kind, score the
@@ -922,6 +923,8 @@ export class LookupManager {
       // What the run learned about series (names, order, finished or ongoing) takes effect.
       try {
         syncSeries(this.db);
+        // What collected editions reprint, as suggestions (§12.5).
+        suggestCoverageFromSources(this.db);
         // Two entries matched to the same book are probably one book (§11.3 rule 4).
         addSameMatchSuggestions(this.db);
       } catch (err) {

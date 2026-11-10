@@ -2,6 +2,7 @@ import type { DB } from '../db/database.ts';
 import { syncSeries } from '../identify/series.ts';
 import { HttpError, newId, nowIso } from '../util.ts';
 import { historyOnlyIds, loadLibrary, type FolderReachability } from './library.ts';
+import { loadCoverage, viaStates } from './coverage.ts';
 import { applyUserPatch } from './progress.ts';
 import { holdingOf } from './recommend.ts';
 import {
@@ -9,6 +10,7 @@ import {
   missingAfter,
   positionLabel,
   seriesGaps,
+  type Coverage,
   type Gap,
   type Holding,
   type SeriesMember,
@@ -31,6 +33,8 @@ export interface SeriesEntry {
   /** "On external drive (not connected)", "Read elsewhere"… */
   availabilityLabel: string | null;
   formats: string[];
+  /** Read through a collection, or (a collection) through every issue it holds. Derived. */
+  via?: 'collection' | 'issues' | null;
 }
 
 export interface SeriesView {
@@ -46,6 +50,8 @@ export interface SeriesView {
   orderSource: string | null;
   entries: SeriesEntry[];
   gaps: (Gap & { text: string })[];
+  /** Collected editions holding this series' issues: confirmed, or suggested by a source. */
+  coverage: Coverage[];
   /** Volumes past the last one known, up to the stated total. */
   missingAfter: { from: number; to: number } | null;
   /** Entries with no number: their place in the order is unknown. */
@@ -113,8 +119,58 @@ export function seriesView(db: DB, reach: FolderReachability, id: string): Serie
   const members: SeriesMember[] = entries
     .filter((e) => e.holding !== null)
     .map((e) => ({ id: e.id, position: e.position, unit: e.unit, holding: e.holding! }));
+
+  // What collected editions hold of this series (§12.5), and what that means for each issue.
+  const rows = loadCoverage(db).filter((r) => r.series_id === id);
+  const colIds = [...new Set(rows.map((r) => r.item_id))];
+  const cols = new Map(
+    (colIds.length ? loadLibrary(db, reach, colIds).items : []).map((i) => [i.id, i]),
+  );
+  const coverage: Coverage[] = rows.map((r) => {
+    const col = cols.get(r.item_id);
+    const h = col
+      ? holdingOf({ historyOnly: history.has(col.id), availability: col.availability })
+      : null;
+    return {
+      id: r.id,
+      itemId: r.item_id,
+      title: r.title,
+      first: r.first_num,
+      last: r.last_num,
+      state: r.state as Coverage['state'],
+      held: h === 'owned' || h === 'read_elsewhere',
+    };
+  });
+  const via = viaStates(
+    [
+      ...entries.map((e) => ({
+        id: e.id,
+        seriesKey: id,
+        unit: e.unit,
+        position: e.position,
+        finished: e.progress === 'finished',
+      })),
+      ...[...cols.values()]
+        .filter((c) => !places.has(c.id))
+        .map((c) => ({
+          id: c.id,
+          seriesKey: null,
+          unit: null,
+          position: null,
+          finished: c.user.progress === 'finished',
+        })),
+    ],
+    rows.map((r) => ({
+      itemId: r.item_id,
+      first: r.first_num,
+      last: r.last_num,
+      state: r.state as Coverage['state'],
+      seriesKey: id,
+    })),
+  );
+  for (const e of entries) e.via = via.get(e.id) ?? null;
   const gaps = (['volume', 'issue'] as const).flatMap((u) =>
-    seriesGaps(members, u).map((g) => ({ ...g, text: gapSentence(g, null) })),
+    seriesGaps(members, u, coverage).map((g) => ({ ...g, text: gapSentence(g, null) })),
   );
   return {
     id: s.id,
@@ -127,6 +183,7 @@ export function seriesView(db: DB, reach: FolderReachability, id: string): Serie
     orderSource: s.order_source,
     entries,
     gaps,
+    coverage,
     missingAfter: missingAfter(members, 'volume', s.installments),
     unnumbered: entries.filter((e) => e.position === null).length,
   };

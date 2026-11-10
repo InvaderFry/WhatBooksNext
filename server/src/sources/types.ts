@@ -72,6 +72,11 @@ export interface SourceRecord {
     total?: number;
     status?: 'finished' | 'ongoing' | 'unknown';
   };
+  /**
+   * For a collected edition: the issues it reprints, as the source names them (§12.5). Only a
+   * suggestion until the owner confirms it.
+   */
+  collects?: { series: string; year?: number; number: string }[];
   /** Source's own format hint, e.g. AniList MANGA / NOVEL / ONE_SHOT, Hardcover's category. */
   format?: string;
   /** e.g. 'JP' for manga, from AniList. */

@@ -241,6 +241,24 @@ describe('Read next', () => {
     ]);
   });
 
+  it('offers a collected volume before single issues, unless the owner is reading the issues', () => {
+    const vol = item({ title: 'Saga Vol. 1', series: ser('saga', 1) });
+    const iss = (n: number, progress = 'not_started') =>
+      item({
+        title: `Saga #${n}`,
+        series: ser('saga', n, { unit: 'issue' }),
+        user: user({ progress }),
+      });
+    expect(onePerSeries([vol, iss(1), iss(2)]).map((i) => i.title)).toEqual(['Saga Vol. 1']);
+    const all = [vol, iss(1, 'finished'), iss(2)];
+    expect(
+      onePerSeries(
+        all.filter((i) => i.user.progress !== 'finished'),
+        all,
+      ).map((i) => i.title),
+    ).toEqual(['Saga #2']);
+  });
+
   it('treats an installment with no number as a standalone book', () => {
     const numbered = item({ title: 'Saga vol. 1', series: ser('saga', 1) });
     const special = item({ title: 'Saga: a side story', series: ser('saga', null) });

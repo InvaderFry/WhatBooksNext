@@ -263,11 +263,14 @@ function doSync(db: DB): SyncResult {
     }
   }
 
-  // Series nothing belongs to any more go, unless the owner corrected them.
+  // Series nothing belongs to any more go, unless the owner corrected them or said a collection
+  // covers them. (Suggested coverage of a series that goes, goes with it.)
   const orphans = db
     .prepare(
       `SELECT id FROM series s WHERE NOT EXISTS (SELECT 1 FROM items i WHERE i.series_id = s.id)
-         AND NOT EXISTS (SELECT 1 FROM series_user x WHERE x.series_id = s.id)`,
+         AND NOT EXISTS (SELECT 1 FROM series_user x WHERE x.series_id = s.id)
+         AND NOT EXISTS (SELECT 1 FROM collection_coverage c WHERE c.series_id = s.id
+           AND c.state != 'suggested')`,
     )
     .pluck()
     .all() as string[];

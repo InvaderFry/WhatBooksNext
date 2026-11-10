@@ -406,7 +406,18 @@ export interface CardGap {
   from: number;
   to: number;
   unit: SeriesUnit;
-  state: 'not_owned' | 'unavailable';
+  state: 'not_owned' | 'unavailable' | 'maybe_covered';
+  coveredBy?: { itemId: string; title: string; coverageId: string };
+}
+
+export interface CoverageRow {
+  id: string;
+  seriesId: string;
+  seriesName: string;
+  first: number;
+  last: number;
+  state: 'suggested' | 'confirmed';
+  source: string;
 }
 
 export interface SeriesEntry {
@@ -419,6 +430,7 @@ export interface SeriesEntry {
   holding: 'owned' | 'unavailable' | 'read_elsewhere' | null;
   availabilityLabel: string | null;
   formats: string[];
+  via?: 'collection' | 'issues' | null;
 }
 
 export interface SeriesView {
@@ -432,6 +444,15 @@ export interface SeriesView {
   orderSource: string | null;
   entries: SeriesEntry[];
   gaps: CardGap[];
+  coverage: {
+    id: string;
+    itemId: string;
+    title: string;
+    first: number;
+    last: number;
+    state: 'suggested' | 'confirmed';
+    held: boolean;
+  }[];
   missingAfter: { from: number; to: number } | null;
   unnumbered: number;
 }

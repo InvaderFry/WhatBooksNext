@@ -177,7 +177,37 @@ describe('which sources look up a single issue', () => {
       ['metron', false],
       ['comicvine', true],
     ]);
-    // Collected volumes still go to the book sources, which rate each volume.
-    expect(s.forItem('comic', null).map((x) => x.name)).toEqual(['openlibrary']);
+    // Collected volumes go to the book sources, which rate each volume, and to Metron for what
+    // they reprint.
+    expect(s.forItem('comic', null).map((x) => x.name)).toEqual(['openlibrary', 'metron']);
+  });
+});
+
+describe('Metron and collected editions (§12.5)', () => {
+  const routes = () =>
+    router({
+      '/api/issue/': fixture('metron-issues-copperline-1.json'),
+      '/api/series/9001/': fixture('metron-series-9001.json'),
+      '/api/series/9100/': fixture('metron-series-9100.json'),
+      '/api/issue/910001/': fixture('metron-issue-910001.json'),
+    });
+
+  it('finds a trade paperback for a collected volume, with the issues it reprints', async () => {
+    const { fetcher } = routes();
+    const m = new Metron(null, () => 'tok-1234567890abcdef', fetcher);
+    (m.client as unknown as { minInterval: number }).minInterval = 0;
+    const recs = await m.search({ title: 'Copperline 1', series: 'Copperline', volume: '1' });
+    expect(recs).toHaveLength(1);
+    expect(recs[0]).toMatchObject({ title: 'Copperline Vol. 1', format: 'COLLECTED' });
+    expect(recs[0]!.collects).toHaveLength(6);
+    expect(recs[0]!.collects![0]).toEqual({ series: 'Copperline', year: 2019, number: '1' });
+  });
+
+  it('never offers a trade paperback as a single issue’s match', async () => {
+    const { fetcher } = routes();
+    const m = new Metron(null, () => 'tok-1234567890abcdef', fetcher);
+    (m.client as unknown as { minInterval: number }).minInterval = 0;
+    const recs = await m.search({ title: 'Copperline 1', series: 'Copperline', issue: '1' });
+    expect(recs.map((r) => r.sourceId)).toEqual(['900001']);
   });
 });

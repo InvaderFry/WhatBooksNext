@@ -11,8 +11,9 @@ import {
   type ItemSummary,
 } from './library.ts';
 import { communityRating, ratingStats, type RatedFrom, type RatingStats } from './ratings.ts';
-import type { RankItem } from './recommend.ts';
-import { positionLabel } from './series.ts';
+import { holdingOf, type RankItem } from './recommend.ts';
+import { loadCoverage, viaStates } from './coverage.ts';
+import { positionLabel, type Coverage } from './series.ts';
 
 /**
  * Assembles what the pure ranking needs (§6.4) from the database, in a handful of bulk
@@ -211,6 +212,7 @@ export function loadRankData(db: DB, reach: FolderReachability): RankData {
       effort: i.user.effortOverride ?? estimateEffort(i.kind, i.isReference),
     };
   });
+  attachCoverage(db, rankItems);
   return { items: rankItems, stats, library: new Map(items.map((i) => [i.id, i])), used };
 }
 
@@ -220,4 +222,49 @@ function firstScan(i: ItemSummary, folders: Map<string, { created_at: string }>)
   if (created.length === 0) return true;
   const earliest = created.sort()[0]!;
   return Date.parse(i.firstSeenAt) - Date.parse(earliest) < 86_400_000;
+}
+
+/**
+ * Collections and their issues (§12.5): each series gets what its collected editions hold
+ * (for gaps), and items read through another one are marked (for eligibility).
+ */
+export function attachCoverage(db: DB, items: RankItem[]): void {
+  const rows = loadCoverage(db);
+  if (rows.length === 0) return;
+  const byId = new Map(items.map((i) => [i.id, i]));
+  const bySeries = new Map<string, Coverage[]>();
+  for (const r of rows) {
+    const col = byId.get(r.item_id);
+    if (!col) continue;
+    const h = holdingOf(col);
+    const c: Coverage = {
+      id: r.id,
+      itemId: r.item_id,
+      title: r.title,
+      first: r.first_num,
+      last: r.last_num,
+      state: r.state as Coverage['state'],
+      held: h === 'owned' || h === 'read_elsewhere',
+    };
+    if (!bySeries.has(r.series_id)) bySeries.set(r.series_id, []);
+    bySeries.get(r.series_id)!.push(c);
+  }
+  for (const i of items) if (i.series) i.series.coverage = bySeries.get(i.series.key) ?? [];
+  const via = viaStates(
+    items.map((i) => ({
+      id: i.id,
+      seriesKey: i.series?.key ?? null,
+      unit: i.series?.unit ?? null,
+      position: i.series?.position ?? null,
+      finished: i.user.progress === 'finished',
+    })),
+    rows.map((r) => ({
+      itemId: r.item_id,
+      first: r.first_num,
+      last: r.last_num,
+      state: r.state as Coverage['state'],
+      seriesKey: r.series_id,
+    })),
+  );
+  for (const i of items) i.via = via.get(i.id) ?? null;
 }

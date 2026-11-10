@@ -13,6 +13,8 @@ export type SeriesUnit = 'volume' | 'issue';
 export type Holding =
   /** A file (present, online-only or on an unplugged drive) or a store copy. */
   | 'owned'
+  /** Not owned on its own, but in a collection the owner has confirmed (§12.5). */
+  | 'covered'
   /** Owned as files, but every file is missing. */
   | 'unavailable'
   /** Read elsewhere, not owned (a history-only item). */
@@ -29,9 +31,34 @@ export interface Gap {
   /** First and last missing number (inclusive). */
   from: number;
   to: number;
-  /** 'not_owned': neither owned nor read. 'unavailable': owned, but its files are missing. */
-  state: 'not_owned' | 'unavailable';
+  /**
+   * 'not_owned': neither owned nor read. 'unavailable': owned, but its files are missing.
+   * 'maybe_covered': a collection may hold these issues (suggested coverage, not confirmed).
+   */
+  state: 'not_owned' | 'unavailable' | 'maybe_covered';
   unit: SeriesUnit;
+  /** For 'maybe_covered': the collection that may hold them, and its coverage row. */
+  coveredBy?: { itemId: string; title: string; coverageId: string };
+}
+
+/** A collected edition's range of a series' issues (§12.5). */
+export interface Coverage {
+  id: string;
+  /** The collected edition. */
+  itemId: string;
+  title: string;
+  first: number;
+  last: number;
+  state: 'suggested' | 'confirmed';
+  /** Owned (a file or a store copy) or read elsewhere: only then does it fill a gap. */
+  held: boolean;
+}
+
+/** Whole issue numbers in a coverage range, capped like the gap span. */
+export function coveredNumbers(c: Pick<Coverage, 'first' | 'last'>): number[] {
+  const out: number[] = [];
+  for (let p = Math.ceil(c.first); p <= c.last && out.length <= MAX_SPAN; p++) out.push(p);
+  return out;
 }
 
 /**
@@ -48,8 +75,25 @@ const MAX_SPAN = 500;
  * Installments with no number, and numbers like 1.5 (side stories), are left out: they never
  * fill a gap and never make one.
  */
-export function seriesGaps(members: SeriesMember[], unit: SeriesUnit): Gap[] {
+export function seriesGaps(
+  members: SeriesMember[],
+  unit: SeriesUnit,
+  coverage: Coverage[] = [],
+): Gap[] {
   const at = new Map<number, Holding[]>();
+  // Issues a confirmed collection the owner holds covers count as held (§12.5): they fill
+  // gaps and widen the run the gaps are counted in. Suggested ones only label a gap.
+  const maybe = new Map<number, Coverage>();
+  if (unit === 'issue')
+    for (const c of coverage) {
+      if (!c.held) continue;
+      for (const p of coveredNumbers(c)) {
+        if (c.state === 'confirmed') {
+          if (!at.has(p)) at.set(p, []);
+          at.get(p)!.push('covered');
+        } else if (!maybe.has(p)) maybe.set(p, c);
+      }
+    }
   for (const m of members) {
     if (m.unit !== unit || m.position === null || !Number.isInteger(m.position)) continue;
     if (m.position < 0) continue;
@@ -64,15 +108,25 @@ export function seriesGaps(members: SeriesMember[], unit: SeriesUnit): Gap[] {
   if (last - first > MAX_SPAN) return [];
 
   const out: Gap[] = [];
-  const push = (p: number, state: Gap['state']) => {
+  const push = (p: number, state: Gap['state'], by?: Coverage) => {
     const prev = out.at(-1);
-    if (prev && prev.state === state && prev.to === p - 1) prev.to = p;
-    else out.push({ from: p, to: p, state, unit });
+    if (prev && prev.state === state && prev.to === p - 1 && prev.coveredBy?.coverageId === by?.id)
+      prev.to = p;
+    else
+      out.push({
+        from: p,
+        to: p,
+        state,
+        unit,
+        ...(by ? { coveredBy: { itemId: by.itemId, title: by.title, coverageId: by.id } } : {}),
+      });
   };
   for (let p = first; p <= last; p++) {
     const h = at.get(p) ?? [];
-    if (h.includes('owned') || h.includes('read_elsewhere')) continue;
-    push(p, h.includes('unavailable') ? 'unavailable' : 'not_owned');
+    if (h.includes('owned') || h.includes('read_elsewhere') || h.includes('covered')) continue;
+    if (h.includes('unavailable')) push(p, 'unavailable');
+    else if (maybe.has(p)) push(p, 'maybe_covered', maybe.get(p));
+    else push(p, 'not_owned');
   }
   return out;
 }
@@ -87,6 +141,8 @@ export function gapSentence(g: Gap, position: number | null): string {
   const what = gapNumbers(g);
   const plural = g.from !== g.to;
   const prefix = position !== null && g.from > position ? 'Gap ahead' : 'Gap';
+  if (g.state === 'maybe_covered')
+    return `${prefix}: ${what} may be in ${g.coveredBy?.title ?? 'a collection you own'}. Confirm?`;
   if (g.state === 'unavailable')
     return `${prefix}: ${what} ${plural ? 'are' : 'is'} owned, but the file${plural ? 's are' : ' is'} missing.`;
   return `${prefix}: ${what} ${plural ? 'aren’t' : 'isn’t'} recorded as owned or read.`;

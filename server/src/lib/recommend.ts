@@ -7,6 +7,7 @@ import {
   gapSentence,
   ownedCount,
   seriesGaps,
+  type Coverage,
   type Gap,
   type Holding,
   type SeriesMember,
@@ -49,7 +50,11 @@ export interface RankItem {
     status: 'finished' | 'ongoing' | 'unknown';
     /** Installments a source says the finished story has; null when not stated. */
     total: number | null;
+    /** What collected editions hold of this series (§12.5); shared by its items. */
+    coverage?: Coverage[];
   } | null;
+  /** Read through another item (§12.5): a finished collection, or every issue it holds. */
+  via?: 'collection' | 'issues' | null;
   duration: Duration | null;
   community: CommunityRating | null;
   firstPublishYear: number | null;
@@ -106,6 +111,9 @@ export function ineligibleBecause(i: RankItem): string | null {
   if (i.user.triage === 'never') return 'marked Never';
   if (i.user.progress === 'dnf') return 'did not finish';
   if (i.user.progress === 'finished') return 'finished';
+  // Derived, never written to progress: the reading is counted once, where the owner marked it.
+  if (i.via === 'collection') return 'read in a collection';
+  if (i.via === 'issues') return 'every issue in it read';
   return null;
 }
 
@@ -115,7 +123,7 @@ export function ineligibleBecause(i: RankItem): string | null {
  * Items without a series, and installments with no number (side stories, specials), are
  * standalone.
  */
-export function onePerSeries(items: RankItem[]): RankItem[] {
+export function onePerSeries(items: RankItem[], all: RankItem[] = items): RankItem[] {
   const out: RankItem[] = [];
   const bySeries = new Map<string, RankItem[]>();
   for (const i of items) {
@@ -125,10 +133,16 @@ export function onePerSeries(items: RankItem[]): RankItem[] {
       bySeries.get(i.series.key)!.push(i);
     }
   }
+  const touched = (i: RankItem) => i.user.progress !== 'not_started' && i.user.progress !== 'dnf';
   for (const group of bySeries.values()) {
     const eligible = group.filter((i) => ineligibleBecause(i) === null);
-    // Volumes before issues when a series has both (collected editions usually come first).
-    const unit = (i: RankItem) => (i.series?.unit === 'issue' ? 1 : 0);
+    // A series with collected volumes and single issues: carry on with whichever the owner has
+    // been reading; if neither, the collected volumes come first.
+    const members = seriesMembers(group[0]!, all);
+    const readingIssues =
+      members.some((m) => m.series?.unit === 'issue' && touched(m)) &&
+      !members.some((m) => m.series?.unit === 'volume' && touched(m));
+    const unit = (i: RankItem) => ((i.series?.unit === 'issue') !== readingIssues ? 1 : 0);
     const pos = (i: RankItem) => i.series?.position ?? Number.POSITIVE_INFINITY;
     const ordered = [...eligible].sort(
       (a, b) => unit(a) - unit(b) || pos(a) - pos(b) || a.title.localeCompare(b.title),
@@ -192,12 +206,13 @@ export interface CardGap {
   to: number;
   unit: SeriesUnit;
   state: Gap['state'];
+  coveredBy?: Gap['coveredBy'];
 }
 
 /** Gaps in this item's series, said from where it sits (§13.4). */
 export function gapsForCard(i: RankItem, all: RankItem[]): CardGap[] {
   if (!i.series || i.series.position === null) return [];
-  const gaps = seriesGaps(asMembers(seriesMembers(i, all)), i.series.unit);
+  const gaps = seriesGaps(asMembers(seriesMembers(i, all)), i.series.unit, i.series.coverage ?? []);
   return gaps.map((g) => ({ ...g, text: gapSentence(g, i.series!.position) }));
 }
 
@@ -519,6 +534,7 @@ export function readNext(
         shows(i, s.show) &&
         (!s.readyToRead || i.availability.readyToRead),
     ),
+    all,
   );
   const cards = eligible.map((i) => {
     const c = buildCard(i, all, s);

@@ -17,6 +17,7 @@ import {
 import { fillerFor } from '../testing/helpers.ts';
 import { LookupManager } from '../identify/lookups.ts';
 import { Sources } from '../sources/index.ts';
+import { addCoverage, setSuggestedCoverage } from './coverage.ts';
 import { applyUserPatch, shortlistAdd } from './progress.ts';
 
 /**
@@ -149,7 +150,7 @@ function driveFiles(): Record<string, Buffer> {
       Author: 'Ada Quill',
     }),
     ...Object.fromEntries(
-      [1, 2, 4].map((n) => [
+      [1, 2, 4, 7].map((n) => [
         `Comics/Copperline/Copperline 00${n} (2019) (Digital).cbz`,
         makeCbz({
           pages: 22,
@@ -162,6 +163,10 @@ function driveFiles(): Record<string, Buffer> {
         }),
       ]),
     ),
+    // Collected editions of Copperline: volume 1 (issues 1–4, confirmed below) and volume 2
+    // (5–8, only suggested), so one gap is covered and one "may be covered" (§12.5).
+    'Comics/Copperline/Copperline Vol. 1 (2020).cbz': makeCbz({ pages: 12 }),
+    'Comics/Copperline/Copperline Vol. 2 (2021).cbz': makeCbz({ pages: 14 }),
     'Comics/lanternfish_vol1.cbz': makeCbz({ pages: 8 }),
     'Comics/lanternfish_vol1_hd.cbz': makeCbz({ pages: 8, width: 320, height: 490 }),
     'Comics/tinyrobots_issue1.zip': makeCbz({ pages: 6 }),
@@ -329,6 +334,17 @@ export async function buildDemoLibrary(
   const lookups = new LookupManager(db, new Sources(db, { demo: true }));
   lookups.start();
   await lookups.wait();
+
+  // What the Copperline collections hold: one confirmed by the owner, one only suggested by the
+  // (invented) demo source.
+  const copperline = db
+    .prepare('SELECT series_id FROM items WHERE id = ?')
+    .pluck()
+    .get(byFile('Copperline 002 (2019) (Digital).cbz')) as string;
+  addCoverage(db, byFile('Copperline Vol. 1 (2020).cbz'), copperline, 1, 4);
+  setSuggestedCoverage(db, byFile('Copperline Vol. 2 (2021).cbz'), 'demo', [
+    { seriesId: copperline, first: 5, last: 8 },
+  ]);
 
   shortlistAdd(db, byFile('thelanternkeepers_3rdedition.epub'));
   shortlistAdd(db, byFile('Starfall Academy v01.cbz'));

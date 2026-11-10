@@ -54,6 +54,8 @@ export class Sources {
       : [this.openlibrary];
     if (kind === 'manga') return [this.anilist, ...books];
     if (issue) return this.comics();
+    // A collected comic volume: the book sources rate it; Metron says what it reprints (§12.5).
+    if (kind === 'comic' && this.metron.configured()) return [...books, this.metron];
     return books;
   }
 

@@ -99,6 +99,17 @@ try {
         await p.getByRole('heading', { name: 'Series' }).waitFor();
       },
     ],
+    [
+      'item-collects',
+      '/?view=library&q=copperline',
+      async (p) => {
+        await p
+          .getByRole('link', { name: /Copperline Vol\. 2/ })
+          .first()
+          .click();
+        await p.getByRole('heading', { name: 'Collects' }).waitFor();
+      },
+    ],
     ['shortlist', '/?view=shortlist', async () => {}],
     [
       'keyboard-focus',

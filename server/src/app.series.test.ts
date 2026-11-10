@@ -3,6 +3,8 @@ import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createApp } from './app.ts';
 import { addSameMatchSuggestions } from './identify/reconcile.ts';
+import { setSuggestedCoverage } from './lib/coverage.ts';
+import { makeCbz } from './testing/fixtures.ts';
 import type { DB } from './db/database.ts';
 import { makeEpub } from './testing/fixtures.ts';
 import { fakePlatformWithDrives, memoryDb, tempDir, writeFiles } from './testing/helpers.ts';
@@ -259,5 +261,86 @@ describe('series (§12.5)', () => {
     expect(cards[0].limitations).toContain(
       'also in your library under another name — see Needs review',
     );
+  });
+});
+
+describe('collected editions and their issues (§12.5)', () => {
+  const comic = (n: number) =>
+    makeCbz({ pages: 4, comicInfo: { Series: 'Copperline', Number: String(n), Year: '2019' } });
+  async function setUp() {
+    await addAndScan({
+      'Copperline/Copperline 002 (2019).cbz': comic(2),
+      'Copperline/Copperline 004 (2019).cbz': comic(4),
+      'Trades/copperline_vol1.cbz': makeCbz({ pages: 8 }),
+    });
+    const tpb = itemIdOf('copperline_vol1.cbz');
+    const series = seriesIdOf('Copperline 002 (2019).cbz');
+    expect(seriesIdOf('copperline_vol1.cbz')).toBe(series);
+    return { tpb, series };
+  }
+  const gapsOf = async (series: string) =>
+    (await api.get(`/api/series/${series}`)).body.gaps as { state: string; text: string }[];
+
+  it('shows a suggested collection as “may be covered” until confirmed (scenario 4)', async () => {
+    const { tpb, series } = await setUp();
+    expect((await gapsOf(series)).map((g) => g.state)).toEqual(['not_owned']);
+    setSuggestedCoverage(db, tpb, 'metron', [{ seriesId: series, first: 1, last: 6 }]);
+    const [gap] = await gapsOf(series);
+    expect(gap).toMatchObject({
+      state: 'maybe_covered',
+      text: expect.stringContaining('may be in'),
+    });
+    // The series offers the trade first; once it's read, issue 2 comes next, with the gap ahead.
+    await api.patch(`/api/items/${tpb}`, { progress: 'finished' });
+    const card = (await api.get('/api/next')).body.cards.find(
+      (c: { title: string }) => c.title === 'Copperline #2',
+    );
+    expect(card.gaps[0]).toMatchObject({ state: 'maybe_covered' });
+    const covId = (await api.get(`/api/items/${tpb}/coverage`)).body.rows[0].id as string;
+    expect((await api.post(`/api/coverage/${covId}`, { action: 'confirm' })).status).toBe(200);
+    expect(await gapsOf(series)).toEqual([]);
+  });
+
+  it('never suggests again what the owner rejected', async () => {
+    const { tpb, series } = await setUp();
+    setSuggestedCoverage(db, tpb, 'metron', [{ seriesId: series, first: 1, last: 6 }]);
+    const covId = (await api.get(`/api/items/${tpb}/coverage`)).body.rows[0].id as string;
+    await api.post(`/api/coverage/${covId}`, { action: 'reject' });
+    setSuggestedCoverage(db, tpb, 'metron', [{ seriesId: series, first: 1, last: 6 }]);
+    expect((await api.get(`/api/items/${tpb}/coverage`)).body.rows).toEqual([]);
+    expect((await gapsOf(series)).map((g) => g.state)).toEqual(['not_owned']);
+  });
+
+  it('counts finishing a confirmed collection as reading its issues, once (scenario 20)', async () => {
+    const { tpb, series } = await setUp();
+    expect(
+      (await api.post(`/api/items/${tpb}/coverage`, { seriesId: series, first: 1, last: 6 }))
+        .status,
+    ).toBe(200);
+    await api.patch(`/api/items/${tpb}`, { progress: 'finished' });
+    const titles = (await api.get('/api/next')).body.cards.map((c: { title: string }) => c.title);
+    expect(titles.filter((t: string) => /Copperline/i.test(t))).toEqual([]);
+    // Nothing was written to the issues: one reading, where the owner marked it.
+    expect(
+      db.prepare("SELECT COUNT(*) FROM user_item WHERE progress = 'finished'").pluck().get(),
+    ).toBe(1);
+    const s = (await api.get(`/api/series/${series}`)).body;
+    expect(
+      s.entries
+        .filter((e: { via: string | null }) => e.via === 'collection')
+        .map((e: { label: string }) => e.label),
+    ).toEqual(['2', '4']);
+  });
+
+  it('stops recommending a collection once every issue in it is read', async () => {
+    const { tpb, series } = await setUp();
+    await api.post(`/api/items/${tpb}/coverage`, { seriesId: series, first: 2, last: 4 });
+    await api.post(`/api/series/${series}/read-elsewhere`, { unit: 'issue', from: 3 });
+    for (const n of [2, 4])
+      await api.patch(`/api/items/${itemIdOf(`Copperline 00${n} (2019).cbz`)}`, {
+        progress: 'finished',
+      });
+    const ids = (await api.get('/api/next')).body.cards.map((c: { id: string }) => c.id);
+    expect(ids).not.toContain(tpb);
   });
 });

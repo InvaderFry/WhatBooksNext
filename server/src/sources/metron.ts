@@ -69,6 +69,20 @@ export function metronStatus(s: string | undefined): 'finished' | 'ongoing' | 'u
   return 'unknown';
 }
 
+/** Series types that collect issues rather than publish them (Metron's own names). */
+export const COLLECTED_TYPE = /trade paperback|graphic novel|hard ?cover|omnibus|collect/i;
+
+/** A series name without a "TPB" / "Omnibus" tag, for comparing with ours. */
+const baseKey = (name: string) =>
+  titleCompareKey(name.replace(/\b(tpb|trade paperback|hc|hardcover|omnibus)\b/gi, ' '));
+
+/** "Action Comics (1938) #193" → series, year, number. */
+export function parseReprint(s: string): { series: string; year?: number; number: string } | null {
+  const m = /^(.+?)\s*(?:\((\d{4})\))?\s*#\s*(\S+)\s*$/.exec(s.trim());
+  if (!m) return null;
+  return { series: m[1]!.trim(), ...(m[2] ? { year: Number(m[2]) } : {}), number: m[3]! };
+}
+
 export function parseMetronIssues(
   payload: unknown,
   series: Map<number, MetronSeries> = new Map(),
@@ -83,15 +97,16 @@ export function parseMetronIssues(
     const years = [cover, i.series.year_began].filter((y): y is number => typeof y === 'number');
     const position = /^\d+(\.\d+)?$/.test(i.number) ? parseFloat(i.number) : undefined;
     const status = metronStatus(s?.status);
+    const collected = COLLECTED_TYPE.test(s?.series_type?.name ?? '');
     const rec: SourceRecord = {
       source: 'metron',
       sourceId: String(i.id),
-      title: `${i.series.name} #${i.number}`,
+      title: collected ? `${i.series.name} Vol. ${i.number}` : `${i.series.name} #${i.number}`,
       authors: [],
       isbns: [],
       // Says it's a comic, so the matching treats it as one (comicLike).
       subjects: ['Comics', ...(s?.series_type?.name ? [s.series_type.name] : [])],
-      format: 'ISSUE',
+      format: collected ? 'COLLECTED' : 'ISSUE',
       series: {
         name: i.series.name,
         ...(typeof i.series.id === 'number' ? { id: String(i.series.id) } : {}),
@@ -161,32 +176,61 @@ export class Metron implements SourceAdapter {
   }
 
   /**
-   * Single issues by series name and number. Each series found that matches the name is then
-   * read once (cached) for whether it has ended and how many issues it has.
+   * By series name and number. A single issue's query keeps ongoing and limited series; a
+   * collected volume's keeps trade paperbacks, hardcovers, graphic novels and omnibuses, and
+   * reads what they reprint (§12.5). Each series matching the name is read once (cached) for
+   * its type, whether it has ended and how many issues it has.
    */
   async search(q: SourceQuery, opts: { refresh?: boolean } = {}): Promise<SourceRecord[]> {
     const series = q.series ?? q.title;
-    if (!series || !q.issue) return [];
-    const params = new URLSearchParams({ series_name: series, number: q.issue });
-    const key = `issues:${series.toLowerCase()}|${q.issue.toLowerCase()}`;
+    const number = q.issue ?? q.volume;
+    if (!series || !number) return [];
+    const collected = !q.issue;
+    const params = new URLSearchParams({ series_name: series, number });
+    const key = `issues:${series.toLowerCase()}|${number.toLowerCase()}`;
     const payload = await this.get(`issue/?${params}`, key, Boolean(opts.refresh));
-    const want = titleCompareKey(series);
+    const want = baseKey(series);
+    const results = (payload as { results?: MetronIssue[] } | null)?.results ?? [];
     const ids = [
       ...new Set(
-        ((payload as { results?: MetronIssue[] } | null)?.results ?? [])
-          .filter((i) => i?.series?.name && titleCompareKey(i.series.name) === want)
+        results
+          .filter((i) => i?.series?.name && baseKey(i.series.name) === want)
           .map((i) => i.series!.id)
           .filter((id): id is number => typeof id === 'number'),
       ),
-    ].slice(0, 3);
+    ].slice(0, 6);
     const details = new Map<number, MetronSeries>();
     for (const id of ids) {
       try {
         details.set(id, (await this.get(`series/${id}/`, `series:${id}`, false)) as MetronSeries);
       } catch {
-        // The series' status is a nice-to-have: the issue match stands without it.
+        // The series' details are a nice-to-have: the issue match stands without them.
       }
     }
-    return parseMetronIssues(payload, details);
+    const typeOf = (i: MetronIssue) =>
+      typeof i.series?.id === 'number' ? details.get(i.series.id)?.series_type?.name : undefined;
+    // A collected edition is never a single issue's match, and the other way round. A series
+    // whose type we couldn't read stays in for issues (most series publish issues) and out
+    // for collections.
+    const kept = results.filter((i) => {
+      const t = typeOf(i);
+      return collected ? t !== undefined && COLLECTED_TYPE.test(t) : !t || !COLLECTED_TYPE.test(t);
+    });
+    const recs = parseMetronIssues({ results: kept }, details);
+    if (collected)
+      for (const r of recs.slice(0, 2)) {
+        try {
+          const d = (await this.get(`issue/${r.sourceId}/`, `issue:${r.sourceId}`, false)) as {
+            reprints?: { issue?: string }[];
+          };
+          const collects = (d?.reprints ?? [])
+            .map((x) => (typeof x?.issue === 'string' ? parseReprint(x.issue) : null))
+            .filter((x): x is NonNullable<typeof x> => x !== null);
+          if (collects.length) r.collects = collects;
+        } catch {
+          // What it reprints is a suggestion only; the volume's match stands without it.
+        }
+      }
+    return recs;
   }
 }
