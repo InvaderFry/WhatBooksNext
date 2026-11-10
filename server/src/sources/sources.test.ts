@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { CIRCUIT_FAILURES } from '../config.ts';
 import { kindFromEvidence, techTitle } from '../identify/kinds.ts';
 import { picturesFile } from '../identify/lookups.ts';
-import { decide, scoreCandidate, type MatchFacts } from '../identify/match.ts';
+import { decide, numberIn, scoreCandidate, type MatchFacts } from '../identify/match.ts';
 import { memoryDb } from '../testing/helpers.ts';
 import { parseAniList } from './anilist.ts';
 import { SourceClient } from './client.ts';
@@ -305,6 +305,32 @@ describe('matching (§11.2)', () => {
     expect(r.decision).toBe('tie');
     expect(r.best).toBeNull();
     expect(r.ranked).toHaveLength(2);
+  });
+
+  it('reads a volume written as a word, so "Book Three" never ties with "Vol. 2"', () => {
+    expect(numberIn('Night Harbor: Book Two')).toBe('2');
+    expect(numberIn('Night Harbor, Volume Three')).toBe('3');
+    expect(numberIn('The Book of Two Ways')).toBeNull();
+    const base = { ...tm[0]!, isbns: [], rating: undefined, authors: ['Odo Venn'] };
+    const records = [
+      { ...base, sourceId: 'plain', title: 'Night Harbor' },
+      { ...base, sourceId: 'v2', title: 'Night Harbor, Vol. 2: Dark Tides' },
+      { ...base, sourceId: 'b3', title: 'Night Harbor: Book Three' },
+    ];
+    // The filename gives no number in digits, only in its title.
+    const r = decide(
+      facts({ title: 'Night Harbor: Book Three', titleSource: 'filename', kind: 'comic' }),
+      records,
+    );
+    expect(r.decision).not.toBe('tie');
+    expect(r.best?.record.sourceId).toBe('b3');
+    expect(r.ranked.find((c) => c.record.sourceId === 'v2')!.score).toBeLessThanOrEqual(0.3);
+    // A digit on one side and a word on the other are the same book.
+    const same = decide(
+      facts({ title: 'Night Harbor Vol. 3', titleSource: 'filename', volume: '3', kind: 'comic' }),
+      [records[2]!],
+    );
+    expect(same.ranked[0]!.evidence.title).toBe(1);
   });
 
   it('never matches a different volume of the same series', () => {

@@ -17,8 +17,9 @@ import { normalizeForCompare, titleCompareKey } from './filename.ts';
 /**
  * Bump when scoring or derived source fields change: the next lookup rebuilds from the cache.
  * Version 9 also brings explicit comic run start years into existing stored matches.
+ * Version 10 reads volume numbers written as words ("Book Two") on both sides.
  */
-export const MATCH_VERSION = 9;
+export const MATCH_VERSION = 10;
 
 export interface MatchFacts {
   title: string;
@@ -119,10 +120,35 @@ export function similarity(a: string, b: string): number {
  */
 const NUMBER_MARK = /(?:^|[\s,:(])(?:vol(?:ume)?\.?|book|no\.?|#)\s*(\d+(?:\.\d+)?)\b/i;
 const TRAILING_NUMBER = /\s(\d{1,3}(?:\.\d+)?)\s*$/;
+/**
+ * "Book Two", "Volume Three": publishers and the owner's files write the number as a word as
+ * often as a digit ("March: Book Two"). Read as its digit, so "Book Three" and "Vol. 2" are two
+ * different books, and "Book Two" and "Book 2" one.
+ */
+const WORD_NUMBERS = [
+  'one',
+  'two',
+  'three',
+  'four',
+  'five',
+  'six',
+  'seven',
+  'eight',
+  'nine',
+  'ten',
+  'eleven',
+  'twelve',
+];
+const WORD_MARK = new RegExp(
+  `(?:^|[\\s,:(])(?:vol(?:ume)?\\.?|book)\\s+(${WORD_NUMBERS.join('|')})\\b`,
+  'i',
+);
 
 export function numberIn(title: string): string | null {
   const m = NUMBER_MARK.exec(title) ?? TRAILING_NUMBER.exec(title);
-  return m ? String(parseFloat(m[1]!)) : null;
+  if (m) return String(parseFloat(m[1]!));
+  const w = WORD_MARK.exec(title);
+  return w ? String(WORD_NUMBERS.indexOf(w[1]!.toLowerCase()) + 1) : null;
 }
 
 function ourNumber(f: MatchFacts): string | null {
@@ -135,6 +161,10 @@ function ourNumber(f: MatchFacts): string | null {
 function withoutNumber(t: string): string {
   return t
     .replace(/[\s,:(]*(?:vol(?:ume)?\.?|book|no\.?|#)\s*\d+(?:\.\d+)?\)?/gi, ' ')
+    .replace(
+      new RegExp(`[\\s,:(]*(?:vol(?:ume)?\\.?|book)\\s+(?:${WORD_NUMBERS.join('|')})\\b\\)?`, 'gi'),
+      ' ',
+    )
     .replace(TRAILING_NUMBER, ' ')
     .trim();
 }

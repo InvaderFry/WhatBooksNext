@@ -664,6 +664,11 @@ export function compareKeyFor(fileName: string): string {
   base = base.replace(/\s?\(\d{1,2}\)$/, '');
   // A bracket holding only a tag, "(HQ)" / "[Digital]".
   base = base.replace(new RegExp(`[([]\\s*(?:${JOINED_TAGS})\\s*[)\\]]`, 'g'), ' ').trim();
+  // "book two" and "booktwo" are "book 2": the same book whichever way the number is written.
+  base = base.replace(
+    /(?<![a-z])(book|vol|volume)[\s_.-]*(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)(?![a-z])/g,
+    (_m, marker: string, word: string) => `${marker} ${COUNT_WORDS[word]}`,
+  );
   // Then the same trailing-tag rule the parser uses, so titles and grouping always agree.
   const key = normalizeForCompare(stripTrailingTags(base).base);
   return key || normalizeForCompare(fileName);
