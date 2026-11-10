@@ -550,7 +550,7 @@ export interface RelevanceCard extends Card {
 function stillRelevant(all: RankItem[], s: Situation, o: ModeOptions): ModeResult {
   const p = pool(
     all,
-    { ...s, show: 'all', completeOnly: false },
+    { ...s, show: 'all', completeOnly: false, topic: null },
     { reference: true, series: false },
   );
   const topics = s.topics ?? [];

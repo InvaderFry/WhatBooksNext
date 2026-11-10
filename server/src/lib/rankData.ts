@@ -245,11 +245,17 @@ export function loadRankData(db: DB, reach: FolderReachability): RankData {
 }
 
 /** Was the item first seen in its folder's first scan? Then first-seen isn't an acquisition. */
-function firstScan(i: ItemSummary, folders: Map<string, { created_at: string }>): boolean {
-  const created = i.folderIds.map((f) => folders.get(f)?.created_at).filter(Boolean) as string[];
-  if (created.length === 0) return true;
-  const earliest = created.sort()[0]!;
-  return Date.parse(i.firstSeenAt) - Date.parse(earliest) < 86_400_000;
+function firstScan(
+  i: ItemSummary,
+  folders: Map<string, { first_complete_scan_at?: string | null }>,
+): boolean {
+  // Seen by the first complete scan of any of its folders (or no such scan has finished yet):
+  // it came with the folder. Only books first seen after that scan are new.
+  for (const id of i.folderIds) {
+    const first = folders.get(id)?.first_complete_scan_at;
+    if (!first || i.firstSeenAt <= first) return true;
+  }
+  return i.folderIds.length === 0;
 }
 
 /**

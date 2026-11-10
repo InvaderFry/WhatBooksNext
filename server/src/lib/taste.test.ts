@@ -111,6 +111,29 @@ describe('taste learning (§13.11)', () => {
     expect(evidenceOf(toInput(own!))!.value).toBeGreaterThan(0);
   });
 
+  it('never says “Not for me” about books that were only finished below the average', () => {
+    const all = [
+      ...history(6, ['Fantasy'], { progress: 'finished', rating: 10 }),
+      ...history(6, ['Mystery'], { progress: 'finished' }),
+    ];
+    const s = tasteSummary(tasteFrom(all, 'normal'));
+    const mystery = s.dislikes.find((d) => d.label === 'mystery')!;
+    expect(mystery.text).toBe('Below your average: mystery');
+    expect(s.dislikes.map((d) => d.text).join(' ')).not.toMatch(/Not for me/);
+  });
+
+  it('says “Not for me” and “rate lower” only when that is what the books show', () => {
+    const all = [
+      ...history(6, ['Fantasy'], { progress: 'finished', rating: 9 }),
+      ...history(3, ['Westerns'], { progress: 'dnf', dnfReason: 'not_for_me' }),
+      ...history(3, ['Poetry'], { progress: 'finished', rating: 3 }),
+    ];
+    const s = tasteSummary(tasteFrom(all, 'normal'));
+    const text = (label: string) => s.dislikes.find((d) => d.label === label)?.text;
+    expect(text('westerns')).toBe('You stopped westerns as “Not for me”');
+    expect(text('poetry')).toBe('You rate poetry lower than your other books');
+  });
+
   it('learns only "Not for me" as dislike among unrated DNFs', () => {
     const notForMe = learnTaste(
       history(2, ['Westerns'], { progress: 'dnf', dnfReason: 'not_for_me' }).map(toInput),

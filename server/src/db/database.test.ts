@@ -98,3 +98,35 @@ describe('migrations and snapshots (§6.2)', () => {
     expect(kinds.filter((k) => k === 'pre-restore')).toHaveLength(3);
   });
 });
+
+describe('migration 011 (first complete scan)', () => {
+  it('keeps the old one-day answer for folders scanned before it existed', async () => {
+    const db = openDatabase(':memory:');
+    const all = loadMigrations();
+    await migrate(db, { snapshotDir: null, migrations: all.filter((m) => m.version <= 10) });
+    const now = '2026-01-01T10:00:00.000Z';
+    db.prepare(
+      `INSERT INTO folders (id, display_path, relative_path, storage_kind, also_in_icloud,
+         last_seen_at, last_complete_scan_at, created_at, updated_at)
+       VALUES ('f', 'X:\\\\Books', '', 'local', 0, ?, ?, ?, ?)`,
+    ).run(now, '2026-03-01T00:00:00.000Z', now, now);
+    db.prepare(
+      `INSERT INTO folders (id, display_path, relative_path, storage_kind, also_in_icloud,
+         last_seen_at, last_complete_scan_at, created_at, updated_at)
+       VALUES ('g', 'X:\\\\Never', '', 'local', 0, ?, NULL, ?, ?)`,
+    ).run(now, now, now);
+    const file = db.prepare(
+      `INSERT INTO files (id, folder_id, rel_path, rel_dir, name, ext, format, size, compare_key,
+         first_seen_at, last_seen_at, availability)
+       VALUES (?, 'f', ?, '', ?, 'epub', 'epub', 1, ?, ?, ?, 'present')`,
+    );
+    file.run('a', 'a.epub', 'a.epub', 'a', '2026-01-01T10:00:05.000Z', now);
+    file.run('b', 'b.epub', 'b.epub', 'b', '2026-01-01T12:00:00.000Z', now);
+    file.run('c', 'c.epub', 'c.epub', 'c', '2026-02-01T10:00:00.000Z', now);
+    await migrate(db, { snapshotDir: null, migrations: all });
+    const first = (id: string) =>
+      db.prepare('SELECT first_complete_scan_at FROM folders WHERE id = ?').pluck().get(id);
+    expect(first('f')).toBe('2026-01-01T12:00:00.000Z');
+    expect(first('g')).toBeNull();
+  });
+});

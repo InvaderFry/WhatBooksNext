@@ -47,6 +47,8 @@ export interface Signal {
   evidence: number;
   /** Mostly from the owner's ratings, rather than from finishing. */
   rated: boolean;
+  /** Mostly from books stopped as "Not for me": only then may a sentence say so. */
+  stopped: boolean;
 }
 
 export interface TasteModel {
@@ -156,6 +158,7 @@ interface Evidence {
   value: number;
   weight: number;
   rated: boolean;
+  stopped?: boolean;
 }
 
 /** What one item teaches, or null when it teaches nothing (§13.11). */
@@ -166,7 +169,12 @@ export function evidenceOf(i: TasteInput): Omit<Evidence, 'item'> | null {
   if (i.progress === 'finished')
     return { value: 0.5, weight: TASTE_EVIDENCE.finished * imported, rated: false };
   if (i.progress === 'dnf' && i.dnfReason === 'not_for_me')
-    return { value: -1, weight: TASTE_EVIDENCE.notForMe * imported, rated: false };
+    return {
+      value: -1,
+      weight: TASTE_EVIDENCE.notForMe * imported,
+      rated: false,
+      stopped: true,
+    };
   // DNF "Not now" and "Too difficult right now" teach nothing about dislike (§13.6).
   return null;
 }
@@ -208,14 +216,22 @@ export function learnTaste(items: TasteInput[], strength: TasteStrength = 'norma
   const mean = totalW > 0 ? ev.reduce((a, e) => a + e.weight * e.value, 0) / totalW : 0;
   const acc = new Map<
     string,
-    { label: string; type: Signal['type']; w: number; wv: number; ratedW: number }
+    {
+      label: string;
+      type: Signal['type'];
+      w: number;
+      wv: number;
+      ratedW: number;
+      stoppedW: number;
+    }
   >();
   for (const e of ev) {
     for (const [key, f] of featuresOf(e.item)) {
-      const a = acc.get(key) ?? { ...f, w: 0, wv: 0, ratedW: 0 };
+      const a = acc.get(key) ?? { ...f, w: 0, wv: 0, ratedW: 0, stoppedW: 0 };
       a.w += e.weight;
       a.wv += e.weight * e.value;
       if (e.rated) a.ratedW += e.weight;
+      if (e.stopped) a.stoppedW += e.weight;
       acc.set(key, a);
     }
   }
@@ -230,6 +246,7 @@ export function learnTaste(items: TasteInput[], strength: TasteStrength = 'norma
       affinity: Math.round((shrunk - mean) * 1000) / 1000,
       evidence: Math.round(a.w * 10) / 10,
       rated: a.ratedW > a.w / 2,
+      stopped: a.stoppedW > a.w / 2,
     });
   }
   return { active, outcomes: Math.round(outcomes * 10) / 10, groups, strength, signals };
@@ -309,7 +326,13 @@ export function tasteSummary(m: TasteModel) {
   };
 }
 
-/** "You rate self-help low", "You stop books by X as Not for me". */
+/**
+ * A dislike, said only as strongly as its evidence allows. Standing below the owner's average
+ * isn't dislike: finished, unrated books in a genre can sit below a run of 10/10s.
+ *  - mostly "Not for me": You stopped books by X as "Not for me";
+ *  - mostly ratings: You rate self-help lower than your other books;
+ *  - otherwise: Below your average: mystery.
+ */
 export function dislikeSentence(s: Signal): string {
   const what =
     s.type === 'author'
@@ -319,5 +342,7 @@ export function dislikeSentence(s: Signal): string {
         : s.type === 'publisher'
           ? `books from ${s.label}`
           : s.label;
-  return s.rated ? `You rate ${what} low` : `You stop ${what} as “Not for me”`;
+  if (s.stopped) return `You stopped ${what} as “Not for me”`;
+  if (s.rated) return `You rate ${what} lower than your other books`;
+  return `Below your average: ${what}`;
 }

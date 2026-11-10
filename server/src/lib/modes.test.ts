@@ -275,6 +275,14 @@ describe('Still relevant?', () => {
     ]);
     expect(f.signals.join(' ')).not.toMatch(/stale|obsolete|outdated/i);
     // And it's recommended like any other book: age is no penalty in Read next.
+    // A topic picked in another mode doesn't quietly narrow this review list.
+    const withTopic = runMode(
+      'still_relevant',
+      [fundamentals, versioned, outside],
+      { ...s, topic: 'Rust' },
+      page,
+    );
+    expect(ids(withTopic)).toEqual([versioned.id, outside.id, fundamentals.id]);
     const rn = runMode('read_next', [fundamentals, onTopicNew], situation(), page);
     const [a, b] = rn.cards;
     expect(a!.score).toBe(b!.score);
@@ -360,6 +368,31 @@ describe('Complete stories only (§13.3)', () => {
     const r = runMode('read_next', all, situation({ completeOnly: true }), page);
     expect(ids(r).sort()).toEqual([standalone.id, full[0]!.id].sort());
     expect(r.leftOut).toEqual({ ongoing: 1, unknown: 1, missing: 1 });
+  });
+
+  it('counts issues held in a confirmed collection, but not in a suggested one', () => {
+    const cov = (state: 'confirmed' | 'suggested') => [
+      { id: 'c', itemId: 'tpb', title: 'Invented Vol. 1', first: 2, last: 5, state, held: true },
+    ];
+    const run = (state: 'confirmed' | 'suggested') =>
+      [1, 6].map((n) =>
+        item({
+          kind: 'comic',
+          series: series('run', n, {
+            unit: 'issue',
+            status: 'finished',
+            total: 6,
+            coverage: cov(state),
+          }),
+        }),
+      );
+    const confirmed = run('confirmed');
+    expect(completeness(confirmed[0]!, confirmed)).toEqual({ ok: true });
+    const suggested = run('suggested');
+    expect(completeness(suggested[0]!, suggested)).toMatchObject({
+      ok: false,
+      text: 'you’re missing issue 2',
+    });
   });
 
   it('counts a volume read elsewhere as part of a complete story', () => {

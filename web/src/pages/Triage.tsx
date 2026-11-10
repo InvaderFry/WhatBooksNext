@@ -312,7 +312,9 @@ function BulkTriage({ params, onChanged }: { params: Params; onChanged: () => vo
   const src = sourceQuery(params);
   const [data, setData] = useState<TriageList | null>(null);
   const [chosen, setChosen] = useState<Set<string>>(new Set());
-  const [preview, setPreview] = useState<BulkPreview | null>(null);
+  // The preview and exactly the books it was made for: applying sends these, never the
+  // selection as it is now, so the confirmation always matches what changes.
+  const [preview, setPreview] = useState<(BulkPreview & { ids: string[] }) | null>(null);
   const [done, setDone] = useState<{ text: string; undo: string } | null>(null);
   const [announce, setAnnounce] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -328,12 +330,10 @@ function BulkTriage({ params, onChanged }: { params: Params; onChanged: () => vo
 
   const ask = async (action: 'read' | 'never') => {
     setError(null);
+    const ids = [...chosen];
     try {
-      const r = await api.post<{ preview: BulkPreview }>('/api/triage/bulk', {
-        ids: [...chosen],
-        action,
-      });
-      setPreview(r.preview);
+      const r = await api.post<{ preview: BulkPreview }>('/api/triage/bulk', { ids, action });
+      setPreview({ ...r.preview, ids });
     } catch (e) {
       setError((e as Error).message);
     }
@@ -341,7 +341,7 @@ function BulkTriage({ params, onChanged }: { params: Params; onChanged: () => vo
   const apply = async () => {
     if (!preview) return;
     const r = await api.post<{ done: number; undo: string }>('/api/triage/bulk', {
-      ids: [...chosen],
+      ids: preview.ids,
       action: preview.action,
       preview: false,
     });
@@ -395,7 +395,10 @@ function BulkTriage({ params, onChanged }: { params: Params; onChanged: () => vo
               <input
                 type="checkbox"
                 checked={all}
-                onChange={() => setChosen(all ? new Set() : new Set(items.map((i) => i.id)))}
+                onChange={() => {
+                  setChosen(all ? new Set() : new Set(items.map((i) => i.id)));
+                  setPreview(null);
+                }}
               />
               Select all {items.length}
               {data && data.remaining > items.length ? ` shown (of ${data.remaining})` : ''}

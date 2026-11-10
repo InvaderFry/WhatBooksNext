@@ -12,6 +12,7 @@ import type { AvailabilityView, UserData } from './library.ts';
 import type { CommunityRating } from './ratings.ts';
 import { tasteFor, type TasteModel } from './taste.ts';
 import {
+  coveredNumbers,
   gapSentence,
   ownedCount,
   seriesGaps,
@@ -357,6 +358,11 @@ export function completeness(i: RankItem, all: RankItem[]): Completeness {
     return { ok: false, why: 'unknown', text: 'not known whether the story is finished' };
   const members = asMembers(seriesMembers(i, all)).filter((m) => m.unit === s.unit);
   const held = new Set(members.filter((m) => m.holding !== 'unavailable').map((m) => m.position));
+  // Issues in a confirmed collection the owner has count as owned (§12.5). A suggested one only
+  // "may" cover them, so it doesn't.
+  if (s.unit === 'issue')
+    for (const c of s.coverage ?? [])
+      if (c.state === 'confirmed' && c.held) for (const n of coveredNumbers(c)) held.add(n);
   const top = Math.max(s.total ?? 0, ...members.map((m) => m.position ?? 0));
   if (s.total === null) {
     // A finished story whose length no source states: complete only if nothing is missing

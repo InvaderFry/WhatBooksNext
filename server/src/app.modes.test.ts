@@ -298,9 +298,8 @@ describe('Triage (§13.5)', () => {
     await api.post('/api/folders', { path: drive });
     await api.post('/api/scan', {});
     await made.scans.wait();
-    // The folder was added days ago: what the next scan finds is genuinely new.
-    db.prepare('UPDATE folders SET created_at = ?').run('2026-01-01T10:00:00.000Z');
-    db.prepare('UPDATE files SET first_seen_at = ?').run('2026-01-01T10:00:00.000Z');
+    // Straight after the first scan: what the next scan finds is still genuinely new.
+    await new Promise((r) => setTimeout(r, 5));
     writeFiles(drive, { 'second/new-book.epub': makeEpub({ title: 'Invented New Book' }) });
     await api.post('/api/scan', {});
     await made.scans.wait();
@@ -316,5 +315,25 @@ describe('Triage (§13.5)', () => {
     const inFolder = (await api.get(`/api/triage?source=folder&folder=${folder.id}`)).body;
     expect(inFolder.remaining).toBe(2);
     expect((await api.get('/api/triage?source=folder')).status).toBe(400);
+  });
+
+  it('counts nothing as new until the folder’s first scan has finished', async () => {
+    writeFiles(drive, { 'a/one.epub': makeEpub({ title: 'Invented One' }) });
+    await api.post('/api/folders', { path: drive });
+    await api.post('/api/scan', {});
+    await made.scans.wait();
+    // As if that first scan had been cancelled: no complete scan is recorded yet.
+    db.prepare('UPDATE folders SET first_complete_scan_at = NULL').run();
+    await new Promise((r) => setTimeout(r, 5));
+    writeFiles(drive, { 'b/two.epub': makeEpub({ title: 'Invented Two' }) });
+    await api.post('/api/scan', {});
+    await made.scans.wait();
+    // This scan is the first complete one: both books came with the folder.
+    expect((await api.get('/api/triage?limit=50')).body.newArrivals).toBe(0);
+    await new Promise((r) => setTimeout(r, 5));
+    writeFiles(drive, { 'c/three.epub': makeEpub({ title: 'Invented Three' }) });
+    await api.post('/api/scan', {});
+    await made.scans.wait();
+    expect((await api.get('/api/triage?limit=50')).body.newArrivals).toBe(1);
   });
 });
