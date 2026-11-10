@@ -5,7 +5,7 @@ they already own. It's a local web app for Windows. It lists your folders, works
 file is, and tracks your reading with one tap. It isn't a reader: you keep reading in your usual
 apps.
 
-**Status: Milestone 3 of 6.** This version has the library and tracking (folders, scanning,
+**Status: Milestone 4 of 6 — features built; Windows checks remain.** This version has the library and tracking (folders, scanning,
 progress, the shortlist, backup and restore), reads inside your files (titles, authors, word and
 page counts, covers, fingerprints that recognise moved and copied files), and gives **first real
 recommendations**: it looks your books up online for ratings and details, and **What next**
@@ -127,6 +127,24 @@ Diagnostics report. Then press **Diagnostics → Test Hardcover**.
 - **Calibre:** Settings → **Calibre**. Paste your Calibre library folder. The app reads a copy of
   Calibre's `metadata.db` and changes nothing in Calibre. Your ratings and a "read" column come
   across only if you choose them.
+
+## Goodreads and StoryGraph reading history
+
+Settings → **Reading history from Goodreads or StoryGraph** previews your exported CSV before
+saving anything. Choose the service and its file. Matches by ISBN also need an agreeing title
+or author; possible title matches require your confirmation. Existing progress, ratings, dates
+and notes are kept. Re-importing the same books changes nothing, including after a backup restore.
+
+Unmatched read, reading and DNF books can become **history-only** entries: they never appear in
+recommendations. Unmatched to-read books are skipped, and an export's ownership column does not
+add a store copy. DNF history does not imply a dislike reason. Ratings out of 5 are doubled;
+StoryGraph quarter stars are rounded to our whole-number 1–10 scale, with the conversion shown.
+Missing dates stay unknown, partial dates stay approximate, and upload dates are never substituted.
+Reviews and Goodreads private notes become notes. Rereads are represented by one reading and the
+last finish date; other export columns are ignored.
+
+Compatibility is checked against [public sample layouts](fixtures/imports/README.md).
+A fresh authenticated export from each service still needs a real-user check.
 
 ## Backups
 

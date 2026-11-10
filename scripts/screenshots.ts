@@ -37,7 +37,7 @@ const server = spawn(process.execPath, ['server/src/main.ts'], {
 try {
   fs.mkdirSync(OUT, { recursive: true });
   await waitForServer();
-  const browser = await chromium.launch();
+  const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH });
   const shots: [string, string, (p: import('playwright').Page) => Promise<void>][] = [
     ['next', '/', async () => {}],
     ['next-finish-within', '/?time=30&mode=finish_within', async () => {}],
@@ -163,7 +163,7 @@ try {
       'settings-csv',
       '/?view=settings',
       async (p) => {
-        await p.getByLabel('CSV file').setInputFiles({
+        await p.getByLabel('CSV file', { exact: true }).setInputFiles({
           name: 'my-kindle-books.csv',
           mimeType: 'text/csv',
           buffer: Buffer.from(
@@ -179,6 +179,25 @@ try {
           .scrollIntoViewIfNeeded();
       },
     ],
+    ...(['goodreads', 'storygraph'] as const).map(
+      (source): [string, string, (p: import('playwright').Page) => Promise<void>] => [
+        `settings-history-${source}`,
+        '/?view=settings',
+        async (p) => {
+          await p.getByLabel('History source').selectOption(source);
+          await p
+            .getByLabel('Reading history CSV file')
+            .setInputFiles(path.join(ROOT, 'fixtures', 'imports', `${source}.csv`));
+          await p.getByRole('button', { name: 'Import reading history', exact: true }).waitFor();
+          await p.getByRole('button', { name: 'Cancel history import' }).click();
+          await p
+            .getByLabel('Reading history CSV file')
+            .setInputFiles(path.join(ROOT, 'fixtures', 'imports', `${source}.csv`));
+          await p.getByRole('button', { name: 'Import reading history', exact: true }).waitFor();
+          await p.locator('#history-import-h').scrollIntoViewIfNeeded();
+        },
+      ],
+    ),
     ['shortlist', '/?view=shortlist', async () => {}],
     [
       'keyboard-focus',

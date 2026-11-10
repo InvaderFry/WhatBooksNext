@@ -42,6 +42,7 @@ import { registerSeriesRoutes } from './routes/series.ts';
 import { registerOperationRoutes } from './routes/operations.ts';
 import { registerStoreRoutes } from './routes/store.ts';
 import { registerCalibreRoutes } from './routes/calibre.ts';
+import { registerHistoryImportRoutes } from './routes/historyImport.ts';
 import { Sources } from './sources/index.ts';
 import type { Fetcher } from './sources/types.ts';
 import { syncSeries } from './identify/series.ts';
@@ -154,6 +155,7 @@ export function createApp(ctx: AppContext) {
   registerSeriesRoutes(app, { db, reach: () => reach.get(), itemIdOr404 });
   registerOperationRoutes(app, { db, scans, itemIdOr404 });
   registerStoreRoutes(app, { db, sources, itemIdOr404 });
+  registerHistoryImportRoutes(app, db);
   registerCalibreRoutes(app, { db, platform, scans, dataDir: ctx.dataDir });
 
   // ---- Scan reminder (§9.7) -------------------------------------------------------------------

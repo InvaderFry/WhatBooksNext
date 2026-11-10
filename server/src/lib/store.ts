@@ -222,6 +222,8 @@ export function parseCsv(text: string): string[][] {
       field = '';
     } else field += c;
   }
+  if (quoted)
+    throw new HttpError(400, 'The CSV ends inside a quoted field. Export it again and retry.');
   row.push(field);
   if (row.some((x) => x.trim() !== '')) rows.push(row);
   return rows;

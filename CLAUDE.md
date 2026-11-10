@@ -14,7 +14,9 @@ owner has already made. Don't reopen those decisions. Then read the latest
   `fixtures/sources/` when the owner can share some. Part 3 (collected
   editions: `collection_coverage`, `lib/coverage.ts`) is built. Part 4 (merge/split with
   undo, `lib/operations.ts`) is built. Parts 5–6 (store titles +
-  CSV, `lib/store.ts`; Calibre, `lib/calibre.ts`) are built. Left: Goodreads/StoryGraph.
+  CSV, `lib/store.ts`; Calibre, `lib/calibre.ts`) are built. Part 7 (Goodreads/StoryGraph,
+  `lib/historyImport.ts`) is built. Windows checks and fresh authenticated export verification
+  remain open in the M4 notes.
 - Series rows are rebuilt by `syncSeries` (`server/src/identify/series.ts`) from stored facts
   and owner corrections. Call it after anything that changes items' names, numbers, kinds or
   matches. Gap rules are pure, in `server/src/lib/series.ts`.
