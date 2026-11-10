@@ -55,6 +55,10 @@ export interface UserData {
   /** The owner's series name ('' = not in a series), or null to let the app decide. */
   seriesOverride: string | null;
   seriesPositionOverride: number | null;
+  /** "Still reading?" snoozed until this date (§13.6). */
+  stillReadingSnoozedUntil: string | null;
+  /** "Still relevant?" → Decide later (§13.10): when the owner put it off. */
+  relevanceDeferredAt: string | null;
   updatedAt: string | null;
 }
 
@@ -112,6 +116,8 @@ const DEFAULT_USER: UserData = {
   preferredFileId: null,
   seriesOverride: null,
   seriesPositionOverride: null,
+  stillReadingSnoozedUntil: null,
+  relevanceDeferredAt: null,
   updatedAt: null,
 };
 
@@ -138,6 +144,8 @@ interface UserRow {
   preferred_file_id: string | null;
   series_override: string | null;
   series_position_override: number | null;
+  still_reading_snoozed_until: string | null;
+  relevance_deferred_at: string | null;
   updated_at: string;
 }
 
@@ -165,6 +173,8 @@ export function userFromRow(r: UserRow | undefined): UserData {
     preferredFileId: r.preferred_file_id,
     seriesOverride: r.series_override,
     seriesPositionOverride: r.series_position_override,
+    stillReadingSnoozedUntil: r.still_reading_snoozed_until ?? null,
+    relevanceDeferredAt: r.relevance_deferred_at ?? null,
     updatedAt: r.updated_at,
   };
 }

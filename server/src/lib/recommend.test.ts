@@ -6,10 +6,10 @@ import {
   diversify,
   fitOf,
   onePerSeries,
-  readNext,
   type RankItem,
   type Situation,
 } from './recommend.ts';
+import { readNext } from './modes.ts';
 
 const user = (over: Partial<RankItem['user']> = {}): RankItem['user'] => ({
   progress: 'not_started',
@@ -33,6 +33,8 @@ const user = (over: Partial<RankItem['user']> = {}): RankItem['user'] => ({
   preferredFileId: null,
   seriesOverride: null,
   seriesPositionOverride: null,
+  stillReadingSnoozedUntil: null,
+  relevanceDeferredAt: null,
   updatedAt: null,
   ...over,
 });
@@ -205,6 +207,7 @@ describe('Read next', () => {
         scope: 'book',
         score: 40,
         highlyRated: false,
+        fewVotes: false,
       },
     });
     const r = readNext([poor, unrated], situation(), page);
@@ -347,6 +350,7 @@ describe('Read next', () => {
         scope: 'series',
         score: 88,
         highlyRated: true,
+        fewVotes: false,
       },
     });
     const c = buildCard(manga, [manga], situation());

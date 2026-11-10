@@ -36,6 +36,7 @@ import {
 import { ScanManager } from './scan/scanManager.ts';
 import { requestGuard, securityHeaders } from './security.ts';
 import { LookupManager } from './identify/lookups.ts';
+import { registerModeRoutes } from './routes/modes.ts';
 import { getSetting, registerReadingRoutes } from './routes/reading.ts';
 import { route } from './routes/route.ts';
 import { registerSeriesRoutes } from './routes/series.ts';
@@ -152,6 +153,7 @@ export function createApp(ctx: AppContext) {
     reach: () => reach.get(),
     itemIdOr404,
   });
+  registerModeRoutes(app, { db, reach: () => reach.get(), itemIdOr404 });
   registerSeriesRoutes(app, { db, sources, reach: () => reach.get(), itemIdOr404 });
   registerOperationRoutes(app, { db, scans, itemIdOr404 });
   registerStoreRoutes(app, { db, sources, itemIdOr404 });

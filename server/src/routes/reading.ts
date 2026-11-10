@@ -20,15 +20,18 @@ import {
 import type { FolderReachability } from '../lib/library.ts';
 import { coverageByKind, matchReport } from '../lib/matchReport.ts';
 import { applyUserPatch } from '../lib/progress.ts';
+import { MODE_IDS, MODES, MOODS, runMode, stillReadingDue, type ModeId } from '../lib/modes.ts';
 import { loadRankData } from '../lib/rankData.ts';
 import {
   type Show,
+  type Situation,
   buildCard,
   ineligibleBecause,
-  readNext,
   TIME_PRESETS,
   type TimeMode,
 } from '../lib/recommend.ts';
+import { tasteOn } from '../lib/taste.ts';
+import { loadStrength, loadTopics, loadWeights, tasteFrom } from '../lib/tune.ts';
 import { bulkReview } from '../lib/review.ts';
 import type { ScanManager } from '../scan/scanManager.ts';
 import { COMICVINE_KEY_URL } from '../sources/comicvine.ts';
@@ -98,18 +101,52 @@ const FEEDBACK_REASONS = [
 export function registerReadingRoutes(app: Express, d: ReadingDeps): void {
   const { db, sources, lookups } = d;
 
-  // ---- Read next (§13.10) ------------------------------------------------------------------
+  // ---- The ten modes (§13.10) ---------------------------------------------------------------
   app.get(
     '/api/next',
     route(async (req) => {
-      const s = situationFrom(req);
+      const base = situationFrom(req);
+      const view: ModeId = (MODE_IDS as readonly string[]).includes(String(req.query.view))
+        ? (req.query.view as ModeId)
+        : 'read_next';
+      const mood = (['escape', 'learn', 'skim'] as const).find((m) => m === req.query.mood) ?? null;
+      const topics = loadTopics(db);
+      const topic = topics.find((t) => t === str(req.query.topic)) ?? null;
       const offset = Math.max(0, Number(req.query.offset) || 0);
       const data = loadRankData(db, await d.reach());
-      const r = readNext(data.items, s, { offset, limit: READ_NEXT_PAGE });
+      const taste = tasteFrom(data.items, loadStrength(db));
+      const s: Situation = {
+        ...base,
+        weights: loadWeights(db),
+        taste,
+        mood: view === 'mood' ? (mood ?? 'escape') : null,
+        topics,
+        topic,
+        completeOnly: req.query.complete === '1',
+      };
+      const r = runMode(view, data.items, s, {
+        offset,
+        limit: READ_NEXT_PAGE,
+        previous: (str(req.query.previous) ?? '').split(',').filter(Boolean).slice(0, 5),
+      });
       return {
         ...r,
-        situation: { time: s.presetId, mode: s.mode, ready: s.readyToRead, show: s.show },
+        view,
+        situation: {
+          time: base.presetId,
+          mode: base.mode,
+          ready: base.readyToRead,
+          show: base.show,
+          mood: s.mood,
+          complete: s.completeOnly,
+          topic,
+        },
+        modes: MODES,
+        moods: MOODS,
+        topics,
         presets: TIME_PRESETS,
+        taste: { on: tasteOn(taste), outcomes: taste.outcomes },
+        stillReading: stillReadingDue(data.items, base.today).length,
         lookups: { pending: lookups.pending(), running: lookups.isRunning() },
         hardcover: sources.demo ? null : sources.hardcover.configured(),
       };
@@ -158,25 +195,38 @@ export function registerReadingRoutes(app: Express, d: ReadingDeps): void {
   // ---- Triage (§13.5) ----------------------------------------------------------------------
   // Untriaged, not started, eligible, not reference: rated and measured first, so the first
   // session shows the books most worth a decision. Skipped items stay in the browser's session.
+  // `source`: everything, new arrivals only, or one library folder.
   app.get(
     '/api/triage',
     route(async (req) => {
       const data = loadRankData(db, await d.reach());
       const skip = new Set((str(req.query.skip) ?? '').split(',').filter(Boolean).slice(0, 1000));
-      const queue = data.items.filter(
+      const source =
+        req.query.source === 'new' || req.query.source === 'folder' ? req.query.source : 'all';
+      const folder = str(req.query.folder);
+      if (source === 'folder' && !folder) throw new HttpError(400, 'Pick a folder.');
+      const untriaged = data.items.filter(
         (i) =>
           i.user.triage === null &&
           i.user.progress === 'not_started' &&
           !i.isReference &&
-          ineligibleBecause(i) === null &&
-          !skip.has(i.id),
+          ineligibleBecause(i) === null,
       );
-      queue.sort(
-        (a, b) =>
-          Number(!!b.community) - Number(!!a.community) ||
-          (b.community?.score ?? 0) - (a.community?.score ?? 0) ||
-          a.title.localeCompare(b.title),
+      const queue = untriaged.filter(
+        (i) =>
+          !skip.has(i.id) &&
+          (source !== 'new' || data.arrivals.has(i.id)) &&
+          (source !== 'folder' || data.library.get(i.id)?.folderIds.includes(folder!)),
       );
+      if (source === 'new')
+        queue.sort((a, b) => data.arrivals.get(b.id)!.localeCompare(data.arrivals.get(a.id)!));
+      else
+        queue.sort(
+          (a, b) =>
+            Number(!!b.community) - Number(!!a.community) ||
+            (b.community?.score ?? 0) - (a.community?.score ?? 0) ||
+            a.title.localeCompare(b.title),
+        );
       const s = {
         budget: null,
         mode: 'read_for' as const,
@@ -185,11 +235,36 @@ export function registerReadingRoutes(app: Express, d: ReadingDeps): void {
         today: todayLocal(),
         recentDays: RECENT_DAYS,
       };
-      const limit = Math.min(Number(req.query.limit) || TRIAGE_SESSION, 100);
+      const limit = Math.min(Number(req.query.limit) || TRIAGE_SESSION, 500);
       const triaged = data.items.filter((i) => i.user.triage !== null).length;
+      // "12 new items — triage them?" after a scan (§13.5): untriaged arrivals from the last
+      // completed scan.
+      const lastScan = db
+        .prepare(
+          "SELECT id, started_at FROM scan_runs WHERE status = 'completed' ORDER BY started_at DESC LIMIT 1",
+        )
+        .get() as { id: string; started_at: string } | undefined;
+      const fromLastScan = lastScan
+        ? untriaged.filter((i) => (data.arrivals.get(i.id) ?? '') >= lastScan.started_at).length
+        : 0;
+      const folderCounts = new Map<string, number>();
+      for (const i of untriaged)
+        for (const f of data.library.get(i.id)?.folderIds ?? [])
+          folderCounts.set(f, (folderCounts.get(f) ?? 0) + 1);
+      const folders = (
+        db.prepare('SELECT id, display_path AS path FROM folders ORDER BY display_path').all() as {
+          id: string;
+          path: string;
+        }[]
+      ).map((f) => ({ ...f, untriaged: folderCounts.get(f.id) ?? 0 }));
       return {
+        source,
+        folder: folder ?? null,
         remaining: queue.length,
         triaged,
+        newArrivals: untriaged.filter((i) => data.arrivals.has(i.id)).length,
+        lastScan: lastScan ? { id: lastScan.id, newItems: fromLastScan } : null,
+        folders,
         items: queue.slice(0, limit).map((i) => ({
           ...buildCard(i, data.items, s),
           kindIsGuess: data.library.get(i.id)?.kindIsGuess ?? false,
