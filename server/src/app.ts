@@ -57,6 +57,8 @@ export interface AppContext {
   runner?: TaskRunner;
   /** How online sources are reached (tests replay recorded responses). */
   fetcher?: Fetcher;
+  /** Look new books up after each scan (default: the owner's setting). Tests of other things turn it off. */
+  autoLookups?: boolean;
 }
 
 /** Folder reachability, refreshed at most every few seconds (a check asks the platform). */
@@ -98,6 +100,7 @@ export function createApp(ctx: AppContext) {
     // After a scan, look up what's new — unless the owner turned that off (§12.1).
     onFinished: (s) => {
       lookups.invalidate();
+      if (ctx.autoLookups === false) return;
       if (s.status === 'failed' || lookups.isRunning()) return;
       if (!getSetting<boolean>(db, 'lookupsAfterScan', true)) return;
       if (lookups.pending() > 0) lookups.start();

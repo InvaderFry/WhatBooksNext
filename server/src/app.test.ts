@@ -31,7 +31,14 @@ const api = {
 async function freshApp() {
   await made?.close();
   db = await memoryDb();
-  made = createApp({ db, platform, port: PORT, dataDir: null, snapshotDir: snapshots });
+  made = createApp({
+    db,
+    platform,
+    port: PORT,
+    dataDir: null,
+    snapshotDir: snapshots,
+    autoLookups: false,
+  });
 }
 
 beforeEach(async () => {

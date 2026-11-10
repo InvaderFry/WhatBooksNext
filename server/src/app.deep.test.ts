@@ -31,7 +31,7 @@ beforeEach(async () => {
   dataDir = tempDir('wbn-deep-data-');
   platform = fakePlatformWithDrives({ drive });
   db = await memoryDb();
-  made = createApp({ db, platform, port: PORT, dataDir, snapshotDir: null });
+  made = createApp({ db, platform, port: PORT, dataDir, snapshotDir: null, autoLookups: false });
 });
 
 afterEach(async () => {
