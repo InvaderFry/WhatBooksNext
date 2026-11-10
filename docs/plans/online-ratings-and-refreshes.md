@@ -1,37 +1,41 @@
 # Online ratings, best details and automatic refreshes
 
-Status: implementation plan; no application changes made. Researched 2026-11-10; revised the same
-day against `main` after M6 (modes, taste, stats, export and full snapshots are all built), and
-again to drop Google Books (see the end).
+Status: implementation plan; no application changes made. Researched 2026-11-10 and revised the
+same day: against `main` after M6, to drop Google Books (see the end), and after two independent
+reviews whose corrections are folded in.
 
 ## Decisions the owner has made
 
-- Keep Open Library, AniList, Hardcover, Metron and ComicVine.
-- Choose the community rating by match strength, number of ratings and what the rating covers,
-  instead of a fixed source order. Show the other sources' ratings and say why one was chosen.
-- **Keep Hidden gems**, adjusted so it stays honest under the new choice (stage 1, below).
-- **No Google Books.** Considered and dropped; reasons at the end of this plan.
-- **Every source's rating is kept and shown on the book page**, and among trustworthy matches the
-  one with the most ratings is used. Review text is not needed.
-- **Choose each detail (title, creators, year, pages, description, subjects) from the best
-  trusted source**, with owner corrections and the files first. Descriptions: the longest from a
-  trusted match, preferring Hardcover.
-- Refresh automatically while the app runs, **by how likely something has changed**: 7 days for
-  books in progress or on the shortlist, 30 days where a source has no match, no rating or few
-  ratings, 90 days where a confirmed or accepted match already has a well-supported rating. Small
-  batches; ongoing series keep their existing 7-day check.
+- Keep Open Library, AniList, Hardcover, Metron and ComicVine. **No Google Books** (reasons at the
+  end).
+- **Every source's rating is kept and shown on the book page.** The one used is the rating about
+  this book (not the whole series) with **the most ratings among trusted matches**. A trusted
+  match is one the owner confirmed or the app accepted. The owner's confirmation and ISBN
+  agreement only break ties; there is no cap on the comparison. Review text is not needed.
+- **Keep Hidden gems**, adjusted so it stays honest under the new choice (stage 1).
+- **Choose each detail from the best trusted source**, not one whole source per book:
+  - Title and authors: the owner's own edits, then **Calibre** (the owner curated it), then the
+    file's own metadata, then a trusted online match, then the filename guess.
+  - First publication year: the **earliest** year among trusted matches (today's rule, minus
+    unconfirmed matches). A single comic issue uses its own cover year, never its series' start.
+  - Description: Hardcover's when it has a useful one, otherwise the longest; formatting such as
+    Calibre's HTML is stripped first.
+- **Refresh by how likely something has changed**: 7 days for books in progress or shortlisted,
+  30 days where a source that rates this kind of book has no match, no rating or few ratings, 90
+  days otherwise.
+- **A background refresh never switches a match the app accepted on its own**; it asks the owner
+  through Needs review. Two explicit buttons start fresh: **Refresh from all sources** on a book
+  page, and **Refresh all books from all sources** in Settings (stage 4).
+- The second quality session (§17.2, open since M6) moves to after stage 3, so it judges the new
+  ratings and details.
+- Unconfirmed ("provisional") matches still supply a rating, but only when nothing trusted
+  exists, labelled as unconfirmed, and never for Hidden gems. The quality session checks how often
+  that happens.
+- One pull request per stage, in order: ratings, details, the book page (built once for both),
+  then refresh.
 
-Decisions made in this plan on the owner's behalf (say so if any should change):
-
-- Unconfirmed ("provisional") matches still supply a rating, but only when nothing better exists,
-  labelled as unconfirmed, and never for Hidden gems. Today they count fully; dropping them
-  outright could empty modes that passed the first quality session.
-- Each stage is its own pull request against `main`, in the order below: ratings, details, the
-  book page (built once for both), then refresh.
-
-This extends PLAN.md §12 and replaces its fixed rating-source order once stage 1 is merged.
 Personal ratings, confirmed matches, rejections, reading history and owner corrections keep their
-authority. A missing community rating stays unknown and neutral.
+authority throughout. A missing community rating stays unknown and neutral.
 
 ## What the code does today (on `main` after M6)
 
@@ -40,20 +44,34 @@ authority. A missing community rating stays unknown and neutral.
   line and "few votes" line (M5) from **one entry per item and source**, so an AniList series
   score attached to twelve owned volumes is counted twelve times.
 - `identify/lookups.ts`: `chooseUsed` returns the owner-confirmed match, then each source's
-  accepted **or provisional** best candidate. Ties and rejections are already left out.
-- `lib/rankData.ts` drops series-scope ratings for items outside a series, then calls
-  `communityRating`. Its `matchConfirmed` flag (owner override or strong ISBN) already exists.
-- Everything that reads the chosen rating: the blend and its reasons/limits in
-  `lib/recommend.ts`; **Waiting on your shelf**, **Hidden gems** and **Classics** in
-  `lib/modes.ts`; sorting in `routes/reading.ts`; the item page (`OnlineCard.tsx`); and the
-  CSV export (`lib/export.ts`).
-- `source_cache` keeps raw answers with `fetched_at` and no expiry; it is not backed up.
-  `item_matches` (normalised records, including ratings) **is** in backups, and M6's full
-  snapshot copies the whole database except `secrets`. `lookup_state` records when each item
-  and source was last looked up.
-- The library is about 2,700 items (M1). A 30-day cycle over it is roughly 90–180 requests a
-  day across all sources, well inside every source's limits; the budgets below are a safeguard,
-  not the main constraint.
+  accepted **or provisional** best candidate; ties and rejections are left out. Each lookup
+  deletes a source's stored candidates for the item and keeps only the owner-confirmed one
+  (`storeCandidates`); the app's own "accepted" choice is recomputed every time (`decisionsFor`)
+  and nothing remembers it.
+- `lib/rankData.ts` drops series-scope ratings for items in no series, then calls
+  `communityRating`. Its `matchConfirmed` flag is per item (owner override, or any used match
+  with strong ISBN evidence, Calibre included).
+- Readers of the chosen rating: the blend and its reasons/limits (`lib/recommend.ts`); **Waiting
+  on your shelf**, **Hidden gems** and **Classics** (`lib/modes.ts`); sorting
+  (`routes/reading.ts`); the item page (`OnlineCard.tsx`); the CSV export (`lib/export.ts`).
+- Details: the title is the owner's, else the file's embedded title, else an accepted match's
+  title (only when the file's title came from its filename), else the filename guess
+  (`lib/library.ts`). Subjects are pooled from every used match (provisional included) and the
+  file, and feed taste, topics and moods (`rankData.ts`); the kind guess also reads used matches.
+  The first publication year is the **earliest** `firstPublishYear` of all used matches,
+  provisional included (`refreshDerivedFacts`); a comic issue's is its cover or store year. Pages
+  and the description come from the first used match that has them, in no deliberate order, so
+  Calibre's comments (often HTML) can win today.
+- Calibre imports are stored as matches with score 1 and, with an ISBN, strong ISBN evidence.
+- Metron and ComicVine return no creators (`authors: []`) and no ratings.
+- `user_item` has a title override but no override for creators, year, pages or description.
+- `source_cache` keeps raw answers with `fetched_at`, no expiry, not backed up. `item_matches`
+  and `lookup_state` are backed up as whole tables; M6's full snapshot copies the database except
+  `secrets`. `lookup_state.looked_up_at` is rewritten by every lookup, including re-scoring from
+  the cache after a `MATCH_VERSION` change, so it is not "when the source last answered".
+- Each item page has **Look up again**, which re-asks its sources, ignoring cached answers. The
+  server can do the same for every item (`POST /api/lookups` with `refresh`), but no button
+  offers it.
 
 The match score is a heuristic, not a probability. Never describe 0.90 as a 90% chance of being
 right, and never multiply it by a vote count.
@@ -62,148 +80,136 @@ right, and never multiply it by a vote count.
 
 ### Evidence
 
-Extend what the selector receives per rating: source, source record id, scope, raw value and
-scale, vote count (missing stays `null`, distinct from 0), this source's decision for the item
-(`confirmed` by the owner, `accepted`, or `provisional`), whether an ISBN agreed strongly, the
-record's link, and when that source last answered successfully.
+Per rating: source, source record id, scope, raw value and scale, vote count (missing stays
+`null`, distinct from 0), that source's decision for the item (`confirmed` by the owner,
+`accepted`, or `provisional`), that match's **own** ISBN evidence (not the item-level
+`matchConfirmed`), and the record's link.
 
 ### Selection (one pure function in `lib/ratings.ts`)
 
-Every source's rating for an item is already kept, in `item_matches` (which is backed up); this
-stage changes only which one is used. Nothing is deleted.
+Every source's rating is already kept in `item_matches`; this stage changes only which one is
+used. Nothing is deleted.
 
-Eligible: a rating whose match is owner-confirmed, accepted or provisional; not rejected, not a
-tie; a valid value and scale; and, for a series score, an item that belongs to that series.
-Confirming one source's match does not confirm another source's record.
+Eligible: a confirmed, accepted or provisional match (never rejected, never a tie) with a valid
+value and scale. A series score needs the item to be in a series, as today (nothing links a
+source's series id to a `series` row, so a stricter check isn't possible yet). Confirming one
+source's match does not confirm another's.
 
 Take the first non-empty tier:
 
-1. Confirmed/accepted, item scope, at least `RATING_SUPPORTED_VOTES` (20) ratings.
-2. Confirmed/accepted, series scope, supported. Shown as "Whole series; this volume has few
-   ratings" (or "…has no rating").
-3. Confirmed/accepted, item scope, fewer or an unknown number of ratings ("Few ratings" /
-   "Number of ratings unknown").
-4. Confirmed/accepted, series scope, sparse.
-5. Provisional, any scope that is allowed, labelled "Unconfirmed match" with a link to confirm.
+1. Trusted (confirmed or accepted), item scope, at least `RATING_SUPPORTED_VOTES` (20) ratings.
+2. Trusted, series scope, supported: "Whole series; this volume has few ratings" (or "…no
+   rating").
+3. Trusted, item scope, fewer or an unknown number of ratings ("Few ratings" / "Number of ratings
+   unknown").
+4. Trusted, series scope, sparse.
+5. Provisional, any allowed scope, labelled "Unconfirmed match" with a link to confirm.
 
-Within a tier: owner-confirmed, then strong ISBN, then accepted; then more ratings, compared up
-to `RATING_VOTES_CAP` (1,000) so huge popularity gives no further edge; then the higher match
-score; then the old order as a last stable tie-break (Hardcover, AniList, Open Library, demo).
-Nothing eligible means unknown, never zero.
+Within a tier: **most ratings** (an unknown count sorts below any known one); then confirmed,
+strong ISBN, accepted; then the higher match score; then Hardcover, AniList, Open Library, demo
+as a last stable tie-break. Nothing eligible means unknown, never zero.
 
-Return the chosen rating, the other eligible ratings, the excluded ones with why, and a short
-reason code (`more_ratings`, `only_rating`, `series_fallback`, `unconfirmed_only`, …). Item
-details, recommendations, modes and export all use this one result.
+So a trusted Open Library record with 5,000 ratings beats a confirmed Hardcover record with 25,
+and 50,000 beats 1,000. Popularity _between different books_ is still tempered by each source's
+Bayesian shrinkage, which this does not change.
+
+Return the chosen rating, the other eligible ratings, the excluded ones with why, and a reason
+code (`more_ratings`, `only_rating`, `series_fallback`, `unconfirmed_only`, …). Item details,
+recommendations, modes and export all use this one result.
 
 ### Source statistics
 
-Build `ratingStats` from unique rating targets, `source:sourceId`, so one series score is counted
-once. Keep Bayesian shrinkage and each source's own "highly rated" and "few votes" lines. Never
-average different sites into one score and never add vote counts across sites or editions. Raw
-displayed values stay as the source gave them. Personal ratings still replace the community
-part of the blend.
+Build `ratingStats` from the eligible ratings (provisional included, as today), counting each
+rating target `source:sourceId` once, so one series score is counted once. Keep Bayesian
+shrinkage and each source's own "highly rated" and "few votes" lines. Never average different
+sites into one score and never add vote counts across sites or editions. Raw values are shown as
+the source gave them. A personal rating still replaces the community part of the blend.
 
 ### Hidden gems, Classics and Waiting on your shelf
 
-- **Hidden gems**: the chosen rating is highly rated for its source, item scope (never series), from
-  a confirmed or accepted match, with at least `HIDDEN_GEM_MIN_VOTES` (5) ratings and at or below
-  its source's few-votes line, **and** every other confirmed or accepted rating with a known count
-  is also at or below its own source's few-votes line ("few ratings everywhere we looked"). The new
-  choice makes this more honest: a book with 8 Hardcover ratings but 3,000 on Open Library is no
-  longer called hidden. An unconfirmed match never blocks a gem either: a wrong book's 3,000 ratings
-  say nothing about this one. A popular whole-series score is chosen over a sparse volume score
-  (tier 2), so that volume is not a gem: the series is well known. Keep the reason "Only N ratings
-  on Source — few for your library" and add "and few elsewhere" when another source agrees.
-- **Classics** and **Waiting on your shelf** keep using "highly rated" on the chosen rating. A
-  provisional-only rating may still qualify but its card says "Unconfirmed match".
-- Recommendation limits gain "rating is from an unconfirmed match" next to the existing "rating
-  is for the whole series".
-- Export: keep the existing column names and order; append `community_scope` and
-  `community_match` (`confirmed`, `accepted`, `provisional`).
-- Diagnostics: how many items' ratings now rest on each tier, especially tier 5, so the owner can
-  confirm matches where it matters.
+- **Hidden gems**: the chosen rating is highly rated for its source, item scope, from a trusted
+  match, with at least `HIDDEN_GEM_MIN_VOTES` (5) ratings and at or below its source's few-votes
+  line, **and** every other trusted rating with a known count is also at or below its own source's
+  line ("few ratings everywhere we looked"). A book with 8 Hardcover ratings but 3,000 on Open
+  Library is no longer called hidden. An unconfirmed match never blocks a gem (a wrong book's
+  ratings say nothing about this one). A volume whose chosen rating is a popular series score is
+  not a gem. Keep the reason "Only N ratings on Source — few for your library" and add "and few
+  elsewhere" when another source agrees.
+- **Classics** and **Waiting on your shelf** use "highly rated" on the chosen rating. A
+  provisional-only rating may qualify, with "Unconfirmed match" on the card.
+- Recommendation limits gain "rating is from an unconfirmed match" beside "rating is for the
+  whole series".
+- Export: existing columns unchanged; append `community_scope` and `community_match`.
+- Diagnostics: how many items rest on each tier, and how many of What next's picks rest on tier 5,
+  for the quality session.
 
 ### Checks (invented fixtures)
 
-- A securely matched Open Library book with 3,000 ratings beats the same book's Hardcover score
-  with 3.
+- A trusted Open Library book with 3,000 ratings beats the same book's Hardcover score with 3,
+  and a trusted 5,000 beats a confirmed 25.
 - A million ratings cannot rescue a tie, a rejected candidate or a wrong-volume match.
-- A supported manga volume score beats a series score; a supported series score replaces a
-  3-rating volume score with the fallback label.
-- A provisional rating is used only when nothing confirmed or accepted exists, and never makes a
-  Hidden gem.
+- A supported volume score beats a series score; a supported series score replaces a 3-rating
+  volume score, with the fallback label.
+- A provisional rating is used only when nothing trusted exists, and never makes a Hidden gem.
 - Twelve volumes sharing one AniList series score count once in that source's statistics.
-- Hidden gems: still has a populated and an empty demo case (M5's done-when); a book that is
-  sparse on one source but popular on another is left out.
+- Hidden gems keeps a populated and an empty demo case (M5's done-when); a book sparse on one
+  source but popular on another is left out.
 - No eligible rating: unknown, neutral in the blend, fails "highly rated".
-- Personal rating still overrides; existing scenario tests still pass.
+- A personal rating still overrides; existing scenario tests still pass.
 
 ### Before and after
 
-Stage 1 changes ratings across the whole library, so measure it. Extend `npm run report:matches`
-(or add a sibling script) with a title-free comparison of old and new choices: how many items
-changed source, gained or lost a rating, moved tier, or entered or left Hidden gems, Classics and
-Waiting on your shelf. Put the counts in the pull request. Do the owner's second quality session
-(§17.2, still open from M6) **after** stages 1–3, so it judges the new ratings and details.
+Extend `npm run report:matches` (or add a sibling script) with a title-free comparison of old and
+new choices: items that changed rating source, gained or lost a rating, or moved tier, and items
+entering or leaving Hidden gems, Classics and Waiting on your shelf. Put the counts in the pull
+request.
 
-No migration is needed for stage 1. Do not raise `MATCH_VERSION`: matching does not change.
-Put the new constants in `config.ts` and PLAN.md §20, marked as assumptions until calibrated
-against the owner's library (Diagnostics' tier counts help).
+No migration and no `MATCH_VERSION` change. New constants go in `config.ts` and PLAN.md §20,
+marked as assumptions until calibrated against the owner's library.
 
 ## Stage 2 — best details from each source (pure, no network changes)
 
-### How details are chosen today
-
-Each file is searched on the sources for its kind (title, author, ISBN, series and volume or
-issue). Every candidate is scored; 0.90 or more is accepted, 0.60–0.90 is provisional, a near
-draw is a tie for the owner. Every source's candidates are stored in `item_matches`, but the
-details shown are picked inconsistently:
-
-- **Title:** the owner's title, else the file's own embedded title, else the accepted match's
-  title (only when the file's title was guessed from its filename), else the filename guess
-  (`lib/library.ts`). The file's title is kept as the fact underneath.
-- **Subjects:** pooled from every used match and the file (`lib/rankData.ts`).
-- **Pages:** from whichever used match happens to come first that has them; measured file
-  lengths come first for duration.
-- **First publication year:** from the chosen match (`refreshDerivedFacts`).
-- **Description:** from one record.
-
-### The best value per detail, not the "most detailed" source
-
 No source is best at everything: Open Library is built for first publication years and ISBNs,
 Hardcover for ratings, descriptions and series, AniList for manga tags and volume counts, Metron
-for comic issues and creators, and the files themselves for this exact copy. Choosing one whole
-source per book throws the others' strengths away. So choose each detail separately, with one
-pure function (`lib/details.ts`) used everywhere, like the rating selector:
+for comic issues, Calibre for what the owner curated, and the files for this exact copy. So one
+pure function (`lib/details.ts`), used everywhere, chooses each detail separately.
 
-- **Only from matches to this book:** owner-confirmed or accepted. Provisional matches offer
-  values as suggestions on the item page, never as facts. A value never comes from a tie or a
-  rejected candidate, so details from two different books are never mixed.
-- **Owner corrections win, then the files, then the sources.** The files describe the copy the
-  owner has; sources describe the work or another edition.
-- **Per detail:**
+### Rules
 
-  | Detail                 | Rule                                                                                                                                                                                                                                                           |
-  | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-  | Title and subtitle     | As today, but when several sources are accepted, take the title from the strongest match (owner-confirmed, then strong ISBN, then score), with Hardcover, Open Library, AniList, Metron as the tie-break. Title and subtitle always come from the same record. |
-  | Authors / creators     | The file's own when present; otherwise the strongest match's. Comic creators from Metron, then ComicVine.                                                                                                                                                      |
-  | First publication year | Open Library for books; AniList for manga; Metron/ComicVine series start for comics. If accepted sources disagree by more than a year, show both on the item page and use the preferred one.                                                                   |
-  | Pages                  | Measured from the file first; otherwise a source record matched by the file's ISBN; otherwise the strongest match's. Always labelled with where it came from.                                                                                                  |
-  | Description            | The longest plain-text description from an accepted match, preferring Hardcover; shown with its source.                                                                                                                                                        |
-  | Subjects, genres, tags | Merged from all accepted matches and the file, de-duplicated, each with its source.                                                                                                                                                                            |
-  | Series, number, status | Unchanged: `syncSeries` rules.                                                                                                                                                                                                                                 |
-  | Rating                 | Stage 1.                                                                                                                                                                                                                                                       |
+- **Display only.** `lib/details.ts` never writes `items.title`, `items.creators` or any other
+  column that matching reads to build its search; otherwise a changed title would start new
+  lookups. The file's facts stay underneath.
+- **Trusted matches only** for facts: owner-confirmed or accepted. Provisional matches offer
+  values as suggestions on the book page. Nothing comes from a tie or a rejected candidate, so
+  details from two different books are never mixed.
+- **Unchanged pools for ranking.** Subjects used by taste, topics and moods, and the kind guess,
+  keep today's pool (provisional included) so this stage doesn't shift recommendations. Only what
+  is displayed changes. (Revisit after the quality session.)
+- **Owner edits win** where they exist (today only the title); then Calibre for title, subtitle
+  and authors; then the files; then online sources.
 
-- **Shown with its source** on the book page, in stage 3.
-- **No new requests and no migration:** everything is already stored. It works on existing data
-  the moment it is merged and refreshes with stage 4.
-- **Before and after:** a title-free count of how many items' displayed title, year, pages and
-  description changed, in the pull request. Search keeps matching both the displayed title and
-  the file's.
-- **Checks:** a provisional match never supplies a fact; an owner title always wins; an embedded
-  title beats an online one; two accepted sources with different titles pick the stronger match;
-  a measured page count beats a source's; disagreeing years are both shown; a description is
-  shown as text, never HTML (scenario 23).
+| Detail                 | Rule                                                                                                                                                                                                                                                                                                                                              |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Title and subtitle     | Owner's title, then Calibre's, then the file's embedded title, then the strongest trusted online match (confirmed, strong ISBN, then score; Hardcover, Open Library, AniList, Metron as tie-break), then the filename guess. Title and subtitle always come from the same record.                                                                 |
+| Authors / creators     | Calibre's, then the file's, then the strongest trusted match's. Comic sources return no creators today, so comics show creators only from files and Calibre (see "Not in this plan").                                                                                                                                                             |
+| First publication year | The earliest year among trusted matches. A single issue uses its own cover/store year, never its series' start year (kept apart as the series' start). A collected edition uses the book sources' year for that edition or work, not the years of the issues inside. If trusted sources disagree by more than a year, show each on the book page. |
+| Pages                  | Measured from the file first; then a trusted record matched by the file's ISBN; then the strongest trusted match. Labelled with where it came from.                                                                                                                                                                                               |
+| Description            | Strip HTML and formatting to plain text first. Hardcover's if it has one of at least `DESCRIPTION_USEFUL_CHARS` (200, an assumption); otherwise the longest from a trusted match. Shown with its source, as text, never HTML.                                                                                                                     |
+| Subjects, genres, tags | Displayed: merged from trusted matches and the file, de-duplicated, each with its source.                                                                                                                                                                                                                                                         |
+| Series, number, status | Unchanged: `syncSeries` rules.                                                                                                                                                                                                                                                                                                                    |
+| Rating                 | Stage 1.                                                                                                                                                                                                                                                                                                                                          |
+
+- **No new requests and no migration:** everything is already stored. Works on existing data the
+  moment it is merged; refreshes with stage 4.
+- **Before and after:** title-free counts of items whose displayed title, authors, year, pages or
+  description changed, and items entering or leaving Classics (year changes). Kind and taste
+  topics should show no change; the script confirms it. Search matches both the displayed title
+  and the file's.
+- **Checks:** a provisional match never supplies a fact; the owner's title wins, then Calibre's,
+  then the embedded title; two trusted sources with different titles pick the stronger match; a
+  measured page count beats a source's; an issue's year is its cover year even when the series
+  started earlier; disagreeing years are both shown; Calibre's HTML description is compared as
+  plain text; nothing here changes `items.title` or `items.creators`.
 
 ## Stage 3 — "From each source" on the book page
 
@@ -214,74 +220,113 @@ Built once, after stages 1 and 2, so it shows both ratings and details.
 - The book page gets an expandable **From each source** section. **Every source that was asked
   for this book appears**, so nothing is hidden:
   - a matched source: its rating (raw score and scale, number of ratings — a rating count, not a
-    review count — and what it rates: book / volume / series), its title, creators, first
-    year, pages, description and subjects, a link to its page, and when it was last looked up
-    (stage 4 adds the time of the last real network answer);
-  - the values in use are marked, each with its reason ("More ratings for this book", "From the
-    file", "Open Library is preferred for first publication year");
-  - unconfirmed matches are listed apart with the existing confirm action, never shown as
-    verified;
-  - a source with no match, no rating, a tie or a failed lookup says so in plain words ("Not
-    found on AniList", "Hardcover has no rating for this book", "Open Library couldn't be reached
-    last time; will retry"); a source that doesn't apply (for example AniList for a novel) or
-    isn't set up (no Hardcover token) is named once, so the owner knows why it is absent.
-  - Rejected candidates ("not this book") are not shown: they are other books.
-- Phone-width, keyboard, light/dark and reduced motion; check with `npm run screenshots` and its
+    review count — and what it rates: book / volume / series), its title, creators, year, pages,
+    description and subjects, a link to its page, and when it was last looked up (stage 4 adds
+    when the source last actually answered);
+  - Calibre, when imported, as its own entry;
+  - the values in use are marked, each with its reason ("More ratings for this book", "From
+    Calibre", "Earliest year from a trusted source");
+  - unconfirmed matches listed apart with the existing confirm action, never shown as verified;
+  - a source with no match, no rating, a tie or a failed lookup says so in plain words ("Not found
+    on AniList", "Hardcover has no rating for this book", "Open Library couldn't be reached last
+    time; will retry"); a source that doesn't apply (AniList for a novel) or isn't set up (no
+    Hardcover token) is named once, so the owner knows why it is absent;
+  - rejected candidates ("not this book") are not shown: they are other books.
+- Phone-width, keyboard, light/dark and reduced motion; `npm run screenshots` and its
   accessibility sweep.
-- Refresh labels ("Refresh due", "Refresh failed; showing the previous result") arrive with
-  stage 4.
 
-## Stage 4 — automatic refresh
+## Stage 4 — automatic refresh, and starting fresh
 
 Built around the existing `LookupManager`, not as a second lookup engine.
 
-- **When:** check after startup and periodically while running. Nothing runs in demo mode, after
-  shutdown, when the setting is off, during a scan, or while a manual lookup runs (it defers).
-  After a long time closed, catch up gradually.
-- **What is due:** per item and source, from `lookup_state.looked_up_at`, by how likely that
-  source's answer has changed:
+### Remember the app's own choices
 
-  | Item and source                                                                                                   | Every   | Constant               |
-  | ----------------------------------------------------------------------------------------------------------------- | ------- | ---------------------- |
-  | Item in progress or shortlisted (any source)                                                                      | 7 days  | `REFRESH_ACTIVE_DAYS`  |
-  | Source found no match, a tie, only a provisional match, no rating, or fewer than `RATING_SUPPORTED_VOTES` ratings | 30 days | `REFRESH_OPEN_DAYS`    |
-  | Confirmed or accepted match with a supported rating                                                               | 90 days | `REFRESH_SETTLED_DAYS` |
+One numbered migration adds to `lookup_state` (backed up as a whole table, so new columns come
+with it; extend `app.release.test.ts` so they are non-empty and survive a restore):
 
-  The 30-day group is where new information appears (books added to Hardcover or Open Library,
-  counts growing); a settled rating with thousands of votes barely moves in a month. Ongoing
-  series keep the existing 7-day published-series check. Items marked Never and items read
-  elsewhere with no file use the 90-day interval. Add
-  next-eligible time and failure count per item and source in a numbered migration, and keep the
-  time of the last real network answer apart from local re-scoring, so re-reading an old cached
-  answer never looks fresh. Add the new columns to backup (owner-relevant timings) or its
-  commented exclusion list, and to `app.release.test.ts`.
+- `accepted_source_id`: the record the app accepted for this item and source. `storeCandidates`
+  keeps that row the way it keeps the owner-confirmed one, and `decisionsFor`/`chooseUsed` honour
+  it. Background refresh and `MATCH_VERSION` re-scoring never replace it; if a different
+  candidate now wins, the current match stays and Needs review gets a "Check this match" entry.
+- `last_answer_at`: when the source last actually answered over the network (not a re-read of
+  the cache). First filled from `source_cache.fetched_at` where it exists, otherwise from
+  `looked_up_at`, then spread across the interval so the whole library is not due at once.
+- `next_eligible_at` and `failure_count`, for backoff.
 
-- **How much:** batches of up to 25 source requests. New items and the owner's own actions
-  first, then in-progress and shortlisted, then the oldest. Automatic work may use at most 20% of
-  a source's daily allowance where it has one (Hardcover, Metron); count every real request,
-  including secondary ones. Skip a source whose circuit breaker is open; never reset breakers
-  from the scheduler. Back off with jitter on transient failures; a daily-quota answer pauses that
-  source until the next day. Metron first and ComicVine only as fallback, as now. Share work with
-  the existing 7-day published-series check so nothing is asked twice.
-- **What a refresh may change:** it re-asks the source and re-scores. It may update the rating,
-  count and other facts of the **same** matched record. It never replaces an owner-confirmed or
-  auto-accepted match with a different record: if a different candidate now wins, keep the
-  current match and add a "Check this match" entry to Needs review. A record that now has no
-  rating becomes unrated (it does not keep the old one). An empty, failed or ambiguous answer
-  keeps the previous result and records the failure. Re-check that the item still exists and is
-  unchanged before saving (merges, splits and edits during a request), as manual lookups already
-  do. Call `syncSeries` after a batch that changed series facts, as manual lookups do. Owner
-  corrections (`user_item`) are never touched.
-- **Controls:** Settings: automatic refresh on/off (on by default; off in demo), the three
-  intervals shown (fixed values from `config.ts`, not editable), pause/resume and
-  "Refresh due books now". Diagnostics: per source, how many are due, last success, requests used
-  by automatic work, pauses and failures. Item page: "Refresh due" and "Refresh failed; showing
-  the previous result" labels; a refresh never blanks a page.
-- **Checks (fake clock, no network):** due selection for each of the three groups, including an
-  item moving between them (started reading → 7 days; rating became supported → 90 days);
-  priority order; 429, quota and 5xx handling; budget enforcement including secondary requests;
-  cancellation and restart; demo/off/scan/manual deferral; a removed rating becomes unrated; a failure keeps the old
-  result; confirmed, accepted and rejected decisions survive a refresh and a restore.
+### What is due
+
+From `last_answer_at`, per item and source:
+
+| Item and source                                                                                                                                                                                                         | Every   | Constant               |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- | ---------------------- |
+| Item in progress or shortlisted (any source)                                                                                                                                                                            | 7 days  | `REFRESH_ACTIVE_DAYS`  |
+| A source that rates this kind of book (Hardcover, Open Library, AniList) found no match, a tie or only a provisional match, or gave no rating or fewer than 20 — and the item has no supported trusted rating elsewhere | 30 days | `REFRESH_OPEN_DAYS`    |
+| Everything else: settled ratings, sources that never rate (Metron, ComicVine), items already well rated elsewhere, Never and read-elsewhere items                                                                       | 90 days | `REFRESH_SETTLED_DAYS` |
+
+- A failed lookup retries after 1, 3 and 7 days, then returns to its group.
+- A ComicVine lookup skipped because Metron found the issue follows Metron's schedule.
+- Ongoing series keep the existing 7-day published-series check; refresh shares that work.
+
+### How much, and when
+
+- Check after startup and periodically while running. Nothing runs in demo mode, after shutdown,
+  when the setting is off, during a scan, or during a manual lookup.
+- Batches of up to 25 requests. One lookup can make several requests (a search, then a record or
+  series), and the budget counts every real request. New items and the owner's own actions first,
+  then in-progress and shortlisted, then the most overdue. Automatic work uses at most 20% of a
+  source's daily allowance where it has one (Hardcover and Metron, 5,000 each). Skip a source
+  whose circuit breaker is open and never reset breakers from the scheduler; back off with jitter
+  on transient failures; a daily-quota answer pauses the source until the next day. Metron first,
+  ComicVine only as fallback, as now.
+- After a long time closed, or after a restore, catch up gradually: at most one batch per check.
+- The pull request reports the measured requests per day on the demo and an estimate for the
+  owner's library size.
+
+### What a background refresh may change
+
+It re-asks the source and re-scores. It may update the rating, count and other facts of the
+**same** matched record. It never replaces a confirmed or app-accepted match (Needs review
+instead). A record that now has no rating becomes unrated rather than keeping the old one. An
+empty, failed or ambiguous answer keeps the previous result and records the failure. Before
+saving, re-check that the item still exists and is unchanged (merges, splits and edits during a
+request), as manual lookups do. Call `syncSeries` after a batch that changed series facts. Owner
+corrections (`user_item`) are never touched.
+
+### Starting fresh (owner's explicit actions)
+
+- **Book page → Refresh from all sources** (replaces "Look up again"). Asks every source again
+  for this book now, ignoring stored answers, and lets the app choose its matches afresh from the
+  new answers: the app's remembered choices for this book are released. Kept: confirmed matches,
+  rejections and the owner's edits. Afterwards it says what changed ("Rating now from Open
+  Library, 3,104 ratings"). A source that fails keeps its previous answer.
+- **Settings → Online sources → Refresh all books from all sources.** The same for the whole
+  library, in the background. A confirmation first says what it keeps, roughly how many requests
+  and how long it will take (it can take more than a day because of daily limits), and that a
+  snapshot is taken first (like before a restore). Then: progress in the lookup banner;
+  cancellable; resumes after a restart; automatic refresh pauses while it runs. Each book's old
+  answers stay until its new ones arrive, so cancelling or a failure never blanks a book. Uses
+  the normal manual pacing and daily limits, not the 20% automatic cap.
+- Neither button ever forgets the owner's confirmations, rejections or edits; those are changed
+  only where they are made.
+
+### Controls
+
+Settings: automatic refresh on/off (on by default; off in demo), the three intervals shown
+(fixed, from `config.ts`), pause/resume, "Refresh due books now", and Refresh all books from all
+sources. Diagnostics: per source, how many are due, last answer, requests used by automatic work,
+pauses and failures. Book page: "Refresh due" and "Refresh failed; showing the previous result";
+a refresh never blanks a page.
+
+### Checks (fake clock, no network)
+
+Due selection for each group, including moving between them (started reading → 7 days; rating
+became supported → 90 days; Metron-only comics → 90 days); backoff after failures; priority
+order; 429, quota and 5xx handling; budget counting every request; cancellation and restart;
+demo/off/scan/manual deferral; a removed rating becomes unrated; a failure keeps the old result;
+an app-accepted match survives a background refresh and a `MATCH_VERSION` re-score, and a rival
+winner adds a Needs review entry; both "Refresh from all sources" actions release app choices
+but keep confirmed and rejected decisions; a cancelled full refresh leaves untouched books as
+they were; everything survives a backup and restore without becoming due at once.
 
 ## Documentation for every stage
 
@@ -295,9 +340,16 @@ matches), with `npm run screenshots` inspected for UI changes.
 
 ## Owner actions
 
-- **After stage 3:** the second quality session (§17.2, still open from M6), on the new ratings and
-  details; while there, glance at Diagnostics' count of ratings that rest on unconfirmed matches
-  and confirm any that matter. No new accounts or keys are needed for this plan.
+- **After stage 3:** the second quality session (§17.2), on the new ratings and details. Note how
+  many picks rest on unconfirmed matches (Diagnostics) and confirm any that matter. No new
+  accounts or keys are needed for this plan.
+
+## Not in this plan
+
+- **Comic creators from Metron/ComicVine.** Their adapters don't read credits today; adding them
+  means extra requests per issue. A separate small change if the owner wants it.
+- **Owner edits for authors, year, pages and description.** Only the title can be edited today.
+- **Review text** from any source: not wanted.
 
 ## Google Books: considered and dropped (2026-11-10)
 
