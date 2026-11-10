@@ -253,6 +253,10 @@ export function parseFilename(fileName: string): ParsedName {
   if (trailing.quality) result.quality = trailing.quality;
   tags.push(...trailing.tags);
 
+  // An en or em dash (common in names copied from a store) separates like " - " when spaced;
+  // inside a word ("Spider–Man") it's a hyphen.
+  base = base.replace(/\s+[–—]\s*|\s*[–—]\s+/g, ' - ').replace(/[–—]/g, '-');
+
   const spaced =
     /\s/.test(base) ||
     /_-_/.test(base) ||
@@ -616,7 +620,9 @@ const BOOK_NUMBER_WORDS = [
 ];
 
 function cleanSeries(s: string): string {
-  return s.replace(/[\s-]+$/, '').trim();
+  // Separators and stray punctuation before the number aren't part of the name:
+  // "March – Book Two", "March. Book Two", "March; Book 2".
+  return s.replace(/[\s\-–—.,;:]+$/, '').trim();
 }
 
 /**

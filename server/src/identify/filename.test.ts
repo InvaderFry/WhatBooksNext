@@ -216,6 +216,23 @@ describe("size versions and underscored markers (from the owner's M6 testing, in
         series: true,
       });
     }
+    // An en or em dash, or a full stop, before "Book" doesn't end up in the series name.
+    for (const name of [
+      'Lantern March – Book Two.pdf',
+      'Lantern March — Book Two.pdf',
+      'Lantern March. Book Two.pdf',
+    ]) {
+      const p = parseFilename(name);
+      expect({ name, series: v(p.series), volume: v(p.volume) }).toEqual({
+        name,
+        series: 'Lantern March',
+        volume: '2',
+      });
+    }
+    // ...but inside a word it's a hyphen.
+    expect(displayTitle(parseFilename('Lantern–Moth.epub'))).toBe(
+      displayTitle(parseFilename('Lantern-Moth.epub')),
+    );
     // A bare number after other words stays part of the title.
     expect(parseFilename('catch_22.epub').volume).toBeUndefined();
   });

@@ -19,6 +19,12 @@ export function LookupBanner({
 }) {
   const [data, setData] = useState<Lookups | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /**
+   * The owner pressed a button here: keep showing what that run did, even when it finished
+   * at once (answers come from the cache) and nothing is pending any more. Without this the
+   * banner looked unchanged, or vanished, and the button seemed to do nothing.
+   */
+  const [pressed, setPressed] = useState(false);
   const wasRunning = useRef(false);
   // The latest callback, without making `load` change on every render.
   const finished = useRef(onFinished);
@@ -52,6 +58,7 @@ export function LookupBanner({
 
   const start = async () => {
     setError(null);
+    setPressed(true);
     try {
       await api.post('/api/lookups', {});
       await load();
@@ -62,7 +69,23 @@ export function LookupBanner({
 
   if (!data) return null;
   const s = data.status;
-  if (!running && data.pending === 0 && data.pendingSeries === 0 && !always) return null;
+  if (!running && data.pending === 0 && data.pendingSeries === 0 && !always && !pressed)
+    return null;
+  const outcome =
+    pressed && !running && s?.finishedAt
+      ? [
+          s.total > 0 &&
+            `Looked up ${s.done.toLocaleString()} of ${s.total.toLocaleString()} books.`,
+          s.series &&
+            s.series.total > 0 &&
+            `Checked published volumes for ${s.series.done.toLocaleString()} of ${s.series.total.toLocaleString()} series${
+              s.errors.length > 0 ? '; the problems are below' : ''
+            }.`,
+          s.status === 'cancelled' && 'Stopped.',
+        ]
+          .filter(Boolean)
+          .join(' ')
+      : null;
 
   return (
     <div className="lookup-banner" role="status">
@@ -113,6 +136,11 @@ export function LookupBanner({
         <p className="muted">
           Every book has been looked up.
           {s?.finishedAt ? ` Last run ${new Date(s.finishedAt).toLocaleString()}.` : ''}
+        </p>
+      )}
+      {outcome && (
+        <p className="small" role="status">
+          ✓ Done. {outcome}
         </p>
       )}
       {s && !running && s.error && <p className="small warn">{s.error}</p>}
