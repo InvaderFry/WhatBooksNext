@@ -15,7 +15,7 @@ import { normalizeForCompare, titleCompareKey } from './filename.ts';
  */
 
 /** Bump when the scoring changes: the next lookup re-scores from the cache (no new requests). */
-export const MATCH_VERSION = 5;
+export const MATCH_VERSION = 6;
 
 export interface MatchFacts {
   title: string;
@@ -194,28 +194,42 @@ function titleScore(f: MatchFacts, r: SourceRecord): number {
   return mainHit ? Math.max(best, MAIN_TITLE_ONLY) : best;
 }
 
-/** Surname-level comparison: "H. G. Wells" agrees with "Wells, H.G." and "Herbert George Wells". */
-function nameTokens(name: string): Set<string> {
-  const parts = name.includes(',') ? name.split(',').reverse().join(' ') : name;
-  return new Set(
-    parts
-      .toLowerCase()
-      .normalize('NFKD')
-      .replace(/\p{M}/gu, '')
-      .split(/[^\p{L}]+/u)
-      .filter((w) => w.length >= 3),
+/** A person's name as surname + given names (or initials), accents and punctuation removed. */
+function parseName(name: string): { surname: string; givens: string[] } {
+  const ordered = name.includes(',') ? name.split(',').reverse().join(' ') : name;
+  const words = ordered
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/\p{M}/gu, '')
+    .split(/[^\p{L}]+/u)
+    .filter(Boolean)
+    // Suffixes aren't surnames ("Martin Luther King Jr.").
+    .filter((w) => !['jr', 'sr', 'ii', 'iii', 'iv', 'phd', 'md'].includes(w));
+  return { surname: words.at(-1) ?? '', givens: words.slice(0, -1) };
+}
+
+/**
+ * Two names are the same person when the surnames match and the first given names agree, or
+ * one is the other's initial ("H. G. Wells", "Wells, H.G.", "Herbert George Wells"). A shared
+ * first name alone never counts: "Adam Reed" isn't "Adam Stone". A name with no given names
+ * ("Moebius") agrees on its surname.
+ */
+export function samePerson(a: string, b: string): boolean {
+  const x = parseName(a);
+  const y = parseName(b);
+  if (x.surname.length < 2 || x.surname !== y.surname) return false;
+  const gx = x.givens[0];
+  const gy = y.givens[0];
+  if (!gx || !gy) return true;
+  return (
+    gx === gy || (gx.length === 1 && gy.startsWith(gx)) || (gy.length === 1 && gx.startsWith(gy))
   );
 }
 
 function authorsAgree(mine: string[], theirs: string[]): 'agrees' | 'conflicts' | 'unknown' {
-  if (mine.length === 0 || theirs.length === 0) return 'unknown';
-  const theirTokens = theirs.map(nameTokens);
-  for (const m of mine) {
-    const t = nameTokens(m);
-    if (t.size === 0) continue;
-    if (theirTokens.some((x) => [...t].some((w) => x.has(w)))) return 'agrees';
-  }
-  return 'conflicts';
+  const m = mine.filter((n) => parseName(n).surname.length >= 2);
+  if (m.length === 0 || theirs.length === 0) return 'unknown';
+  return m.some((a) => theirs.some((b) => samePerson(a, b))) ? 'agrees' : 'conflicts';
 }
 
 const isbnNorm = (s: string) => s.replace(/[^0-9Xx]/g, '').toUpperCase();
@@ -352,9 +366,11 @@ export function decideRanked(ranked: ScoredCandidate[]): {
   decision: Decision;
   best: ScoredCandidate | null;
 } {
-  const [top, second] = ranked;
+  const top = ranked[0];
   if (!top || top.score < MATCH_REVIEW) return { decision: 'unidentified', best: null };
-  if (second && top.score - second.score < MATCH_TIE_MARGIN && !sameWork(top.record, second.record))
-    return { decision: 'tie', best: null };
+  // The next *different* work: duplicates of the top one say nothing about a rival, and must
+  // not hide one (two copies of A, then B, all scoring alike, is still A-or-B).
+  const rival = ranked.slice(1).find((c) => !sameWork(top.record, c.record));
+  if (rival && top.score - rival.score < MATCH_TIE_MARGIN) return { decision: 'tie', best: null };
   return { decision: top.score >= MATCH_ACCEPT ? 'accepted' : 'provisional', best: top };
 }

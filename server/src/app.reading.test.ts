@@ -23,9 +23,12 @@ let requests: string[];
 /** Open Library answers by title; anything unknown gets the recorded "nothing found". */
 let olByTitle: Record<string, string>;
 let failing: boolean;
+/** When set, requests wait for it: a lookup run that stays "running". */
+let gate: Promise<void> | null;
 
 const fetcher: Fetcher = async (url) => {
   requests.push(url);
+  if (gate) await gate;
   if (failing) return new Response('down', { status: 503 });
   const u = new URL(url);
   if (u.hostname === 'openlibrary.org') {
@@ -48,6 +51,7 @@ beforeEach(async () => {
   drive = tempDir('wbn-m3-drive-');
   requests = [];
   failing = false;
+  gate = null;
   olByTitle = {
     'the time machine': fixture('ol-search-time-machine.json'),
     'pride and prejudice': fixture('ol-search-pride-prejudice.json'),
@@ -239,6 +243,41 @@ describe('Needs review: identities (§11.4)', () => {
     expect(after.rows.find((r: { id: string }) => r.id === `identity:${id}`)).toBeUndefined();
   });
 
+  it('keeps the owner’s confirmed match when a later lookup no longer finds it', async () => {
+    olByTitle['the glass bell'] = twoWorks;
+    await addAndScan({ 'theglassbell.pdf': 30_000 });
+    const id = itemIdOf('theglassbell.pdf');
+    await api.post(`/api/items/${id}/match`, {
+      action: 'confirm',
+      source: 'openlibrary',
+      sourceId: '/works/OL2W',
+    });
+    // The source stops returning it.
+    olByTitle['the glass bell'] = fixture('ol-search-none.json');
+    await api.post(`/api/items/${id}/lookup`, {});
+    const online = (await api.get(`/api/items/${id}/online`)).body;
+    expect(online).toMatchObject({ identity: 'accepted', override: 'openlibrary:/works/OL2W' });
+  });
+
+  it('keeps a book picked from a search, however low it scores against a bad filename', async () => {
+    await addAndScan({ 'scan_0042_final.pdf': 30_000 });
+    const id = itemIdOf('scan_0042_final.pdf');
+    olByTitle['the time machine'] = fixture('ol-search-time-machine.json');
+    const found = (await api.post(`/api/items/${id}/search`, { query: 'The Time Machine' })).body;
+    const pick = found.candidates.find(
+      (c: { sourceId: string }) => c.sourceId === '/works/OL52267W',
+    );
+    expect(pick.score).toBeLessThan(0.3);
+    await api.post(`/api/items/${id}/match`, {
+      action: 'confirm',
+      source: 'openlibrary',
+      sourceId: '/works/OL52267W',
+    });
+    const online = (await api.get(`/api/items/${id}/online`)).body;
+    expect(online.identity).toBe('accepted');
+    expect(online.community.votes).toBe(134);
+  });
+
   it('never accepts a rejected candidate again, even after looking up again', async () => {
     await addAndScan({ 'thetimemachine.epub': timeMachine() });
     const id = itemIdOf('thetimemachine.epub');
@@ -426,6 +465,23 @@ describe('Read next and its cards', () => {
     // Undo puts it back.
     await api.patch(`/api/items/${t.items[0].id}`, { triage: null });
     expect((await api.get('/api/triage')).body.items).toHaveLength(1);
+  });
+});
+
+describe('restore while lookups run', () => {
+  it('refuses, so an answer arriving late can’t rewrite the restored data', async () => {
+    await addAndScan({ 'thetimemachine.epub': timeMachine() });
+    const backup = (await api.get('/api/backup')).body;
+    let release!: () => void;
+    gate = new Promise((r) => (release = r));
+    // A fresh run (no cached answers), held at its first request.
+    await api.post('/api/lookups', { refresh: true });
+    expect((await api.get('/api/lookups')).body.status.status).toBe('running');
+    const r = await api.post('/api/restore', { backup, confirm: true });
+    expect(r.status).toBe(409);
+    expect(r.body.error).toMatch(/lookups are running/i);
+    release();
+    await made.lookups.wait();
   });
 });
 

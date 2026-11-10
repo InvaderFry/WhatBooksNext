@@ -113,27 +113,54 @@ export function storeCandidates(
   itemId: string,
   source: SourceName,
   ranked: ScoredCandidate[],
+  /** A record the owner picked: kept whatever its score (owner corrections win). */
+  keep?: ScoredCandidate,
 ): void {
   const now = nowIso();
+  // The owner's confirmed match is kept even when this search didn't return it: a lookup
+  // never undoes the owner's choice.
+  const override = db
+    .prepare('SELECT match_override FROM user_item WHERE item_id = ?')
+    .pluck()
+    .get(itemId) as string | null | undefined;
+  const confirmed = override?.startsWith(`${source}:`)
+    ? (db
+        .prepare('SELECT * FROM item_matches WHERE item_id = ? AND source = ? AND source_id = ?')
+        .get(itemId, source, override.slice(source.length + 1)) as
+        | { source_id: string; score: number; evidence: string; data: string; fetched_at: string }
+        | undefined)
+    : undefined;
   db.prepare('DELETE FROM item_matches WHERE item_id = ? AND source = ?').run(itemId, source);
   const ins = db.prepare(
     `INSERT OR REPLACE INTO item_matches (item_id, source, source_id, score, rank, evidence, data, fetched_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
   );
-  ranked
-    .filter((c) => c.score >= MIN_KEPT_SCORE)
-    .slice(0, KEEP_CANDIDATES)
-    .forEach((c, i) =>
-      ins.run(
-        itemId,
-        source,
-        c.record.sourceId,
-        c.score,
-        i + 1,
-        JSON.stringify(c.evidence),
-        JSON.stringify(c.record),
-        now,
-      ),
+  const auto = ranked
+    .filter((c) => c.score >= MIN_KEPT_SCORE && c.record.sourceId !== keep?.record.sourceId)
+    .slice(0, keep ? KEEP_CANDIDATES - 1 : KEEP_CANDIDATES);
+  const all = keep ? [keep, ...auto] : auto;
+  all.forEach((c, i) =>
+    ins.run(
+      itemId,
+      source,
+      c.record.sourceId,
+      c.score,
+      i + 1,
+      JSON.stringify(c.evidence),
+      JSON.stringify(c.record),
+      now,
+    ),
+  );
+  if (confirmed && !all.some((c) => c.record.sourceId === confirmed.source_id))
+    ins.run(
+      itemId,
+      source,
+      confirmed.source_id,
+      confirmed.score,
+      all.length + 1,
+      confirmed.evidence,
+      confirmed.data,
+      confirmed.fetched_at,
     );
 }
 
@@ -485,10 +512,11 @@ export function pruneInapplicable(db: DB, sources: Sources): number {
       r.item_id,
       r.source,
     );
-    db.prepare('DELETE FROM item_matches WHERE item_id = ? AND source = ?').run(
-      r.item_id,
-      r.source,
-    );
+    // The owner's confirmed match stays, whatever the rules now say about its source.
+    db.prepare(
+      `DELETE FROM item_matches WHERE item_id = ? AND source = ?
+         AND (source || ':' || source_id) IS NOT (SELECT match_override FROM user_item WHERE item_id = ?)`,
+    ).run(r.item_id, r.source, r.item_id);
     touched.add(r.item_id);
   }
   for (const id of touched) applyIdentity(db, id);

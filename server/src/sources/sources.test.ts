@@ -399,6 +399,30 @@ describe('matching (§11.2)', () => {
     expect(r.decision).not.toBe('unidentified');
   });
 
+  it('never takes a shared first name as the same author', () => {
+    const r = decide(facts({ title: 'The Time Machine', authors: ['Herbert Stone'] }), [
+      { ...tm[0]!, authors: ['Herbert Reed'] },
+    ]);
+    expect(r.decision).toBe('unidentified');
+  });
+
+  it('matches an author written with initials, surname first, or in full', () => {
+    for (const name of ['Wells, H.G.', 'H. G. Wells', 'Herbert George Wells', 'Wells'])
+      expect(decide(facts({ title: 'The Time Machine', authors: [name] }), tm).decision).toBe(
+        'accepted',
+      );
+  });
+
+  it('still sees a tie when two copies of one work come before a different work', () => {
+    const base = { ...tm[0]!, isbns: [], rating: undefined };
+    const r = decide(facts({ title: 'Quiet Water', titleSource: 'filename' }), [
+      { ...base, sourceId: 'a1', title: 'Quiet Water', authors: ['Ana Reyes'] },
+      { ...base, sourceId: 'a2', title: 'Quiet Water', authors: ['Ana Reyes'] },
+      { ...base, sourceId: 'b', title: 'Quiet Water', authors: ['Ben Ortiz'] },
+    ]);
+    expect(r.decision).toBe('tie');
+  });
+
   it('never accepts a candidate the owner rejected', () => {
     const r = decide(
       facts({ title: 'The Time Machine', authors: ['H. G. Wells'] }),

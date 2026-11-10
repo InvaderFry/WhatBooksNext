@@ -567,6 +567,9 @@ export function createApp(ctx: AppContext) {
     '/api/restore',
     route(async (req) => {
       if (scans.isRunning()) throw new HttpError(409, 'Wait for the scan to finish.');
+      // A lookup still running would write its answers into the restored data.
+      if (lookups.isRunning())
+        throw new HttpError(409, 'Online lookups are running. Stop them, or wait, then restore.');
       if (req.body?.confirm !== true)
         throw new HttpError(400, 'Restoring replaces all app data; confirm first.');
       const backup = validateBackup(db, req.body?.backup);

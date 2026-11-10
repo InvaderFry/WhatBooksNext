@@ -240,15 +240,9 @@ export function applyMatchAction(db: DB, itemId: string, a: MatchAction): void {
       const others = matchesOf(db, itemId)
         .filter((m) => m.source === a.source)
         .map((m) => ({ record: m.record, score: m.score, evidence: m.evidence }));
-      storeCandidates(
-        db,
-        itemId,
-        a.source,
-        rankCandidates([scoreCandidate(facts, rec), ...others]).slice(0, 5),
-      );
-      // storeCandidates keeps the top five; make sure the pick survived.
-      if (!matchesOf(db, itemId).some((m) => `${m.source}:${m.sourceId}` === key))
-        storeCandidates(db, itemId, a.source, [scoreCandidate(facts, rec)]);
+      // The owner's pick is kept whatever its automatic score: a badly named file can score low
+      // against its real title, and the owner knows better.
+      storeCandidates(db, itemId, a.source, rankCandidates(others), scoreCandidate(facts, rec));
     }
     db.prepare(
       'DELETE FROM candidates_rejected WHERE item_id = ? AND source = ? AND source_id = ?',

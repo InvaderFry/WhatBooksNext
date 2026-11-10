@@ -251,9 +251,14 @@ export function WhatNext({ params, onChanged }: { params: Params; onChanged: () 
                 key={c.id}
                 card={c}
                 situation={{ time, mode, ready, show }}
-                onDone={(msg) => {
+                onDone={(msg, hide) => {
                   setAnnounce(msg);
-                  void load();
+                  // The same as the main list: "Not in the mood" hides it for this tab.
+                  if (hide) {
+                    addNotInMood(c.id);
+                    setHidden(notInMood());
+                  } else void load();
+                  onChanged();
                 }}
               />
             ))}
