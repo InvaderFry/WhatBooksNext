@@ -12,8 +12,8 @@ owner has already made. Don't reopen those decisions. Then read the latest
   ComicVine adapters) are built. Part 2 waits on the owner's Test Metron / Test ComicVine
   reports (done: shapes confirmed, many ties; tie-breakers added). Record real answers into
   `fixtures/sources/` when the owner can share some. Part 3 (collected
-  editions: `collection_coverage`, `lib/coverage.ts`) is built. Next: merge/split with undo,
-  then store titles and the Calibre import.
+  editions: `collection_coverage`, `lib/coverage.ts`) is built. Part 4 (merge/split with
+  undo, `lib/operations.ts`) is built. Next: store titles and the Calibre import.
 - Series rows are rebuilt by `syncSeries` (`server/src/identify/series.ts`) from stored facts
   and owner corrections. Call it after anything that changes items' names, numbers, kinds or
   matches. Gap rules are pure, in `server/src/lib/series.ts`.

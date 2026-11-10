@@ -110,6 +110,36 @@ try {
         await p.getByRole('heading', { name: 'Collects' }).waitFor();
       },
     ],
+    [
+      'item-merge',
+      '/?view=library&q=river',
+      async (p) => {
+        // The demo's River of Clocks is an EPUB on the drive and a PDF in iCloud: one book.
+        await p
+          .getByRole('link', { name: /River of Clocks/ })
+          .first()
+          .click();
+        await p.getByRole('button', { name: 'Merge with another entry…' }).click();
+        await p.getByLabel('Find the other entry').fill('river');
+        await p.locator('#merge-h ~ form button[type=submit]').click();
+        await p.locator('.plain-list button').first().click();
+        await p.getByRole('button', { name: 'Merge', exact: true }).waitFor();
+      },
+    ],
+    [
+      'item-split',
+      '/?view=library&q=glass',
+      async (p) => {
+        await p
+          .getByRole('link', { name: /Glass Harbor/ })
+          .first()
+          .click();
+        await p.getByRole('heading', { name: 'Not all the same book?' }).waitFor();
+        await p.locator('.checks input').last().check();
+        await p.getByRole('button', { name: 'Preview the split…' }).click();
+        await p.getByRole('button', { name: 'Split', exact: true }).waitFor();
+      },
+    ],
     ['shortlist', '/?view=shortlist', async () => {}],
     [
       'keyboard-focus',

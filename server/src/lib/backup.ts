@@ -69,6 +69,9 @@ export const BACKUP_EXCLUDED: Record<string, string> = {
   secrets: 'API keys are never exported',
   // Operational log of past lookups, like scan_runs.
   enrich_runs: 'lookup history only',
+  // The merge/split undo stack: snapshots of rows from before each operation. Restoring an old
+  // stack could undo onto data it no longer describes, so restore clears it instead.
+  operations: 'undo history, cleared by a restore',
 };
 
 export interface Backup {
@@ -191,6 +194,8 @@ export async function restoreBackup(
     for (const t of [...BACKUP_TABLES].reverse()) db.prepare(`DELETE FROM ${t}`).run();
     // Old directory listings describe the replaced library; the next scan rebuilds them.
     db.prepare('DELETE FROM directory_scans').run();
+    // The undo stack describes the data being replaced.
+    db.prepare('DELETE FROM operations').run();
     for (const t of BACKUP_TABLES) {
       const rows = backup.tables[t]!;
       if (rows.length === 0) continue;

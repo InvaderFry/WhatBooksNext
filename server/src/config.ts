@@ -314,3 +314,6 @@ export const PICTURE_WORDS_PER_PAGE = 150;
  * of the top seven (owner's first quality check). Small, so a clearly better book still leads.
  */
 export const SAME_AUTHOR_PENALTY = 0.04;
+
+/** Undo stack: the last 20 merges and splits (§20 "covers a cleanup session"). */
+export const UNDO_STACK_SIZE = 20;

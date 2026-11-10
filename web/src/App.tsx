@@ -148,7 +148,12 @@ export function App() {
           <Library key={dataVersion} state={state} onScanStarted={scanStarted} />
         )}
         {view === 'item' && params.id && (
-          <ItemPage key={`${params.id}-${dataVersion}`} id={params.id} />
+          <ItemPage
+            key={`${params.id}-${dataVersion}`}
+            id={params.id}
+            mergeWith={params.merge}
+            splitFiles={params.split}
+          />
         )}
         {view === 'shortlist' && <Shortlist key={dataVersion} />}
         {view === 'settings' && (

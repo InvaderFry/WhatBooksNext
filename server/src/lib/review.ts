@@ -11,6 +11,7 @@ import { markObsoleteReviews } from '../identify/reconcile.ts';
 import { hiddenReviewKeys, identityRows, type CandidateView } from './identityReview.ts';
 import { HttpError, nowIso, parseJson } from '../util.ts';
 import { syncSeries } from '../identify/series.ts';
+import { record, snapshot, titleOf } from './operations.ts';
 
 /**
  * Needs review (PLAN.md §11.4), as far as M2 goes: what the deep pass finds — candidate moves,
@@ -243,7 +244,7 @@ function mergePair(db: DB, a: string, b: string): string {
   if (aHas && bHas)
     throw new HttpError(
       409,
-      'Both have reading history. Merging history needs a preview of the conflicts, which comes in a later version.',
+      'Both have reading history. Use Merge on the book’s page, which shows what conflicts and lets you choose.',
     );
   const keep = bHas ? b : a;
   mergeInto(db, keep === a ? b : a, keep);
@@ -269,7 +270,23 @@ export function actOnReview(
       throw new HttpError(400, 'That row can’t be accepted.');
     const [a, b] = fileIds.map((f) => itemOf.get(f) as string | undefined);
     if (!a || !b) throw new HttpError(409, 'The files have changed since; scan again.');
-    if (a !== b) touched.push(r.kind === 'move' ? mergeMove(db, a, b) : mergePair(db, a, b));
+    if (a !== b) {
+      // Recorded like any merge, so it can be undone from the list (§11.4).
+      const before = snapshot(db, [a, b]);
+      const ta = titleOf(db, a);
+      const tb = titleOf(db, b);
+      const kept = r.kind === 'move' ? mergeMove(db, a, b) : mergePair(db, a, b);
+      touched.push(kept);
+      record(
+        db,
+        'merge',
+        r.kind === 'move'
+          ? `Moved “${ta}”’s history to its new file`
+          : `Grouped “${tb}” with “${ta}”`,
+        before,
+        [kept],
+      );
+    }
   } else if (action === 'split') {
     if (r.kind !== 'group_conflict') throw new HttpError(400, 'Only a group can be split.');
     if (!fileId || !fileIds.includes(fileId))
@@ -298,7 +315,7 @@ function mergeMove(db: DB, missingItem: string, newItem: string): string {
   if (hasOwnerData(db, newItem))
     throw new HttpError(
       409,
-      'The new file has its own reading history. Merging history needs a preview of the conflicts, which comes in a later version.',
+      'The new file has its own reading history. Use Merge on the book’s page, which shows what conflicts and lets you choose.',
     );
   mergeInto(db, newItem, missingItem);
   return missingItem;

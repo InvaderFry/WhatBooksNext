@@ -21,6 +21,7 @@ import { AvailabilityLabels, Cover, creatorsText, Notice } from '../components.t
 import { hrefFor, onLinkClick } from '../url.ts';
 import { OnlineCard } from './OnlineCard.tsx';
 import { CollectsSection, SeriesSection } from './SeriesCard.tsx';
+import { MergeCard, SplitCard } from './MergeSplit.tsx';
 
 type Patch = Partial<{
   progress: Progress;
@@ -44,7 +45,17 @@ type Patch = Partial<{
   seriesPositionOverride: number | null;
 }>;
 
-export function ItemPage({ id }: { id: string }) {
+export function ItemPage({
+  id,
+  mergeWith,
+  splitFiles,
+}: {
+  id: string;
+  /** From Needs review or the undo list: open the merge preview with this other entry. */
+  mergeWith?: string;
+  /** From the undo list: open the split preview with these files (comma-separated ids). */
+  splitFiles?: string;
+}) {
   const [item, setItem] = useState<ItemDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState<string | null>(null);
@@ -349,6 +360,13 @@ export function ItemPage({ id }: { id: string }) {
           ))}
         </ul>
       </section>
+
+      <SplitCard
+        itemId={item.id}
+        files={item.files}
+        initialFiles={splitFiles ? splitFiles.split(',').filter(Boolean) : undefined}
+      />
+      <MergeCard itemId={item.id} initialOther={mergeWith} />
     </div>
   );
 }
@@ -594,7 +612,7 @@ function FromTheFile({ file }: { file: FileDetail | undefined }) {
     <section aria-labelledby="fromfile-h" className="card from-file">
       <h2 id="fromfile-h">From the file</h2>
       <p className="muted small">
-        What {file.name} says about itself. Online lookups arrive in a later version.
+        What {file.name} says about itself. What online sources say is under Ratings and details.
       </p>
       <dl className="facts">
         {rows.map(([k, v]) => (
