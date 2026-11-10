@@ -578,7 +578,8 @@ export interface Duration {
 }
 
 export interface ItemOnline {
-  details: ItemDetails;
+  /** Null only if the book isn't in the ranking data; the card then shows what it has. */
+  details: ItemDetails | null;
   identity: 'accepted' | 'provisional' | 'tie' | 'unidentified';
   matchConfirmed: boolean;
   override: string | null;

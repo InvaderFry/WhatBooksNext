@@ -130,6 +130,27 @@ describe('Stage 2 detail integration', () => {
     expect(years.details.years.map((y: { value: number }) => y.value)).toEqual([1990, 2005]);
   });
 
+  it('keeps a length from an unconfirmed match when no trusted source gives pages', async () => {
+    const online = (await get(`/api/items/${ids.provisional}/online`)).body;
+    expect(online.details.pages).toBeNull();
+    expect(online.duration.basis).toContain('900 pages (Hardcover)');
+  });
+
+  it('lists at most 12 subjects on the book page, the trusted ones first', async () => {
+    const many = Array.from({ length: 30 }, (_, n) => `Invented topic ${n + 1}`);
+    const row = db
+      .prepare("SELECT data FROM item_matches WHERE item_id = ? AND source = 'hardcover'")
+      .pluck()
+      .get(ids.strongest) as string;
+    db.prepare("UPDATE item_matches SET data = ? WHERE item_id = ? AND source = 'hardcover'").run(
+      JSON.stringify({ ...JSON.parse(row), subjects: many }),
+      ids.strongest,
+    );
+    const online = (await get(`/api/items/${ids.strongest}/online`)).body;
+    expect(online.subjects).toHaveLength(12);
+    expect(online.details.subjects).toHaveLength(12);
+  });
+
   it('keeps kind, topic and taste inputs even when display creators and provisional subjects differ', () => {
     const library = loadLibrary(db, new Map());
     const data = loadRankData(db, new Map());
@@ -154,7 +175,8 @@ describe('Stage 2 detail integration', () => {
     const r = compareDetails(db);
     expect(r).toMatchObject({
       items: 14,
-      changed: { title: 2, authors: 8, year: 2, pages: 2, description: 5 },
+      // Subtitles show on the book page only, so one of the two title changes is gone.
+      changed: { title: 1, authors: 8, year: 2, pages: 2, description: 5 },
       classics: { before: 3, after: 2, entering: 0, leaving: 1 },
     });
     expect(JSON.stringify(r)).not.toContain('Copper Observatory');

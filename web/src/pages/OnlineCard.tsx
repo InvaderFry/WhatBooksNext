@@ -106,19 +106,19 @@ export function OnlineCard({ itemId, onChanged }: { itemId: string; onChanged: (
         <dt>First published</dt>
         <dd>
           {data.firstPublishYear ?? 'Unknown'}
-          {data.details.firstPublishYear && (
-            <span className="muted small"> — {data.details.firstPublishYear.label}</span>
+          {data.details?.firstPublishYear && (
+            <span className="muted small"> — {data.details?.firstPublishYear.label}</span>
           )}
-          {data.details.yearDisagreement && (
+          {data.details?.yearDisagreement && (
             <div className="muted small">
               Sources disagree:{' '}
-              {data.details.years.map((y) => `${y.value} (${y.label})`).join('; ')}
+              {data.details?.years.map((y) => `${y.value} (${y.label})`).join('; ')}
             </div>
           )}
         </dd>
         <dt>Pages</dt>
         <dd>
-          {data.details.pages
+          {data.details?.pages
             ? `${data.details.pages.value} — ${data.details.pages.label}${data.details.pages.measured ? ' (measured)' : ' (source estimate)'}`
             : 'Unknown'}
         </dd>
@@ -132,7 +132,7 @@ export function OnlineCard({ itemId, onChanged }: { itemId: string; onChanged: (
           <>
             <dt>Subjects</dt>
             <dd>
-              {data.details.subjects
+              {data.details?.subjects
                 .map(
                   (s) => `${s.value} (${[...new Set(s.sources.map((p) => p.label))].join(', ')})`,
                 )
@@ -145,7 +145,7 @@ export function OnlineCard({ itemId, onChanged }: { itemId: string; onChanged: (
         <details>
           <summary>Description</summary>
           {/* Untrusted text from a source: rendered as text, never HTML (scenario 23). */}
-          <p className="muted small">From {data.details.description?.label}</p>
+          <p className="muted small">From {data.details?.description?.label}</p>
           <p className="description">{data.description}</p>
         </details>
       )}

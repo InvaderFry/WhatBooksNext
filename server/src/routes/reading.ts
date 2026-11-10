@@ -42,6 +42,9 @@ import { SourceError, SOURCE_LABELS } from '../sources/types.ts';
 import { HttpError, newId, nowIso, parseJson, todayLocal } from '../util.ts';
 import { route } from './route.ts';
 
+/** The book page lists at most this many subjects, as before Stage 2. */
+const SUBJECTS_SHOWN = 12;
+
 /**
  * Milestone 3 routes: lookups, Read next, "Not this, because…", triage, identity review and
  * the Hardcover token. GET requests never change anything (§6.3).
@@ -511,7 +514,9 @@ export function registerReadingRoutes(app: Express, d: ReadingDeps): void {
         today: todayLocal(),
         recentDays: RECENT_DAYS,
       };
-      const details = data.details.get(id)!;
+      // Shown subjects stay short: sources such as Open Library list dozens.
+      const chosen = data.details.get(id) ?? null;
+      const details = chosen && { ...chosen, subjects: chosen.subjects.slice(0, SUBJECTS_SHOWN) };
       return {
         identity: i?.identity ?? 'unidentified',
         matchConfirmed: i?.matchConfirmed ?? false,
@@ -525,8 +530,8 @@ export function registerReadingRoutes(app: Express, d: ReadingDeps): void {
         card: i ? buildCard(i, data.items, s) : null,
         // Text from sources: shown as text only (§6.3, scenario 23).
         details,
-        description: details.description?.value ?? null,
-        subjects: details.subjects.map((s) => s.value),
+        description: details?.description?.value ?? null,
+        subjects: details?.subjects.map((s) => s.value) ?? [],
         lookupAvailable:
           sources.forItem(
             i?.kind ?? null,

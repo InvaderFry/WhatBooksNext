@@ -124,9 +124,10 @@ export function ItemPage({
         <div className="item-head-text">
           <TitleEditor item={item} onSave={save} />
           {item.creators.length > 0 && <p className="byline">{creatorsText(item.creators)}</p>}
-          {!u.titleOverride && (
-            <p className="muted small">Title from {item.details.title.label}.</p>
+          {item.details.title.value.subtitle && (
+            <p className="subtitle">{item.details.title.value.subtitle}</p>
           )}
+          {!u.titleOverride && <p className="muted small">{titleOrigin(item.details.title)}</p>}
           <div className="item-meta big">
             <AvailabilityLabels a={item.availability} />
           </div>
@@ -791,4 +792,20 @@ function FileRow({
       {message && <Notice kind={message.kind}>{message.text}</Notice>}
     </li>
   );
+}
+
+/** Where the shown title came from, in plain words. */
+function titleOrigin(t: ItemDetail['details']['title']): string {
+  switch (t.source) {
+    case 'filename':
+      return 'Title guessed from the filename.';
+    case 'file':
+      return 'Title from the file’s own details.';
+    case 'owner':
+      return 'Title you entered.';
+    case 'calibre':
+      return 'Title from your Calibre library.';
+    default:
+      return `Title from ${t.label}.`;
+  }
 }

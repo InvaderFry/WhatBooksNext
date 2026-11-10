@@ -116,7 +116,8 @@ describe('best details, Stage 2', () => {
         source: 'openlibrary',
         value: { title: 'Library Title', subtitle: 'Library Subtitle' },
       });
-      expect(displayDetailTitle(d)).toBe('Library Title: Library Subtitle');
+      expect(displayDetailTitle(d)).toBe('Library Title');
+      expect(d.title.value.subtitle).toBe('Library Subtitle');
     }
   });
 

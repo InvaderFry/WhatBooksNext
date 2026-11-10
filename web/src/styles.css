@@ -798,6 +798,10 @@ legend {
 .byline {
   font-size: 1.05rem;
 }
+.subtitle {
+  font-size: 1.1rem;
+  font-style: italic;
+}
 @media (max-width: 30rem) {
   .cover-large {
     width: 80px;

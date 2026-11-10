@@ -97,11 +97,12 @@ function strongest(a: DetailMatch, b: DetailMatch): number {
   );
 }
 
+/**
+ * The title for lists, cards, sorting and export: the main title only. A source's subtitle is
+ * shown on the book page, so Library titles keep the length and order they had.
+ */
 export function displayDetailTitle(d: ItemDetails): string {
-  const { title, subtitle } = d.title.value;
-  return subtitle && !title.toLowerCase().endsWith(subtitle.toLowerCase())
-    ? `${title}: ${subtitle}`
-    : title;
+  return d.title.value.title;
 }
 
 /** Outside descriptions use HTML and simple Markdown; compare their visible text, not markup. */
@@ -124,7 +125,6 @@ export function chooseDetails(input: DetailInput): ItemDetails {
   const calibre = trusted.find((m) => m.record.source === 'calibre');
   const embedded = input.files.find((f) => nonempty(f.title));
   const onlineTitle = trusted.find((m) => nonempty(m.record.title));
-  const titleMatch = calibre && nonempty(calibre.record.title) ? calibre : onlineTitle;
   let title: ItemDetails['title'];
   if (nonempty(input.ownerTitle))
     title = value({ title: input.ownerTitle!, subtitle: null }, 'owner', null, 'owner_title');
@@ -141,10 +141,10 @@ export function chooseDetails(input: DetailInput): ItemDetails {
       embedded.id,
       'embedded_title',
     );
-  else if (titleMatch)
+  else if (onlineTitle)
     title = fromMatch(
-      { title: titleMatch.record.title, subtitle: titleMatch.record.subtitle ?? null },
-      titleMatch,
+      { title: onlineTitle.record.title, subtitle: onlineTitle.record.subtitle ?? null },
+      onlineTitle,
       'strongest_match',
     );
   else

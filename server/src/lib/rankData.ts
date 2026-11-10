@@ -1,6 +1,7 @@
 import { BULK_COPY_SHARE } from '../config.ts';
 import type { DB } from '../db/database.ts';
 import { allMatchInputs, chooseUsed, picturesFile, type MatchRow } from '../identify/lookups.ts';
+import { SOURCE_LABELS } from '../sources/types.ts';
 import type { EmbeddedMetadata } from '../scan/formats/types.ts';
 import { parseJson, todayLocal } from '../util.ts';
 import { estimateDuration, estimateEffort, unitFor } from './estimate.ts';
@@ -162,7 +163,16 @@ export function loadRankData(db: DB, reach: FolderReachability): RankData {
     ratings.set(i.id, selection);
     const pdfType = f?.pdf_override ?? f?.pdf_type ?? null;
     const chosenDetails = details.get(i.id)!;
-    const sourcePages = chosenDetails.pages?.measured ? null : chosenDetails.pages;
+    // Source pages for the length: the chosen trusted page count (so the shown pages and the
+    // estimate agree), else any used match's as before, provisional included, so no book loses
+    // a length it had.
+    const chosenPages = chosenDetails.pages?.measured ? null : chosenDetails.pages;
+    const fallbackPages = u.find((m) => m.record.pages)?.record;
+    const sourcePages = chosenPages
+      ? { pages: chosenPages.value, label: chosenPages.label }
+      : fallbackPages
+        ? { pages: fallbackPages.pages!, label: SOURCE_LABELS[fallbackPages.source] }
+        : null;
     const ranking = rankingFacts.get(i.id)!;
     const dates = fileDates.get(i.id) ?? [];
     const realDates = dates.filter((d) => !bulk.has(d.folderId));
@@ -238,9 +248,9 @@ export function loadRankData(db: DB, reach: FolderReachability): RankData {
               ? null
               : (f?.words ?? null),
           // A PDF's page count is measured; its words exist only with a text layer.
-          pages: chosenDetails.pages?.measured ? chosenDetails.pages.value : null,
+          pages: f?.pages ?? f?.any_pages ?? null,
           pdfType,
-          sourcePages: sourcePages?.value ?? null,
+          sourcePages: sourcePages?.pages ?? null,
           sourceName: sourcePages?.label ?? null,
         },
         unitFor(i.kind, f?.volume_label ?? null, f?.issue_label ?? null),
