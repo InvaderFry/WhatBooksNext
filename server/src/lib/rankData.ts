@@ -1,13 +1,19 @@
 import { BULK_COPY_SHARE } from '../config.ts';
 import type { DB } from '../db/database.ts';
-import { titleCompareKey } from '../identify/filename.ts';
 import { allMatchInputs, chooseUsed, picturesFile, type MatchRow } from '../identify/lookups.ts';
 import { SOURCE_LABELS } from '../sources/types.ts';
 import { todayLocal } from '../util.ts';
 import { estimateDuration, estimateEffort, unitFor } from './estimate.ts';
-import { loadLibrary, type FolderReachability, type ItemSummary } from './library.ts';
+import {
+  historyOnlyIds,
+  loadLibrary,
+  type FolderReachability,
+  type ItemSummary,
+} from './library.ts';
 import { communityRating, ratingStats, type RatedFrom, type RatingStats } from './ratings.ts';
-import type { RankItem } from './recommend.ts';
+import { holdingOf, type RankItem } from './recommend.ts';
+import { loadCoverage, viaStates } from './coverage.ts';
+import { positionLabel, type Coverage } from './series.ts';
 
 /**
  * Assembles what the pure ranking needs (§6.4) from the database, in a handful of bulk
@@ -17,12 +23,19 @@ import type { RankItem } from './recommend.ts';
 
 interface ItemFactRow {
   id: string;
+  series_id: string | null;
+  series_position: number | null;
+  series_unit: 'volume' | 'issue' | null;
+  series_name: string | null;
+  series_status: 'finished' | 'ongoing' | 'unknown' | null;
+  series_total: number | null;
   series_hint: string | null;
   volume_label: string | null;
   issue_label: string | null;
   publication_year: number | null;
   identity: RankItem['identity'];
   match_source: string | null;
+  match_source_id: string | null;
   acquired_on: string | null;
   words: number | null;
   pages: number | null;
@@ -41,12 +54,6 @@ export interface RankData {
   library: Map<string, ItemSummary>;
   used: Map<string, MatchRow[]>;
 }
-
-const num = (s: string | null | undefined): number | null => {
-  if (!s) return null;
-  const n = parseFloat(s);
-  return Number.isFinite(n) ? n : null;
-};
 
 /** Library folders where most files share one day's date: a bulk copy, dates unknown (§13.7). */
 function bulkCopyFolders(db: DB): Set<string> {
@@ -75,12 +82,15 @@ export function loadRankData(db: DB, reach: FolderReachability): RankData {
     (
       db
         .prepare(
-          `SELECT i.id, i.series_hint, i.volume_label, i.issue_label, i.publication_year, i.identity,
-             i.match_source, u.acquired_on, f.word_count AS words, f.page_count AS pages,
+          `SELECT i.id, i.series_id, i.series_position, i.series_unit, s.name AS series_name,
+             s.publication_status AS series_status, s.installments AS series_total,
+             i.series_hint, i.volume_label, i.issue_label, i.publication_year, i.identity,
+             i.match_source, i.match_source_id, u.acquired_on, f.word_count AS words, f.page_count AS pages,
              f.pdf_type, fu.pdf_type_override AS pdf_override, f.format, f.size,
              (SELECT MAX(g.page_count) FROM item_files y JOIN files g ON g.id = y.file_id
               WHERE y.item_id = i.id) AS any_pages
            FROM items i
+           LEFT JOIN series s ON s.id = i.series_id
            LEFT JOIN user_item u ON u.item_id = i.id
            LEFT JOIN item_files x ON x.item_id = i.id AND x.is_primary = 1
            LEFT JOIN files f ON f.id = x.file_id
@@ -99,16 +109,7 @@ export function loadRankData(db: DB, reach: FolderReachability): RankData {
     if (!fileDates.has(r.item_id)) fileDates.set(r.item_id, []);
     fileDates.get(r.item_id)!.push({ ms: r.ms, folderId: r.folder_id });
   }
-  const historyOnly = new Set(
-    db
-      .prepare(
-        `SELECT DISTINCT l.item_id FROM locations l WHERE l.kind = 'history'
-         AND NOT EXISTS (SELECT 1 FROM item_files x WHERE x.item_id = l.item_id)
-         AND NOT EXISTS (SELECT 1 FROM locations s WHERE s.item_id = l.item_id AND s.kind = 'store')`,
-      )
-      .pluck()
-      .all() as string[],
-  );
+  const historyOnly = historyOnlyIds(db);
   const bulk = bulkCopyFolders(db);
 
   const { matches, rejected, overrides } = allMatchInputs(db);
@@ -134,17 +135,9 @@ export function loadRankData(db: DB, reach: FolderReachability): RankData {
       .filter((m) => m.record.rating)
       .map((m) => ({ ...m.record.rating!, source: m.source }));
     // A series rating is only used for an item that is part of a series (§12.2).
-    const seriesName =
-      f?.series_hint ?? u.find((m) => m.record.series?.name)?.record.series?.name ?? null;
-    const usable = ratings.filter((r) => r.scope !== 'series' || seriesName);
+    const usable = ratings.filter((r) => r.scope !== 'series' || f?.series_id);
     const pdfType = f?.pdf_override ?? f?.pdf_type ?? null;
     const sourcePages = u.find((m) => m.record.pages)?.record;
-    const label = f?.volume_label ?? f?.issue_label ?? null;
-    const position =
-      num(f?.volume_label) ??
-      num(f?.issue_label) ??
-      u.find((m) => m.record.series?.position)?.record.series?.position ??
-      null;
     const dates = fileDates.get(i.id) ?? [];
     const realDates = dates.filter((d) => !bulk.has(d.folderId));
     let acquired: RankItem['acquired'];
@@ -172,14 +165,24 @@ export function loadRankData(db: DB, reach: FolderReachability): RankData {
       matchConfirmed:
         Boolean(override && override !== 'none') || u.some((m) => m.evidence.isbn === 'strong'),
       historyOnly: historyOnly.has(i.id),
-      series: seriesName
-        ? {
-            key: `${i.kind === 'manga' || i.kind === 'comic' ? 'c' : 'b'}:${titleCompareKey(seriesName)}`,
-            name: seriesName,
-            position,
-            label,
-          }
-        : null,
+      work:
+        f?.match_source &&
+        f.match_source_id &&
+        (f.identity === 'accepted' || f.identity === 'provisional')
+          ? `${f.match_source}:${f.match_source_id}`
+          : null,
+      series:
+        f?.series_id && f.series_name
+          ? {
+              key: f.series_id,
+              name: f.series_name,
+              position: f.series_position,
+              label: f.series_position !== null ? positionLabel(f.series_position) : null,
+              unit: f.series_unit ?? 'volume',
+              status: f.series_status ?? 'unknown',
+              total: f.series_total,
+            }
+          : null,
       duration: estimateDuration(
         {
           kind: i.kind,
@@ -209,6 +212,7 @@ export function loadRankData(db: DB, reach: FolderReachability): RankData {
       effort: i.user.effortOverride ?? estimateEffort(i.kind, i.isReference),
     };
   });
+  attachCoverage(db, rankItems);
   return { items: rankItems, stats, library: new Map(items.map((i) => [i.id, i])), used };
 }
 
@@ -218,4 +222,49 @@ function firstScan(i: ItemSummary, folders: Map<string, { created_at: string }>)
   if (created.length === 0) return true;
   const earliest = created.sort()[0]!;
   return Date.parse(i.firstSeenAt) - Date.parse(earliest) < 86_400_000;
+}
+
+/**
+ * Collections and their issues (§12.5): each series gets what its collected editions hold
+ * (for gaps), and items read through another one are marked (for eligibility).
+ */
+export function attachCoverage(db: DB, items: RankItem[]): void {
+  const rows = loadCoverage(db);
+  if (rows.length === 0) return;
+  const byId = new Map(items.map((i) => [i.id, i]));
+  const bySeries = new Map<string, Coverage[]>();
+  for (const r of rows) {
+    const col = byId.get(r.item_id);
+    if (!col) continue;
+    const h = holdingOf(col);
+    const c: Coverage = {
+      id: r.id,
+      itemId: r.item_id,
+      title: r.title,
+      first: r.first_num,
+      last: r.last_num,
+      state: r.state as Coverage['state'],
+      held: h === 'owned' || h === 'read_elsewhere',
+    };
+    if (!bySeries.has(r.series_id)) bySeries.set(r.series_id, []);
+    bySeries.get(r.series_id)!.push(c);
+  }
+  for (const i of items) if (i.series) i.series.coverage = bySeries.get(i.series.key) ?? [];
+  const via = viaStates(
+    items.map((i) => ({
+      id: i.id,
+      seriesKey: i.series?.key ?? null,
+      unit: i.series?.unit ?? null,
+      position: i.series?.position ?? null,
+      finished: i.user.progress === 'finished',
+    })),
+    rows.map((r) => ({
+      itemId: r.item_id,
+      first: r.first_num,
+      last: r.last_num,
+      state: r.state as Coverage['state'],
+      seriesKey: r.series_id,
+    })),
+  );
+  for (const i of items) i.via = via.get(i.id) ?? null;
 }

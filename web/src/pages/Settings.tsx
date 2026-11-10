@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useId, useState } from 'react';
 import { api, daysAgo, formatDate, type Folder, type ScanStatus } from '../api.ts';
 import { Notice } from '../components.tsx';
+import { HistoryImport } from './HistoryImport.tsx';
+import { CalibreImport } from './CalibreImport.tsx';
+import { CsvImport } from './StoreBooks.tsx';
 import { OnlineSettings } from './OnlineSettings.tsx';
 
 export function Settings({
@@ -75,6 +78,9 @@ export function Settings({
       </section>
 
       <OnlineSettings />
+      <CsvImport />
+      <CalibreImport />
+      <HistoryImport onChanged={onLibraryChanged} />
       <BackupSection onRestored={onLibraryChanged} />
     </div>
   );

@@ -1,0 +1,43 @@
+{
+  "id": 910001,
+  "number": "1",
+  "series": {
+    "id": 9100,
+    "name": "Copperline",
+    "sort_name": "Copperline",
+    "volume": 1,
+    "year_began": 2020,
+    "series_type": {
+      "id": 12,
+      "name": "Trade Paperback"
+    },
+    "genres": []
+  },
+  "reprints": [
+    {
+      "id": 900001,
+      "issue": "Copperline (2019) #1"
+    },
+    {
+      "id": 900002,
+      "issue": "Copperline (2019) #2"
+    },
+    {
+      "id": 900003,
+      "issue": "Copperline (2019) #3"
+    },
+    {
+      "id": 900004,
+      "issue": "Copperline (2019) #4"
+    },
+    {
+      "id": 900005,
+      "issue": "Copperline (2019) #5"
+    },
+    {
+      "id": 900006,
+      "issue": "Copperline (2019) #6"
+    }
+  ],
+  "resource_url": "https://metron.cloud/issue/copperline-2020-1/"
+}

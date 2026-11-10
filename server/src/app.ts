@@ -38,8 +38,14 @@ import { requestGuard, securityHeaders } from './security.ts';
 import { LookupManager } from './identify/lookups.ts';
 import { getSetting, registerReadingRoutes } from './routes/reading.ts';
 import { route } from './routes/route.ts';
+import { registerSeriesRoutes } from './routes/series.ts';
+import { registerOperationRoutes } from './routes/operations.ts';
+import { registerStoreRoutes } from './routes/store.ts';
+import { registerCalibreRoutes } from './routes/calibre.ts';
+import { registerHistoryImportRoutes } from './routes/historyImport.ts';
 import { Sources } from './sources/index.ts';
 import type { Fetcher } from './sources/types.ts';
+import { syncSeries } from './identify/series.ts';
 import { HttpError, nowIso, parseJson, todayLocal } from './util.ts';
 
 export interface AppContext {
@@ -94,6 +100,9 @@ export function createApp(ctx: AppContext) {
   const coversDir = ctx.dataDir ? path.join(ctx.dataDir, 'covers') : null;
   const sources = new Sources(db, { demo: ctx.demo, fetcher: ctx.fetcher });
   const lookups = new LookupManager(db, sources);
+  // Series rows are rebuilt from stored facts (§12.5). Doing it at start brings a database
+  // that predates them (or a rule change) up to date without a scan.
+  syncSeries(db);
   const scans = new ScanManager(db, platform, {
     runner: ctx.runner,
     coversDir,
@@ -103,7 +112,7 @@ export function createApp(ctx: AppContext) {
       if (ctx.autoLookups === false) return;
       if (s.status === 'failed' || lookups.isRunning()) return;
       if (!getSetting<boolean>(db, 'lookupsAfterScan', true)) return;
-      if (lookups.pending() > 0) lookups.start();
+      if (lookups.pending() > 0 || lookups.pendingSeries() > 0) lookups.start();
     },
   });
   const reach = new Reachability(ctx);
@@ -143,6 +152,11 @@ export function createApp(ctx: AppContext) {
     reach: () => reach.get(),
     itemIdOr404,
   });
+  registerSeriesRoutes(app, { db, sources, reach: () => reach.get(), itemIdOr404 });
+  registerOperationRoutes(app, { db, scans, itemIdOr404 });
+  registerStoreRoutes(app, { db, sources, itemIdOr404 });
+  registerHistoryImportRoutes(app, db);
+  registerCalibreRoutes(app, { db, platform, scans, dataDir: ctx.dataDir });
 
   // ---- Scan reminder (§9.7) -------------------------------------------------------------------
   // A folder whose last complete scan is over 30 days old, unless the banner was dismissed in
@@ -274,7 +288,9 @@ export function createApp(ctx: AppContext) {
           'INSERT OR REPLACE INTO deletions (entity, entity_id, deleted_at) VALUES (?, ?, ?)',
         ).run('folder', req.params.id, nowIso());
         // Items whose only files were here go too — unless the owner recorded anything on them.
-        return removeOrphanItems(db);
+        const n = removeOrphanItems(db);
+        syncSeries(db);
+        return n;
       })();
       reach.invalidate();
       return { ok: true, itemsRemoved: removed };
@@ -465,6 +481,13 @@ export function createApp(ctx: AppContext) {
           refreshPrimary(db, id);
           refreshFactsOfItems(db, [id]);
         }
+        // A corrected series, number or kind moves the item between series (§12.5).
+        if (
+          patch.seriesOverride !== undefined ||
+          patch.seriesPositionOverride !== undefined ||
+          patch.kindOverride !== undefined
+        )
+          syncSeries(db);
       })();
       return { ok: true };
     }),
@@ -731,6 +754,7 @@ export function createApp(ctx: AppContext) {
     app,
     scans,
     lookups,
+    sources,
     close: async () => {
       await lookups.close();
       await scans.close();

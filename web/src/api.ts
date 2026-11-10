@@ -67,7 +67,12 @@ export interface UserData {
   triage: 'want' | 'maybe' | 'never' | null;
   effortOverride: 'light' | 'medium' | 'heavy' | null;
   preferredFileId: string | null;
+  /** The owner's series name ('' = not in a series); null lets the app decide. */
+  seriesOverride: string | null;
+  seriesPositionOverride: number | null;
 }
+
+export type SeriesUnit = 'volume' | 'issue';
 
 export interface ItemSummary {
   id: string;
@@ -77,6 +82,7 @@ export interface ItemSummary {
   kindIsGuess: boolean;
   isReference: boolean;
   seriesHint: string | null;
+  series: { id: string; name: string; position: number | null; unit: SeriesUnit } | null;
   creators: { name: string; role?: string }[];
   /** File whose thumbnail is this item's cover; null when there is none. */
   coverFileId: string | null;
@@ -386,11 +392,78 @@ export interface Card {
   progress: Progress;
   shortlisted: boolean;
   scope: string;
+  series: { id: string; name: string } | null;
+  gaps: CardGap[];
   lengthBasis: string | null;
   fit: 'fits' | 'might_fit' | 'too_long' | 'unknown' | 'any';
   reasons: string[];
   limitations: string[];
   score: number;
+}
+
+export interface CardGap {
+  text: string;
+  from: number;
+  to: number;
+  unit: SeriesUnit;
+  state: 'not_owned' | 'unavailable' | 'maybe_covered';
+  coveredBy?: { itemId: string; title: string; coverageId: string };
+}
+
+export interface CoverageRow {
+  id: string;
+  seriesId: string;
+  seriesName: string;
+  first: number;
+  last: number;
+  state: 'suggested' | 'confirmed';
+  source: string;
+}
+
+export interface SeriesEntry {
+  id: string;
+  title: string;
+  position: number | null;
+  label: string | null;
+  unit: SeriesUnit;
+  progress: Progress;
+  holding: 'owned' | 'unavailable' | 'read_elsewhere' | null;
+  availabilityLabel: string | null;
+  formats: string[];
+  via?: 'collection' | 'issues' | null;
+}
+
+export interface SeriesView {
+  id: string;
+  name: string;
+  runLabel?: string | null;
+  publications: null | {
+    source: string;
+    checkedAt: string;
+    volumes: { position: number; title: string; sourceId: string; publishedOn: string }[];
+    missing: { position: number; title: string; sourceId: string; publishedOn: string }[];
+    missingRanges: { from: number; to: number }[];
+  };
+  publicationLookup?: { available: boolean; reason: string | null };
+  kind: Kind | null;
+  status: 'finished' | 'ongoing' | 'unknown';
+  statusSource: string | null;
+  ownerStatus: 'finished' | 'ongoing' | null;
+  total: number | null;
+  orderSource: string | null;
+  entries: SeriesEntry[];
+  gaps: CardGap[];
+  coverage: {
+    id: string;
+    itemId: string;
+    title: string;
+    first: number;
+    last: number;
+    state: 'suggested' | 'confirmed';
+    held: boolean;
+  }[];
+  missingAfter: { from: number; to: number } | null;
+  unnumbered: number;
 }
 
 export interface TimePreset {
@@ -440,12 +513,14 @@ export interface LookupStatus {
   outcomes: Record<string, number>;
   errors: string[];
   estimateSeconds: number | null;
+  series?: { done: number; total: number };
   error: string | null;
 }
 
 export interface Lookups {
   status: LookupStatus | null;
   pending: number;
+  pendingSeries: number;
   sources: SourceStatus[];
   afterScan: boolean;
 }

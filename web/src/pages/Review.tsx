@@ -12,6 +12,7 @@ import {
 } from '../api.ts';
 import { Notice } from '../components.tsx';
 import { hrefFor, onLinkClick } from '../url.ts';
+import { OperationsList } from './MergeSplit.tsx';
 
 /**
  * Needs review (PLAN.md §11.4): tiered, worked top-down. Tier 1 could damage history; tier 2 is
@@ -30,7 +31,7 @@ const KIND_TITLES: Record<ReviewRow['kind'], string> = {
   move: 'Did this file move?',
   group_conflict: 'These files may not be the same book',
   copy_conflict: 'The same file is on two books',
-  cross_folder: 'The same book in two folders?',
+  cross_folder: 'The same book twice?',
   pdf_type: 'What kind of PDF is this?',
   tie: 'Two possible matches',
   wrong_match: 'You said this was the wrong book',
@@ -165,6 +166,7 @@ export function Review({ onChanged }: { onChanged: () => void }) {
           </ul>
         </details>
       )}
+      <OperationsList />
     </div>
   );
 }
@@ -180,7 +182,8 @@ function MatchSummary({ report }: { report: MatchReport }) {
         <strong>Matches:</strong> {b.accepted} matched · {b.provisional} unconfirmed · {b.tie} tied
         · {b.unidentified} not found
         {b.notLookedUp > 0 && ` · ${b.notLookedUp} not looked up yet`}
-        {b.noSourceYet > 0 && ` · ${b.noSourceYet} comics and issues (looked up from Milestone 4)`}
+        {b.noSourceYet > 0 &&
+          ` · ${b.noSourceYet} single comic issues (set up Metron in Settings to look them up)`}
       </summary>
       <p className="small">
         Your answers so far: {report.labelled.confirmed} matches confirmed,{' '}
@@ -375,6 +378,9 @@ function ReviewCard({
             </button>
           </>
         )}
+        {row.kind === 'cross_folder' && row.items.filter((i) => i.hasHistory).length > 1 && (
+          <MergeLink row={row} />
+        )}
         {row.kind === 'cross_folder' && (
           <>
             <button
@@ -417,10 +423,8 @@ function ReviewCard({
         )}
         {row.kind === 'copy_conflict' && (
           <>
-            <p className="muted small">
-              Both books have your history. Merging them, with a preview of what conflicts, comes in
-              a later version.
-            </p>
+            <p className="muted small">Both books have your history.</p>
+            <MergeLink row={row} />
             <button
               type="button"
               className="secondary small"
@@ -605,5 +609,20 @@ export function CandidateRow({
         )}
       </div>
     </li>
+  );
+}
+
+/** Both entries have history: merge on the book's page, which previews what conflicts. */
+function MergeLink({ row }: { row: ReviewRow }) {
+  const [a, b] = row.items;
+  if (!a || !b) return null;
+  return (
+    <a
+      className="small"
+      href={hrefFor({ view: 'item', id: a.id, merge: b.id })}
+      onClick={onLinkClick({ view: 'item', id: a.id, merge: b.id })}
+    >
+      Merge, choosing what to keep…
+    </a>
   );
 }

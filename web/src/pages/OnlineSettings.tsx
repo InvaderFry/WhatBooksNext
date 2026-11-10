@@ -174,6 +174,158 @@ export function OnlineSettings() {
       )}
       {message && <Notice kind="success">{message}</Notice>}
       {error && <Notice kind="error">{error}</Notice>}
+      {!demo && lookups && (
+        <>
+          <ComicKeyCard
+            name="metron"
+            title="Metron"
+            what="Token"
+            onChanged={() => void load()}
+            intro="Metron looks up single comic issues: which series and run, the cover year, and whether the series has ended. It needs a free account and an API token."
+            steps={[
+              'Make a free account at metron.cloud (about 5 minutes).',
+              'On your Metron account page, create an API token and copy it.',
+              'Paste it below and press Save. It stays on this PC.',
+            ]}
+          />
+          <ComicKeyCard
+            name="comicvine"
+            title="ComicVine"
+            what="API key"
+            onChanged={() => void load()}
+            intro="ComicVine is a fallback for comic issues Metron can’t find. It allows 200 requests an hour, so it’s slow and only asked when needed. Free account; non-commercial use only."
+            steps={[
+              'Make a free account at comicvine.gamespot.com.',
+              'Open the API page (link below) while signed in and copy your API key.',
+              'Paste it below and press Save. It stays on this PC.',
+            ]}
+          />
+        </>
+      )}
     </section>
+  );
+}
+
+/** A comic source's key: masked, Show, Remove, Replace — like Hardcover's (§6.3). */
+function ComicKeyCard({
+  name,
+  title,
+  what,
+  intro,
+  steps,
+  onChanged,
+}: {
+  name: 'metron' | 'comicvine';
+  title: string;
+  what: string;
+  intro: string;
+  steps: string[];
+  onChanged: () => void;
+}) {
+  const [info, setInfo] = useState<{
+    configured: boolean;
+    masked: string | null;
+    site: string;
+  } | null>(null);
+  const [value, setValue] = useState('');
+  const [shown, setShown] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const load = useCallback(async () => setInfo(await api.get(`/api/settings/${name}`)), [name]);
+  useEffect(() => {
+    void load();
+  }, [load]);
+  const save = async (v: string | null) => {
+    setError(null);
+    try {
+      await api.put(`/api/settings/${name}`, { token: v });
+      setValue('');
+      setShown(null);
+      setMessage(
+        v ? `${what} saved. Run Diagnostics → Test ${title} to check it.` : `${what} removed.`,
+      );
+      await load();
+      onChanged();
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  };
+  if (!info) return null;
+  const id = `${name}-key`;
+  return (
+    <div className="card hardcover">
+      <h3>
+        {title} <span className="tag">Optional · comics</span>
+      </h3>
+      <p className="small">{intro}</p>
+      <ol className="steps small">
+        {steps.map((s) => (
+          <li key={s}>{s}</li>
+        ))}
+        <li>
+          Then open{' '}
+          <a href={hrefFor({ view: 'diagnostics' })} onClick={onLinkClick({ view: 'diagnostics' })}>
+            Diagnostics
+          </a>{' '}
+          and press Test {title}.
+        </li>
+      </ol>
+      <p className="small">
+        <a href={info.site} target="_blank" rel="noreferrer noopener">
+          Open {title}
+          <span className="visually-hidden"> (opens in a new tab)</span>
+        </a>
+      </p>
+      {info.configured && (
+        <p className="row-actions wrap">
+          <span>
+            Saved {what === 'Token' ? 'token' : what}: <code>{shown ?? info.masked}</code>
+          </span>
+          <button
+            type="button"
+            className="secondary small"
+            aria-pressed={shown !== null}
+            onClick={async () =>
+              setShown(
+                shown
+                  ? null
+                  : (await api.get<{ token: string }>(`/api/settings/${name}/reveal`)).token,
+              )
+            }
+          >
+            {shown ? 'Hide' : 'Show'}
+          </button>
+          <button type="button" className="secondary small danger" onClick={() => void save(null)}>
+            Remove
+          </button>
+        </p>
+      )}
+      <form
+        className="inline-form"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (value.trim()) void save(value);
+        }}
+      >
+        <label htmlFor={id}>
+          {info.configured
+            ? `Replace the ${what === 'Token' ? 'token' : what}`
+            : `${title} ${what === 'Token' ? 'token' : what}`}
+        </label>
+        <input
+          id={id}
+          type="password"
+          autoComplete="off"
+          spellCheck={false}
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+        />
+        <button type="submit" disabled={!value.trim()}>
+          Save
+        </button>
+      </form>
+      {message && <Notice kind="success">{message}</Notice>}
+      {error && <Notice kind="error">{error}</Notice>}
+    </div>
   );
 }

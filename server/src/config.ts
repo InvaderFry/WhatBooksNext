@@ -192,6 +192,25 @@ export const HARDCOVER_MIN_INTERVAL_MS = 1000;
 /** Hardcover's daily allowance on a free token; lookups stop for the day before reaching it. */
 export const HARDCOVER_DAILY_LIMIT = 5000;
 
+/**
+ * Metron (comics): a burst limit of at least 20 requests a minute and 5,000 a day for a free
+ * account, reported in X-RateLimit-Burst-* and X-RateLimit-Sustained-* headers (Metron's own
+ * client library, Mokkari 5.0, November 2026; metron.cloud's docs refuse automated reads). One
+ * request every 3.1 s stays under 20 a minute.
+ */
+export const METRON_MIN_INTERVAL_MS = 3100;
+
+/** Metron's daily allowance on a free account; lookups stop for the day a little before it. */
+export const METRON_DAILY_LIMIT = 5000;
+
+/**
+ * ComicVine: "200 requests per resource, per hour", with blocks for too many a second
+ * (comicvine.gamespot.com/api, November 2026). One request every 18.5 s stays under 200 an
+ * hour even when every request hits the same resource. It's the fallback, asked only when
+ * Metron finds nothing, so this slowness costs little.
+ */
+export const COMICVINE_MIN_INTERVAL_MS = 18_500;
+
 /** Give up on one request after this long. Hardcover's own limit is 30 s (2 s for search). */
 export const SOURCE_TIMEOUT_MS = 20_000;
 
@@ -295,3 +314,13 @@ export const PICTURE_WORDS_PER_PAGE = 150;
  * of the top seven (owner's first quality check). Small, so a clearly better book still leads.
  */
 export const SAME_AUTHOR_PENALTY = 0.04;
+
+/** Undo stack: the last 20 merges and splits (§20 "covers a cleanup session"). */
+export const UNDO_STACK_SIZE = 20;
+
+/** Assumption: bound catalogue responses below Hardcover's documented 997-row relation limit. */
+export const SERIES_PUBLICATION_LIMIT = 500;
+// Refuse a truncated membership list instead of choosing an unverified series.
+export const SERIES_MEMBERSHIP_LIMIT = 100;
+/** Assumption: weekly catalogue refresh catches new volumes without repeated requests per book. */
+export const SERIES_PUBLICATION_CACHE_DAYS = 7;

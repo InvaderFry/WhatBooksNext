@@ -1,6 +1,7 @@
 import { RESTORE_SNAPSHOTS_KEPT } from '../config.ts';
 import { schemaVersion, type DB } from '../db/database.ts';
 import { takeSnapshot } from '../db/snapshots.ts';
+import { syncSeries } from '../identify/series.ts';
 import { HttpError, nowIso } from '../util.ts';
 
 /**
@@ -17,6 +18,8 @@ export const BACKUP_TABLES = [
   'settings',
   'folders',
   'series',
+  'series_user',
+  'series_publications',
   'items',
   'files',
   'item_files',
@@ -31,6 +34,8 @@ export const BACKUP_TABLES = [
   'candidates_rejected',
   'review_state',
   'pick_feedback',
+  'collection_coverage',
+  'import_keys',
 ] as const;
 
 /**
@@ -45,6 +50,10 @@ const ADDED_IN: Record<string, number> = {
   candidates_rejected: 3,
   review_state: 3,
   pick_feedback: 3,
+  series_user: 5,
+  series_publications: 9,
+  collection_coverage: 6,
+  import_keys: 8,
 };
 
 /**
@@ -64,6 +73,9 @@ export const BACKUP_EXCLUDED: Record<string, string> = {
   secrets: 'API keys are never exported',
   // Operational log of past lookups, like scan_runs.
   enrich_runs: 'lookup history only',
+  // The merge/split undo stack: snapshots of rows from before each operation. Restoring an old
+  // stack could undo onto data it no longer describes, so restore clears it instead.
+  operations: 'undo history, cleared by a restore',
 };
 
 export interface Backup {
@@ -186,6 +198,8 @@ export async function restoreBackup(
     for (const t of [...BACKUP_TABLES].reverse()) db.prepare(`DELETE FROM ${t}`).run();
     // Old directory listings describe the replaced library; the next scan rebuilds them.
     db.prepare('DELETE FROM directory_scans').run();
+    // The undo stack describes the data being replaced.
+    db.prepare('DELETE FROM operations').run();
     for (const t of BACKUP_TABLES) {
       const rows = backup.tables[t]!;
       if (rows.length === 0) continue;
@@ -209,6 +223,9 @@ export async function restoreBackup(
         400,
         'The backup refers to records it does not contain; nothing was changed.',
       );
+    // A backup from before series had their own rows (version < 5) has none: rebuild them
+    // from the restored items, keeping any series ids the backup does hold.
+    syncSeries(db);
   })();
   return { snapshotPath };
 }

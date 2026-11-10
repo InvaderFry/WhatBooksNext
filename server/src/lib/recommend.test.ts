@@ -31,6 +31,8 @@ const user = (over: Partial<RankItem['user']> = {}): RankItem['user'] => ({
   triage: null,
   effortOverride: null,
   preferredFileId: null,
+  seriesOverride: null,
+  seriesPositionOverride: null,
   updatedAt: null,
   ...over,
 });
@@ -55,6 +57,21 @@ const item = (over: Partial<RankItem> = {}): RankItem => ({
   firstPublishYear: null,
   acquired: { date: null, basis: 'unknown' },
   effort: 'unknown',
+  ...over,
+});
+
+const ser = (
+  key: string,
+  position: number | null,
+  over: Partial<NonNullable<RankItem['series']>> = {},
+): NonNullable<RankItem['series']> => ({
+  key,
+  name: key,
+  position,
+  label: position === null ? null : String(position),
+  unit: 'volume',
+  status: 'unknown',
+  total: null,
   ...over,
 });
 
@@ -215,13 +232,91 @@ describe('Read next', () => {
     const s = (pos: number, progress = 'not_started') =>
       item({
         title: `Saga vol. ${pos}`,
-        series: { key: 'c:saga', name: 'Saga', position: pos, label: String(pos) },
+        series: ser('saga', pos),
         user: user({ progress }),
       });
     expect(onePerSeries([s(2), s(1), s(3)]).map((i) => i.title)).toEqual(['Saga vol. 1']);
     expect(onePerSeries([s(1, 'finished'), s(2), s(3, 'into_it')]).map((i) => i.title)).toEqual([
       'Saga vol. 3',
     ]);
+  });
+
+  it('offers a collected volume before single issues, unless the owner is reading the issues', () => {
+    const vol = item({ title: 'Saga Vol. 1', series: ser('saga', 1) });
+    const iss = (n: number, progress = 'not_started') =>
+      item({
+        title: `Saga #${n}`,
+        series: ser('saga', n, { unit: 'issue' }),
+        user: user({ progress }),
+      });
+    expect(onePerSeries([vol, iss(1), iss(2)]).map((i) => i.title)).toEqual(['Saga Vol. 1']);
+    const all = [vol, iss(1, 'finished'), iss(2)];
+    expect(
+      onePerSeries(
+        all.filter((i) => i.user.progress !== 'finished'),
+        all,
+      ).map((i) => i.title),
+    ).toEqual(['Saga #2']);
+  });
+
+  it('treats an installment with no number as a standalone book', () => {
+    const numbered = item({ title: 'Saga vol. 1', series: ser('saga', 1) });
+    const special = item({ title: 'Saga: a side story', series: ser('saga', null) });
+    expect(
+      onePerSeries([numbered, special])
+        .map((i) => i.title)
+        .sort(),
+    ).toEqual(['Saga vol. 1', 'Saga: a side story']);
+  });
+
+  // Scenario 3: owning volumes 1, 2 and 4 warns about volume 3 before volume 1 is started;
+  // after volume 2, volume 4 is selectable with the warning; volume 3 is never shown as owned.
+  it('warns about a missing volume before the series is started, and again at the next volume', () => {
+    const v = (pos: number, progress = 'not_started') =>
+      item({ title: `Saga vol. ${pos}`, series: ser('saga', pos), user: user({ progress }) });
+    const before = [v(1), v(2), v(4)];
+    const first = readNext(before, situation(), page).cards;
+    expect(first.map((c) => c.title)).toEqual(['Saga vol. 1']);
+    expect(first[0]!.gaps.map((g) => g.text)).toEqual([
+      'Gap ahead: volume 3 isn’t recorded as owned or read.',
+    ]);
+    expect(first[0]!.scope).toMatch(/^Starts a series · vol\. 1 · 3 owned · /);
+
+    const after = [v(1, 'finished'), v(2, 'finished'), v(4)];
+    const next = readNext(after, situation(), page).cards;
+    expect(next.map((c) => c.title)).toEqual(['Saga vol. 4']);
+    expect(next[0]!.gaps).toMatchObject([
+      { from: 3, to: 3, text: 'Gap: volume 3 isn’t recorded as owned or read.' },
+    ]);
+    expect(next[0]!.scope).toMatch(/^Next in series · vol\. 4 · /);
+  });
+
+  it('drops the warning once the missing volume is marked read elsewhere', () => {
+    const v = (pos: number, over: Partial<RankItem> = {}) =>
+      item({ title: `Saga vol. ${pos}`, series: ser('saga', pos), ...over });
+    const all = [
+      v(1, { user: user({ progress: 'finished' }) }),
+      v(2, { user: user({ progress: 'finished' }) }),
+      v(3, {
+        historyOnly: true,
+        availability: { state: 'none', label: null, alsoInICloud: false, readyToRead: false },
+        user: user({ progress: 'finished' }),
+      }),
+      v(4),
+    ];
+    const cards = readNext(all, situation(), page).cards;
+    expect(cards.map((c) => c.title)).toEqual(['Saga vol. 4']);
+    expect(cards[0]!.gaps).toEqual([]);
+  });
+
+  it('says how many of a finished story’s volumes are owned, and whether it is finished', () => {
+    const v = (pos: number) =>
+      item({
+        title: `Saga vol. ${pos}`,
+        series: ser('saga', pos, { status: 'finished', total: 6 }),
+      });
+    const c = readNext([v(1), v(2)], situation(), page).cards[0]!;
+    expect(c.scope).toMatch(/^Starts a series · vol\. 1 · 2 of 6 owned · .* · story finished$/);
   });
 
   it('keeps unavailable books recommendable, with their label as a limitation', () => {
@@ -243,7 +338,7 @@ describe('Read next', () => {
     const manga = item({
       kind: 'manga',
       identity: 'provisional',
-      series: { key: 'c:x', name: 'X', position: 1, label: '1' },
+      series: ser('x', 1),
       community: {
         source: 'anilist',
         raw: 88,

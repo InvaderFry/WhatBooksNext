@@ -34,6 +34,27 @@ describe('filename parser — plan fixtures (§11.1)', () => {
     expect(v(p.year)).toBe(2003);
   });
 
+  it('reads "Book Two" after a name as volume 2 of that series, spelled or not', () => {
+    for (const name of [
+      'Lanternfall Book Two.pdf',
+      'Lanternfall - Book 2.pdf',
+      'Lanternfall, Book Two - The Ash Road.epub',
+    ]) {
+      const p = parseFilename(name);
+      expect(v(p.series)).toBe('Lanternfall');
+      expect(v(p.volume)).toBe('2');
+    }
+    expect(v(parseFilename('Lanternfall, Book Two - The Ash Road.epub').subtitle)).toBe(
+      'The Ash Road',
+    );
+  });
+
+  it('leaves titles that only contain the word "book" alone', () => {
+    for (const name of ['The Book of Small Fires.epub', 'The Book Two.epub', 'Book Two.epub']) {
+      expect(parseFilename(name).series).toBeUndefined();
+    }
+  });
+
   it('keeps both readings of "Title - Author", likelier first', () => {
     const p = parseFilename('Clean Code - Robert C. Martin.pdf');
     expect(p.authorTitle?.[0]).toEqual({ title: 'Clean Code', author: 'Robert C. Martin' });

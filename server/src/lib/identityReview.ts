@@ -12,6 +12,7 @@ import { rankCandidates, scoreCandidate } from '../identify/match.ts';
 import { SOURCE_LABELS, type SourceName, type SourceRecord } from '../sources/types.ts';
 import { HttpError, nowIso } from '../util.ts';
 import { ensureUserRow } from './progress.ts';
+import { syncSeries } from '../identify/series.ts';
 
 /**
  * Needs review for identities (PLAN.md §11.4), tiers 2–4, and the owner's match decisions:
@@ -271,6 +272,8 @@ export function applyMatchAction(db: DB, itemId: string, a: MatchAction): void {
     setOverride(null);
   }
   applyIdentity(db, itemId);
+  // A confirmed (or rejected) match can bring or take away the item's series.
+  syncSeries(db);
 }
 
 /** The decision each source made, for the item page. */

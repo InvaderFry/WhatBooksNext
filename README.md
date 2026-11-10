@@ -5,7 +5,7 @@ they already own. It's a local web app for Windows. It lists your folders, works
 file is, and tracks your reading with one tap. It isn't a reader: you keep reading in your usual
 apps.
 
-**Status: Milestone 3 of 6.** This version has the library and tracking (folders, scanning,
+**Status: Milestone 4 of 6 — features built; Windows checks remain.** This version has the library and tracking (folders, scanning,
 progress, the shortlist, backup and restore), reads inside your files (titles, authors, word and
 page counts, covers, fingerprints that recognise moved and copied files), and gives **first real
 recommendations**: it looks your books up online for ratings and details, and **What next**
@@ -73,6 +73,18 @@ When a book has several files, it opens EPUB first; a comic opens PDF, then CBZ,
 copy first). Every file keeps its own Open button on the book's page. **Triage** sorts books into Want / Maybe / Never / Already read; it's
 optional.
 
+**Series.** Books in a series are offered one at a time: the one you're reading, else the next
+unread one. The series comes from the files' own details (EPUB series, ComicInfo), or from a source
+once the match is certain. If a number is missing ("you own volumes 1, 2 and 4"), the card says
+so **before you start**: _Gap ahead: volume 3 isn't recorded as owned or read._ You can carry on
+anyway, say you read it elsewhere (it fills the gap, is never recommended, and adds no finish
+date), or fix the series on the book's page. There you can also correct a book's series or number,
+take it out of a series, and say whether the story is finished. Single comic issues only count
+gaps between issues you have, because issue runs often start part-way. A collected edition (a
+trade paperback) can say which issues it holds — you type it in on its page under **Collects**, or
+Metron suggests it and you confirm. Once confirmed, it fills those issue gaps, and finishing it
+counts its issues as read (once: nothing is added to the issues' own progress).
+
 To rank books, whatBooksNext looks them up online. Only titles, authors and ISBNs are sent —
 never files or your reading history.
 
@@ -81,12 +93,17 @@ never files or your reading history.
 | Open Library | none                | books: ratings (some), subjects, first publication year |
 | AniList      | none                | manga: series scores, genres, publication status        |
 | Hardcover    | optional free token | book ratings with vote counts, series, genres           |
+| Metron       | optional free token | single comic issues: series, run, cover year, ended?    |
+| ComicVine    | optional free key   | comic issues Metron can't find (200 requests an hour)   |
 
 Everything works without a key. Lookups run after each scan (you can turn that off in
 **Settings → Online lookups**), about one book a second, and pick up where they stopped. **Sources
 fail soft:** if one is down or refuses requests, it's paused for ten minutes after five failures
 in a row, the rest carries on, and nothing already found is lost. Western comics have almost no
-community ratings anywhere; Metron and ComicVine lookups come in Milestone 4.
+community ratings anywhere. Single comic issues are looked up only on Metron (and ComicVine, when
+Metron finds nothing), so without those keys they rank on your own signals. An issue is matched by
+series name and number; a year in the file (the filename's "(2019)" or ComicInfo's Year) that
+agrees with the issue's makes the match certain, so two runs with the same name aren't confused.
 
 When a match isn't certain, the book is still recommended, marked "unconfirmed", and listed in
 **Needs review**, where you can confirm it, pick another, search, or leave it unidentified. Your
@@ -97,6 +114,37 @@ last.
 settings with only the "read catalog" permission (Settings links straight to that form). Paste
 it in **Settings → Online lookups**. It stays on this PC: it's never in a backup, an export or the
 Diagnostics report. Then press **Diagnostics → Test Hardcover**.
+
+## Store books, spreadsheets and Calibre
+
+- **Store books** (Kindle, Apple Books, Google Play, Kobo, GlobalComix): Library → **Add a store
+  book…**, found online or typed in. They're recommended like any book, labelled "In Kindle"
+  and so on, and count as ready to read once you tick "I can read it there now".
+- **A spreadsheet of store books:** Settings → **Store books from a spreadsheet**. A CSV with the
+  columns `title, author, store, kind, progress, isbn, series, series_index, rating, note` (only
+  `title` is needed). You see what would happen first; importing the same file again adds
+  nothing twice and never overwrites your edits.
+- **Calibre:** Settings → **Calibre**. Paste your Calibre library folder. The app reads a copy of
+  Calibre's `metadata.db` and changes nothing in Calibre. Your ratings and a "read" column come
+  across only if you choose them.
+
+## Goodreads and StoryGraph reading history
+
+Settings → **Reading history from Goodreads or StoryGraph** previews your exported CSV before
+saving anything. Choose the service and its file. Matches by ISBN also need an agreeing title
+or author; possible title matches require your confirmation. Existing progress, ratings, dates
+and notes are kept. Re-importing the same books changes nothing, including after a backup restore.
+
+Unmatched read, reading and DNF books can become **history-only** entries: they never appear in
+recommendations. Unmatched to-read books are skipped, and an export's ownership column does not
+add a store copy. DNF history does not imply a dislike reason. Ratings out of 5 are doubled;
+StoryGraph quarter stars are rounded to our whole-number 1–10 scale, with the conversion shown.
+Missing dates stay unknown, partial dates stay approximate, and upload dates are never substituted.
+Reviews and Goodreads private notes become notes. Rereads are represented by one reading and the
+last finish date; other export columns are ignored.
+
+Compatibility is checked against [public sample layouts](fixtures/imports/README.md).
+A fresh authenticated export from each service still needs a real-user check.
 
 ## Backups
 

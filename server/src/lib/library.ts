@@ -52,6 +52,9 @@ export interface UserData {
   triage: 'want' | 'maybe' | 'never' | null;
   effortOverride: 'light' | 'medium' | 'heavy' | null;
   preferredFileId: string | null;
+  /** The owner's series name ('' = not in a series), or null to let the app decide. */
+  seriesOverride: string | null;
+  seriesPositionOverride: number | null;
   updatedAt: string | null;
 }
 
@@ -64,6 +67,8 @@ export interface ItemSummary {
   kindIsGuess: boolean;
   isReference: boolean;
   seriesHint: string | null;
+  /** The series this item is in, and its number there (§12.5). */
+  series: { id: string; name: string; position: number | null; unit: 'volume' | 'issue' } | null;
   creators: { name: string; role?: string }[];
   /** A file of this item with a thumbnail (its cover is served by this file id), or null. */
   coverFileId: string | null;
@@ -105,6 +110,8 @@ const DEFAULT_USER: UserData = {
   triage: null,
   effortOverride: null,
   preferredFileId: null,
+  seriesOverride: null,
+  seriesPositionOverride: null,
   updatedAt: null,
 };
 
@@ -129,6 +136,8 @@ interface UserRow {
   triage: 'want' | 'maybe' | 'never' | null;
   effort_override: 'light' | 'medium' | 'heavy' | null;
   preferred_file_id: string | null;
+  series_override: string | null;
+  series_position_override: number | null;
   updated_at: string;
 }
 
@@ -154,6 +163,8 @@ export function userFromRow(r: UserRow | undefined): UserData {
     triage: r.triage,
     effortOverride: r.effort_override,
     preferredFileId: r.preferred_file_id,
+    seriesOverride: r.series_override,
+    seriesPositionOverride: r.series_position_override,
     updatedAt: r.updated_at,
   };
 }
@@ -165,6 +176,10 @@ interface ItemRow {
   is_reference: number;
   title: string;
   series_hint: string | null;
+  series_id: string | null;
+  series_position: number | null;
+  series_unit: 'volume' | 'issue' | null;
+  series_name: string | null;
   creators: string;
   created_at: string;
   online_title: string | null;
@@ -257,9 +272,10 @@ export function loadLibrary(db: DB, reach: FolderReachability, onlyIds?: string[
   // the owner's own title wins over both.
   const items = db
     .prepare(
-      `SELECT i.*, CASE WHEN i.identity = 'accepted' AND COALESCE(i.title_source, 'filename') != 'embedded'
-           THEN json_extract(m.data, '$.title') END AS online_title
-       FROM items i LEFT JOIN item_matches m ON m.item_id = i.id AND m.source = i.match_source
+      `SELECT i.*, CASE WHEN i.identity = 'accepted' AND COALESCE(i.title_source, 'filename') NOT IN ('embedded', 'owner')
+           THEN json_extract(m.data, '$.title') END AS online_title, s.name AS series_name
+       FROM items i LEFT JOIN series s ON s.id = i.series_id
+       LEFT JOIN item_matches m ON m.item_id = i.id AND m.source = i.match_source
          AND m.source_id = i.match_source_id ${filter}`,
     )
     .all(...(onlyIds ?? [])) as ItemRow[];
@@ -330,6 +346,15 @@ export function loadLibrary(db: DB, reach: FolderReachability, onlyIds?: string[
       kindIsGuess: !user.kindOverride && i.kind !== null,
       isReference: user.referenceOverride ?? i.is_reference === 1,
       seriesHint: i.series_hint,
+      series:
+        i.series_id && i.series_name
+          ? {
+              id: i.series_id,
+              name: i.series_name,
+              position: i.series_position,
+              unit: i.series_unit ?? 'volume',
+            }
+          : null,
       creators: parseJson<{ name: string; role?: string }[]>(i.creators, []),
       // The primary file's cover first (files are sorted primary-first).
       coverFileId: fs.find((f) => f.hasThumbnail)?.id ?? null,
@@ -407,6 +432,20 @@ export function queryLibrary(
   const offset = q.offset ?? 0;
   const limit = Math.min(q.limit ?? 100, 1000);
   return { total: list.length, items: list.slice(offset, offset + limit) };
+}
+
+/** Items only read elsewhere: a history location, no files and no store copy (§7). */
+export function historyOnlyIds(db: DB): Set<string> {
+  return new Set(
+    db
+      .prepare(
+        `SELECT DISTINCT l.item_id FROM locations l WHERE l.kind = 'history'
+         AND NOT EXISTS (SELECT 1 FROM item_files x WHERE x.item_id = l.item_id)
+         AND NOT EXISTS (SELECT 1 FROM locations s WHERE s.item_id = l.item_id AND s.kind = 'store')`,
+      )
+      .pluck()
+      .all() as string[],
+  );
 }
 
 export function resolveItemId(db: DB, id: string): string | null {

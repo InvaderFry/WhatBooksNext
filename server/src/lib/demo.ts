@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { nowIso } from '../util.ts';
 import type { DB } from '../db/database.ts';
 import { FakePlatform } from '../platform/fake.ts';
 import { ATTR_OFFLINE, ATTR_RECALL_ON_DATA_ACCESS } from '../platform/types.ts';
@@ -17,6 +18,8 @@ import {
 import { fillerFor } from '../testing/helpers.ts';
 import { LookupManager } from '../identify/lookups.ts';
 import { Sources } from '../sources/index.ts';
+import { addCoverage, setSuggestedCoverage } from './coverage.ts';
+import { createStoreItem } from './store.ts';
 import { applyUserPatch, shortlistAdd } from './progress.ts';
 
 /**
@@ -104,6 +107,17 @@ function driveFiles(): Record<string, Buffer> {
       cover: true,
       seed: 5,
     }),
+    // The second of a three-book series whose third isn't owned (§12.5: "2 of 3 owned").
+    'Novels/thetinkersclock.epub': makeEpub({
+      title: 'The Tinker’s Clock',
+      creators: ['Tamsin Achterberg'],
+      language: 'en',
+      series: 'The Clockwater Books',
+      seriesIndex: '2',
+      chapters: words(61_000),
+      cover: true,
+      seed: 13,
+    }),
     // A translation in the same folder: grouped by name first, then split by language.
     'Translations/saltandember.epub': makeEpub({
       title: 'Salt and Ember',
@@ -138,7 +152,7 @@ function driveFiles(): Record<string, Buffer> {
       Author: 'Ada Quill',
     }),
     ...Object.fromEntries(
-      [1, 2, 4].map((n) => [
+      [1, 2, 4, 7].map((n) => [
         `Comics/Copperline/Copperline 00${n} (2019) (Digital).cbz`,
         makeCbz({
           pages: 22,
@@ -151,6 +165,10 @@ function driveFiles(): Record<string, Buffer> {
         }),
       ]),
     ),
+    // Collected editions of Copperline: volume 1 (issues 1–4, confirmed below) and volume 2
+    // (5–8, only suggested), so one gap is covered and one "may be covered" (§12.5).
+    'Comics/Copperline/Copperline Vol. 1 (2020).cbz': makeCbz({ pages: 12 }),
+    'Comics/Copperline/Copperline Vol. 2 (2021).cbz': makeCbz({ pages: 14 }),
     'Comics/lanternfish_vol1.cbz': makeCbz({ pages: 8 }),
     'Comics/lanternfish_vol1_hd.cbz': makeCbz({ pages: 8, width: 320, height: 490 }),
     'Comics/tinyrobots_issue1.zip': makeCbz({ pages: 6 }),
@@ -318,6 +336,50 @@ export async function buildDemoLibrary(
   const lookups = new LookupManager(db, new Sources(db, { demo: true }));
   lookups.start();
   await lookups.wait();
+
+  // What the Copperline collections hold: one confirmed by the owner, one only suggested by the
+  // (invented) demo source.
+  const copperline = db
+    .prepare('SELECT series_id FROM items WHERE id = ?')
+    .pluck()
+    .get(byFile('Copperline 002 (2019) (Digital).cbz')) as string;
+  addCoverage(db, byFile('Copperline Vol. 1 (2020).cbz'), copperline, 1, 4);
+  setSuggestedCoverage(db, byFile('Copperline Vol. 2 (2021).cbz'), 'demo', [
+    { seriesId: copperline, first: 5, last: 8 },
+  ]);
+
+  // An ongoing story has more published volumes than the two owned collections.
+  db.prepare(
+    `INSERT INTO series_publications (series_id, source, source_series_id, anchor_book_id, anchor_key, entries, checked_at)
+    VALUES (?, 'demo', 'demo-copperline-volumes', 'demo-trade-1', 'demo', ?, ?)`,
+  ).run(
+    copperline,
+    JSON.stringify(
+      [1, 2, 3, 4].map((position) => ({
+        position,
+        title: `Copperline Vol. ${position}`,
+        sourceId: `demo-trade-${position}`,
+        publishedOn: `${2020 + position}-01-01`,
+      })),
+    ),
+    nowIso(),
+  );
+
+  // Books owned in store apps (§14): one the owner can read on the iPad, one not confirmed.
+  createStoreItem(db, {
+    title: 'The Cartographer of Small Rains',
+    author: 'Wenna Holloway',
+    kind: 'fiction',
+    store: 'kindle',
+    readable: false,
+  });
+  createStoreItem(db, {
+    title: 'A Field Guide to Quiet Machines',
+    author: 'Tobiah Renn',
+    kind: 'nonfiction',
+    store: 'apple_books',
+    readable: true,
+  });
 
   shortlistAdd(db, byFile('thelanternkeepers_3rdedition.epub'));
   shortlistAdd(db, byFile('Starfall Academy v01.cbz'));

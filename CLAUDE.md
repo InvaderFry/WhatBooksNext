@@ -8,8 +8,18 @@ owner has already made. Don't reopen those decisions. Then read the latest
 
 - **M0–M3** are done and checked on the owner's PC (M3: first real recommendations; Hardcover
   verified; quality session passed, `docs/quality-summary.md`).
-- **Next: M4** (PLAN.md §18): series and collections, Metron/ComicVine (single issues wait for
-  them), merge/split with undo, store titles and imports.
+- **M4 in progress** (`docs/milestones/M4.md`). Part 1 (series and gaps) and part 2 (Metron and
+  ComicVine adapters) are built. Part 2 waits on the owner's Test Metron / Test ComicVine
+  reports (done: shapes confirmed, many ties; tie-breakers added). Record real answers into
+  `fixtures/sources/` when the owner can share some. Part 3 (collected
+  editions: `collection_coverage`, `lib/coverage.ts`) is built. Part 4 (merge/split with
+  undo, `lib/operations.ts`) is built. Parts 5–6 (store titles +
+  CSV, `lib/store.ts`; Calibre, `lib/calibre.ts`) are built. Part 7 (Goodreads/StoryGraph,
+  `lib/historyImport.ts`) is built. Windows checks and fresh authenticated export verification
+  remain open in the M4 notes.
+- Series rows are rebuilt by `syncSeries` (`server/src/identify/series.ts`) from stored facts
+  and owner corrections. Call it after anything that changes items' names, numbers, kinds or
+  matches. Gap rules are pure, in `server/src/lib/series.ts`.
 - Content reads go through `server/src/scan/guard.ts` only. Raise a stage in `STAGE_VERSIONS`
   (`server/src/scan/deepPass.ts`) when its reader changes, so the next scan re-reads files.
 - Online sources live in `server/src/sources/`, one polite client each (rate limit, cache,

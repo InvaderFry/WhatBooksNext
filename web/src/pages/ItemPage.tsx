@@ -20,6 +20,9 @@ import {
 import { AvailabilityLabels, Cover, creatorsText, Notice } from '../components.tsx';
 import { hrefFor, onLinkClick } from '../url.ts';
 import { OnlineCard } from './OnlineCard.tsx';
+import { CollectsSection, SeriesSection } from './SeriesCard.tsx';
+import { MergeCard, SplitCard } from './MergeSplit.tsx';
+import { PlacesSection } from './StoreBooks.tsx';
 
 type Patch = Partial<{
   progress: Progress;
@@ -39,12 +42,26 @@ type Patch = Partial<{
   triage: 'want' | 'maybe' | 'never' | null;
   effortOverride: 'light' | 'medium' | 'heavy' | null;
   preferredFileId: string | null;
+  seriesOverride: string | null;
+  seriesPositionOverride: number | null;
 }>;
 
-export function ItemPage({ id }: { id: string }) {
+export function ItemPage({
+  id,
+  mergeWith,
+  splitFiles,
+}: {
+  id: string;
+  /** From Needs review or the undo list: open the merge preview with this other entry. */
+  mergeWith?: string;
+  /** From the undo list: open the split preview with these files (comma-separated ids). */
+  splitFiles?: string;
+}) {
   const [item, setItem] = useState<ItemDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState<string | null>(null);
+  // Bumped when a collection's coverage changes, so the series list reloads its gaps.
+  const [rev, setRev] = useState(0);
 
   const load = useCallback(async () => {
     try {
@@ -292,13 +309,34 @@ export function ItemPage({ id }: { id: string }) {
             />
             Hide from the library
           </label>
-          {item.seriesHint && (
-            <p className="muted small">
-              Series (from the filename, unconfirmed): {item.seriesHint}
-            </p>
-          )}
         </section>
       </div>
+
+      <SeriesSection
+        key={`${item.series?.id ?? 'none'}-${rev}`}
+        itemId={item.id}
+        seriesId={item.series?.id ?? null}
+        position={item.series?.position ?? null}
+        seriesOverride={u.seriesOverride}
+        positionOverride={u.seriesPositionOverride}
+        onSave={(patch, message) => save(patch, message)}
+      />
+      {item.kind === 'comic' && item.series?.unit !== 'issue' && (
+        <CollectsSection
+          itemId={item.id}
+          ownSeriesId={item.series?.id ?? null}
+          onChanged={() => {
+            setRev((r) => r + 1);
+            void load();
+          }}
+        />
+      )}
+
+      <PlacesSection
+        itemId={item.id}
+        hasFiles={item.files.length > 0}
+        onChanged={() => void load()}
+      />
 
       <OnlineCard itemId={item.id} onChanged={() => void load()} />
 
@@ -329,6 +367,13 @@ export function ItemPage({ id }: { id: string }) {
           ))}
         </ul>
       </section>
+
+      <SplitCard
+        itemId={item.id}
+        files={item.files}
+        initialFiles={splitFiles ? splitFiles.split(',').filter(Boolean) : undefined}
+      />
+      <MergeCard itemId={item.id} initialOther={mergeWith} />
     </div>
   );
 }
@@ -574,7 +619,7 @@ function FromTheFile({ file }: { file: FileDetail | undefined }) {
     <section aria-labelledby="fromfile-h" className="card from-file">
       <h2 id="fromfile-h">From the file</h2>
       <p className="muted small">
-        What {file.name} says about itself. Online lookups arrive in a later version.
+        What {file.name} says about itself. What online sources say is under Ratings and details.
       </p>
       <dl className="facts">
         {rows.map(([k, v]) => (

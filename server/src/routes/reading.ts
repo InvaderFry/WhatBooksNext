@@ -1,8 +1,14 @@
 import type { Express, Request } from 'express';
 import { READ_NEXT_PAGE, RECENT_DAYS, TRIAGE_SESSION } from '../config.ts';
 import type { DB } from '../db/database.ts';
-import { lookUpItem, matchFactsFor, type LookupManager } from '../identify/lookups.ts';
-import { buildQuery } from '../identify/match.ts';
+import {
+  lookUpItem,
+  matchFactsFor,
+  resolveRunTies,
+  runHintsFor,
+  type LookupManager,
+} from '../identify/lookups.ts';
+import { buildQuery, decide } from '../identify/match.ts';
 import {
   applyMatchAction,
   itemMatchSummary,
@@ -25,7 +31,9 @@ import {
 } from '../lib/recommend.ts';
 import { bulkReview } from '../lib/review.ts';
 import type { ScanManager } from '../scan/scanManager.ts';
+import { COMICVINE_KEY_URL } from '../sources/comicvine.ts';
 import { HARDCOVER_NEW_TOKEN_URL, normaliseToken } from '../sources/hardcover.ts';
+import { METRON_SITE } from '../sources/metron.ts';
 import { getSecret, maskSecret, setSecret, type Sources } from '../sources/index.ts';
 import { SourceError, SOURCE_LABELS } from '../sources/types.ts';
 import { HttpError, newId, nowIso, parseJson, todayLocal } from '../util.ts';
@@ -199,6 +207,7 @@ export function registerReadingRoutes(app: Express, d: ReadingDeps): void {
     route(() => ({
       status: lookups.status(),
       pending: lookups.pending(),
+      pendingSeries: lookups.pendingSeries(),
       sources: sources.status(),
       afterScan: getSetting(db, 'lookupsAfterScan', true),
     })),
@@ -308,6 +317,111 @@ export function registerReadingRoutes(app: Express, d: ReadingDeps): void {
     }),
   );
 
+  // ---- Comic source keys (§6.3, §12.1): Metron token and ComicVine key, like Hardcover's -----
+  const COMIC_KEYS = {
+    metron: { secret: 'metron_token', label: 'Metron token', site: METRON_SITE },
+    comicvine: { secret: 'comicvine_key', label: 'ComicVine API key', site: COMICVINE_KEY_URL },
+  } as const;
+  for (const [name, k] of Object.entries(COMIC_KEYS)) {
+    app.get(
+      `/api/settings/${name}`,
+      route(() => ({
+        configured: !!getSecret(db, k.secret),
+        masked: maskSecret(getSecret(db, k.secret)),
+        site: k.site,
+      })),
+    );
+    app.get(
+      `/api/settings/${name}/reveal`,
+      route(() => ({ token: getSecret(db, k.secret) })),
+    );
+    app.put(
+      `/api/settings/${name}`,
+      route((req) => {
+        const t = req.body?.token;
+        if (t !== null && typeof t !== 'string')
+          throw new HttpError(400, 'token must be text or null.');
+        const clean = t === null ? null : normaliseToken(t);
+        if (clean !== null && !/^[\w.\-~+/=]{16,4000}$/.test(clean))
+          throw new HttpError(400, `That doesn’t look like a ${k.label}. Copy it again.`);
+        setSecret(db, k.secret, clean);
+        lookups.invalidate();
+        return { ok: true, configured: !!clean };
+      }),
+    );
+  }
+
+  // Diagnostics → Test Metron / Test ComicVine: real lookups of single issues from the library,
+  // what came back, and the rate-limit headers. Titles only if the owner ticks the box.
+  app.post(
+    '/api/diagnostics/comic-test',
+    route(async (req) => {
+      const which = req.body?.source;
+      if (which !== 'metron' && which !== 'comicvine')
+        throw new HttpError(400, 'source must be metron or comicvine.');
+      const src = which === 'metron' ? sources.metron : sources.comicvine;
+      if (!src.configured())
+        throw new HttpError(
+          400,
+          `Enter the ${which === 'metron' ? 'Metron token' : 'ComicVine API key'} in Settings first.`,
+        );
+      const names = req.body?.names === true;
+      // ComicVine allows 200 requests an hour and needs two per issue: one issue is enough.
+      const ids = db
+        .prepare(
+          `SELECT i.id FROM items i LEFT JOIN user_item u ON u.item_id = i.id
+           WHERE i.issue_label IS NOT NULL AND i.series_hint IS NOT NULL
+             AND COALESCE(u.kind_override, i.kind, 'comic') = 'comic'
+           ORDER BY random() LIMIT ?`,
+        )
+        .pluck()
+        .all(which === 'metron' ? 3 : 1) as string[];
+      if (ids.length === 0)
+        throw new HttpError(400, 'No single comic issues in the library to test with.');
+      const results = [];
+      for (const [n, id] of ids.entries()) {
+        const facts = matchFactsFor(db, id)!;
+        facts.runs = runHintsFor(db, id);
+        const q = buildQuery(facts);
+        const label = names ? `${q.series} #${q.issue}` : `Issue ${n + 1}`;
+        try {
+          const recs = await src.search(q, { refresh: true });
+          const d = decide(facts, recs);
+          const [top, next] = d.ranked;
+          const brief = (c: (typeof d.ranked)[number] | undefined) =>
+            c
+              ? {
+                  title: names ? c.record.title : undefined,
+                  score: c.score,
+                  years: c.record.years ?? [],
+                  status: c.record.series?.status ?? 'unknown',
+                  total: c.record.series?.total ?? null,
+                  link: Boolean(c.record.url),
+                }
+              : null;
+          results.push({
+            issue: label,
+            results: recs.length,
+            decision: d.decision,
+            // Years aren't titles: they say why a tie couldn't be settled.
+            fileYears: facts.years ?? [],
+            runHint: (facts.runs ?? []).length > 0,
+            top: brief(top),
+            next: brief(next),
+          });
+        } catch (e) {
+          results.push({ issue: label, error: (e as Error).message });
+        }
+      }
+      return {
+        ok: results.every((r) => !('error' in r)),
+        results,
+        rateLimit: src.client.status().rateLimit,
+        requestsToday: which === 'metron' ? sources.metron.usageToday() : null,
+      };
+    }),
+  );
+
   // ---- One item's online identity (§11.4) ----------------------------------------------------
   app.get(
     '/api/items/:id/online',
@@ -349,11 +463,20 @@ export function registerReadingRoutes(app: Express, d: ReadingDeps): void {
   );
   app.post(
     '/api/items/:id/match',
-    route((req) => {
+    route(async (req) => {
       const id = d.itemIdOr404(String(req.params.id));
       const a = validateMatchAction(req.body);
       db.transaction(() => applyMatchAction(db, id, a))();
-      return { ok: true };
+      // A confirmed comic issue settles the run for the issues next to it (cache only). While a
+      // lookup run is going, it does this itself at the end.
+      let settled = 0;
+      if (
+        a.action === 'confirm' &&
+        !lookups.isRunning() &&
+        db.prepare('SELECT issue_label FROM items WHERE id = ?').pluck().get(id)
+      )
+        settled = await resolveRunTies(db, sources);
+      return { ok: true, settled };
     }),
   );
   app.post(
