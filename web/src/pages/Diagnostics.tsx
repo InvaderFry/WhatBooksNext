@@ -40,6 +40,11 @@ interface Diag {
     requests: number;
     note: string;
   }[];
+  ratings: {
+    tiers: Record<string, number>;
+    unknown: number;
+    whatNext: { total: number; provisional: number };
+  };
   lookups: { pending: number; running: boolean };
 }
 
@@ -157,6 +162,22 @@ export function Diagnostics() {
               </li>
             </ul>
           </section>
+          <section className="section" aria-labelledby="ratings-h">
+            <h2 id="ratings-h">Rating evidence</h2>
+            <p className="muted">All library items, including finished and read elsewhere.</p>
+            <ul className="plain">
+              {Object.entries(diag.ratings.tiers).map(([tier, count]) => (
+                <li key={tier}>
+                  Tier {tier} — {RATING_TIERS[tier]}: {count}
+                </li>
+              ))}
+              <li>Unknown: {diag.ratings.unknown}</li>
+              <li>
+                Default What next picks using an unconfirmed rating (tier 5):{' '}
+                {diag.ratings.whatNext.provisional} of {diag.ratings.whatNext.total}
+              </li>
+            </ul>
+          </section>
           <section className="section" aria-labelledby="sources-h">
             <h2 id="sources-h">Online sources</h2>
             <ul className="check-list">
@@ -211,6 +232,14 @@ export function Diagnostics() {
   );
 }
 
+const RATING_TIERS: Record<string, string> = {
+  1: 'trusted book or volume, supported',
+  2: 'trusted whole series, supported',
+  3: 'trusted book or volume, few or unknown ratings',
+  4: 'trusted whole series, few or unknown ratings',
+  5: 'unconfirmed match',
+};
+
 function toReport(d: Diag): string {
   const lines = [
     'whatBooksNext diagnostics',
@@ -234,6 +263,11 @@ function toReport(d: Diag): string {
     '',
     `Deep scan: ${d.deepScan.filesRead} read, ${d.deepScan.filesHashed} hashed, ${d.deepScan.covers} covers, ${d.deepScan.problems} problems`,
     `Lookups waiting: ${d.lookups.pending}${d.lookups.running ? ' (running)' : ''}`,
+    ...Object.entries(d.ratings.tiers).map(
+      ([tier, count]) => `Rating tier ${tier} (${RATING_TIERS[tier]}): ${count}`,
+    ),
+    `Rating unknown: ${d.ratings.unknown}`,
+    `Default What next picks on tier 5: ${d.ratings.whatNext.provisional} of ${d.ratings.whatNext.total}`,
     ...d.sources.map(
       (s) =>
         `${s.label}: ${s.configured ? s.state : 'no key'}; requests this run ${s.requests}${s.lastError ? `; last error: ${s.lastError}` : ''}`,

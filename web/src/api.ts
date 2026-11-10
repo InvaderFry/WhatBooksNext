@@ -596,6 +596,8 @@ export interface ItemOnline {
     scope: 'book' | 'volume' | 'series';
     score: number;
     highlyRated: boolean;
+    label: string | null;
+    match: 'confirmed' | 'accepted' | 'provisional';
   } | null;
   duration: Duration | null;
   effort: 'light' | 'medium' | 'heavy' | 'unknown';

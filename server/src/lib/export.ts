@@ -43,6 +43,8 @@ export const EXPORT_COLUMNS = [
   'note',
   'takeaway',
   'id',
+  'community_scope',
+  'community_match',
 ] as const;
 
 const FORMULA_START = /^[=+\-@\t\r]/;
@@ -129,6 +131,8 @@ export function exportCsv(db: DB, items: RankItem[]): string {
       note: u.note ?? '',
       takeaway: u.takeaway ?? '',
       id: i.id,
+      community_scope: c?.scope ?? '',
+      community_match: c?.match ?? '',
     };
     lines.push(EXPORT_COLUMNS.map((k) => csvCell(row[k])).join(','));
   }

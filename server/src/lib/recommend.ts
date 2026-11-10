@@ -420,8 +420,8 @@ const fmt = (n: number) => n.toLocaleString('en-US');
 
 function ratingReason(c: CommunityRating): string {
   const src = SOURCE_LABELS[c.source];
-  const raw = c.scale === 100 ? `${Math.round(c.raw)}/100` : `${c.raw.toFixed(1)}/5`;
-  const votes = c.votes ? ` from ${fmt(c.votes)} rating${c.votes === 1 ? '' : 's'}` : '';
+  const raw = `${c.raw}/${c.scale}`;
+  const votes = c.votes !== null ? ` from ${fmt(c.votes)} rating${c.votes === 1 ? '' : 's'}` : '';
   return c.scope === 'series'
     ? `Series rated ${raw} on ${src}${votes}`
     : `Rated ${raw} by ${src} readers${votes}`;
@@ -538,6 +538,8 @@ export function buildCard(i: RankItem, all: RankItem[], s: Situation): Card {
   if (i.identity === 'unidentified' && i.kind !== 'comic')
     limits.push('not identified online: details from the file only');
   if (i.community?.scope === 'series') limits.push('rating is for the whole series');
+  if (i.community?.match === 'provisional') limits.push('rating is from an unconfirmed match');
+  if (i.community?.label && i.community.match !== 'provisional') limits.push(i.community.label);
   // "On external drive…" → "on external drive…", keeping names such as iCloud as they are.
   if (i.availability.label)
     limits.push(i.availability.label.charAt(0).toLowerCase() + i.availability.label.slice(1));

@@ -712,11 +712,15 @@ keys.
   books from one source and few from another.
 - **Your rating and the community rating are shown separately.** Your rating, when present, is what
   the ranking uses.
-- Current community rating preference: Hardcover → AniList → Open Library. The
-  [ratings and refresh plan](docs/plans/online-ratings-and-refreshes.md) replaces this fixed order
-  with scope, then the most ratings among trusted matches; shows every source's rating and the
-  best detail from each source; keeps Hidden gems honest ("few ratings everywhere we looked");
-  and adds automatic refreshes. **A series score is never shown as a volume's score.**
+- Community ratings use the first non-empty tier: trusted item with at least 20 ratings;
+  trusted supported series; trusted sparse item; trusted sparse series; provisional-only fallback.
+  Within a tier, most ratings wins (unknown below zero), then owner confirmation, this match's
+  ISBN evidence, accepted status, match score and a stable source tie-break. Each source record
+  counts once in source statistics, even when its series score appears on several volumes.
+  **A series score is never shown as a volume's score.** Unconfirmed ratings are labelled and
+  never make Hidden gems. The [ratings and refresh plan](docs/plans/online-ratings-and-refreshes.md)
+  specifies this Stage 1; best details, the full source-by-source book page and refreshes follow
+  in stages 2–4.
 - Unknown rating: neutral in the blend; **fails** any "highly rated" filter.
 
 ### 12.3 Duration
@@ -911,7 +915,7 @@ rerolls.
 | **Next in series** | The next eligible owned installment of each series you've started; an unfinished earlier one first. Gaps warn, never block. |
 | **One-sitting reads** | Whole works or single installments that **confidently** fit the Finish-within budget (default 2 h). Rating helps but isn't required. Labelled installment vs standalone. |
 | **Waiting on your shelf** | Highly rated, not started, not reference, waiting longest. Uses the acquired date (§13.7), labelled with where it came from. Ties broken by rating. |
-| **Hidden gems** | Positive community rating with few votes *for that source* (§20). Missing data is not obscurity. |
+| **Hidden gems** | Highly rated trusted book/volume rating with at least 5 votes, few for its source and every other trusted source with a known count (§20). Missing data is not obscurity. |
 | **Classics you missed** | Highly rated, not started, first published 25+ years ago. The description states the rule. |
 | **Still relevant?** | A **review list** for tech books not yet decided here. Order: version-specific titles ("React 16") first, then books outside your topic interests, then oldest first. Shows the signals (version, age, topic match, reference use) as context; it never decides for you. Actions: Want / Mark as reference / Never / Decide later. Old fundamentals aren't treated as stale. |
 | **Mood** | Escape (fiction, comics, manga) / Learn (nonfiction, tech, self-help) / Skim (short items and reference). Re-weights rather than filters. |
@@ -1269,9 +1273,10 @@ use. Keep them in one config module, each with its reason in a comment.
 | Fingerprint | size + SHA-256 of first and last 64 KB (partial); full SHA-256 of every present local file, computed once in the deep pass and reused while size and modified time hold | The partial hash is cheap; the full hash must already exist for a file that later goes missing, or a move can't be confirmed. |
 | Full-hash time limit | None per file, but cancellable, resumable and run last at low priority | Hashing a large file on a slow external drive legitimately takes longer than the 60 s parse limit. |
 | Copy match | Full hashes match; or, when full hashes can't be compared, same filename (extension included, ignoring case) + exact byte size. Any disagreeing hash blocks it. | Owner-approved: an identical name and size is the same file when nothing contradicts it. Placeholders can't be hashed. |
-| Rating shrinkage | Prior weight = **median vote count for that source in this library**; prior mean = that source's mean in this library | Adapts to each source's audience size instead of guessing a constant. |
+| Rating shrinkage | Prior weight = **median vote count for that source in this library**; prior mean = that source's mean in this library; one sample per eligible `source:sourceId` target | Adapts to each source's audience size instead of guessing a constant. |
 | "Highly rated" | At or above the **70th percentile** of that source's shrunk scores in this library; with fewer than 30 rated items from that source, ≥ 80 / 100 instead | Star averages cluster near 4 / 5, so a fixed cut-off passes most books from one source and few from another. The fallback covers small libraries. |
-| Hidden gems | "Highly rated" (above), votes in the bottom 25% for that source, and at least 5 votes | Too few votes is noise, not a gem. |
+| Supported rating (`RATING_SUPPORTED_VOTES`) | 20 ratings | Assumption: separates noisy item scores from supported series fallbacks; calibrate against the owner’s library. |
+| Hidden gems | Trusted book/volume rating, "highly rated" (above), at least 5 votes and in the bottom 25% for its source; every other trusted known count is also in its source’s bottom 25% | Too few votes is noise, not a gem. |
 | Read next list size | 10 cards, "Show more" adds 10 | Enough choice without becoming the Library. |
 | Classics age | 25 years since first publication | A generation old; long enough for reputation to settle. |
 | Ranking weights | rating 0.35, time fit 0.20, taste 0.15, momentum 0.15, triage 0.10, recency 0.05 | Ratings lead; recency stays a nudge. Adjustable under Tune. |
@@ -1305,7 +1310,7 @@ plainly at the start of your message, with what to do and roughly how long it ta
 | **After M1** | Send more real filenames — especially HD versions and EPUB/PDF pairs. |
 | **Start of M3** | **Create a free Hardcover account** and generate an API token (about 5 minutes). Once the adapter is built, enter the token in the app's Settings (never in chat), run Diagnostics → Test Hardcover, and share the copied report. Decides whether Hardcover can be labelled Recommended. |
 | **End of M3** | First ~20-minute recommendation quality session (§17.2). |
-| **During M1–M6, as they come up** | Check the "needs checking on the owner's machine" items on the Windows PC. |
+| **During M1–M6, as they come up** | Check the "needs checking on the owner's machine" items on the Windows PC. For ratings Stage 1, open the CSV in Excel to check the appended scope/match columns, accents and formula text; inspect Diagnostics tier counts. No new accounts or keys. |
 | **End of M6** | Try installing from the README as a stranger would. The second quality session moves to after stage 3 of the [ratings and refresh plan](docs/plans/online-ratings-and-refreshes.md), so it judges the new ratings and details. |
 
 ### Still to confirm (not blocking)

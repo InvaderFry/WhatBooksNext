@@ -288,6 +288,9 @@ export const HIGHLY_RATED_PERCENTILE = 0.7;
 export const HIGHLY_RATED_MIN_ITEMS = 30;
 export const HIGHLY_RATED_FALLBACK = 80;
 
+/** Assumption: 20 votes support a rating; separates noisy volume scores from series fallbacks (§20). */
+export const RATING_SUPPORTED_VOTES = 20;
+
 /** Read next shows this many cards; "Show more" adds as many again (§20). */
 export const READ_NEXT_PAGE = 10;
 

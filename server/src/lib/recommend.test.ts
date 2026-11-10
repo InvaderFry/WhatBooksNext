@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { rating } from '../testing/ratings.ts';
+import { rated } from '../testing/rank.ts';
 import { estimateDuration, formatRange } from './estimate.ts';
 import { communityRating, ratingStats, shrink } from './ratings.ts';
 import {
@@ -130,23 +132,23 @@ describe('ratings (§12.2)', () => {
 
   it('never pools sources: each has its own mean and "highly rated" line', () => {
     const stats = ratingStats([
-      { source: 'openlibrary', value: 4, scale: 5, count: 10, scope: 'book' },
-      { source: 'anilist', value: 70, scale: 100, count: 10, scope: 'series' },
+      rating({ source: 'openlibrary', value: 4, count: 10 }),
+      rating({ source: 'anilist', value: 70, scale: 100, count: 10, scope: 'series' }),
     ]);
     expect(stats.get('openlibrary')!.mean).toBe(80);
     expect(stats.get('anilist')!.mean).toBe(70);
   });
 
-  it('prefers Hardcover, then AniList, then Open Library', () => {
+  it('uses the source with more ratings among trusted item matches', () => {
     const stats = ratingStats([]);
     const r = communityRating(
       [
-        { source: 'openlibrary', value: 4.5, scale: 5, count: 10, scope: 'book' },
-        { source: 'hardcover', value: 3.9, scale: 5, count: 400, scope: 'book' },
+        rating({ source: 'openlibrary', count: 10 }),
+        rating({ source: 'hardcover', value: 3.9, count: 400 }),
       ],
       stats,
     );
-    expect(r!.source).toBe('hardcover');
+    expect(r.chosen!.source).toBe('hardcover');
   });
 });
 
@@ -199,16 +201,7 @@ describe('Read next', () => {
     const unrated = item({ title: 'Unrated' });
     const poor = item({
       title: 'Poorly rated',
-      community: {
-        source: 'openlibrary',
-        raw: 2,
-        scale: 5,
-        votes: 500,
-        scope: 'book',
-        score: 40,
-        highlyRated: false,
-        fewVotes: false,
-      },
+      community: rated(40, { source: 'openlibrary' }),
     });
     const r = readNext([poor, unrated], situation(), page);
     expect(r.cards[0]!.title).toBe('Unrated');
@@ -342,16 +335,15 @@ describe('Read next', () => {
       kind: 'manga',
       identity: 'provisional',
       series: ser('x', 1),
-      community: {
+      community: rated(88, {
         source: 'anilist',
         raw: 88,
         scale: 100,
         votes: 9000,
         scope: 'series',
-        score: 88,
-        highlyRated: true,
-        fewVotes: false,
-      },
+        match: 'provisional',
+        tier: 5,
+      }),
     });
     const c = buildCard(manga, [manga], situation());
     expect(c.reasons[0]).toBe('Series rated 88/100 on AniList from 9,000 ratings');

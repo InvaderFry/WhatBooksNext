@@ -21,6 +21,7 @@ export function OnlineCard({ itemId, onChanged }: { itemId: string; onChanged: (
   const [data, setData] = useState<ItemOnline | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [showMatches, setShowMatches] = useState(false);
   const [query, setQuery] = useState<string | null>(null);
   const [results, setResults] = useState<Candidate[] | null>(null);
 
@@ -76,8 +77,14 @@ export function OnlineCard({ itemId, onChanged }: { itemId: string; onChanged: (
         <dt>Community rating</dt>
         <dd>
           {c
-            ? `${c.scale === 100 ? Math.round(c.raw) : c.raw.toFixed(1)}/${c.scale}${c.votes ? ` from ${c.votes.toLocaleString()} ratings` : ''} on ${data.sources.find((s) => s.source === c.source)?.sourceLabel ?? c.source}${c.scope === 'series' ? ' — for the whole series' : ''}${c.highlyRated ? ' · highly rated there' : ''}`
+            ? `${c.raw}/${c.scale}${c.votes !== null ? ` from ${c.votes.toLocaleString()} ratings` : ' · number of ratings unknown'} on ${data.sources.find((s) => s.source === c.source)?.sourceLabel ?? c.source}${c.scope === 'series' ? ' — for the whole series' : ''}${c.highlyRated ? ' · highly rated there' : ''}`
             : 'Unknown'}
+          {c?.label && <div className="muted small">{c.label}</div>}
+          {c?.match === 'provisional' && (
+            <a href="#possible-matches" onClick={() => setShowMatches(true)}>
+              Check and confirm this match
+            </a>
+          )}
         </dd>
         <dt>Length</dt>
         <dd>
@@ -120,7 +127,7 @@ export function OnlineCard({ itemId, onChanged }: { itemId: string; onChanged: (
       )}
 
       {data.candidates.length > 0 && (
-        <details open={data.identity === 'tie'}>
+        <details id="possible-matches" open={showMatches || data.identity === 'tie'}>
           <summary>Possible matches ({data.candidates.length})</summary>
           <ul className="plain candidates">
             {data.candidates.map((x) => (

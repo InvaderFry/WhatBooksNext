@@ -1,3 +1,4 @@
+import { rating } from './ratings.ts';
 import type { RankItem, Situation } from '../lib/recommend.ts';
 
 /** Builders for the pure ranking tests: invented items with only what each test needs. */
@@ -78,7 +79,14 @@ export const rated = (
   score: number,
   over: Partial<NonNullable<RankItem['community']>> = {},
 ): NonNullable<RankItem['community']> => ({
-  source: 'hardcover',
+  ...rating(),
+  match: 'accepted',
+  tier: 1,
+  reason: 'only_rating',
+  label: null,
+  hiddenGem:
+    score >= 80 && !!over.fewVotes && over.scope !== 'series' && over.match !== 'provisional',
+  fewElsewhere: false,
   raw: score / 20,
   scale: 5,
   votes: 500,

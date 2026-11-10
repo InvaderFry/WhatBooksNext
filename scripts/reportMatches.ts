@@ -7,6 +7,7 @@
 // Committed cases: fixtures/matches/cases.json (public classics). If
 // fixtures/private/match-cases.json exists (gitignored; the owner's real titles, with
 // responses saved under fixtures/private/sources/), it is reported too, separately.
+import { reportRatingChanges } from './ratingComparison.ts';
 import fs from 'node:fs';
 import path from 'node:path';
 import { decide, type MatchFacts } from '../server/src/identify/match.ts';
@@ -104,4 +105,5 @@ if (fs.existsSync(privateCases)) {
     '\n(No private set at fixtures/private/match-cases.json; only the committed set was run.)',
   );
 }
+reportRatingChanges();
 process.exitCode = ok ? 0 : 1;

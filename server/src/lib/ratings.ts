@@ -4,6 +4,7 @@ import {
   HIGHLY_RATED_FALLBACK,
   HIGHLY_RATED_MIN_ITEMS,
   HIGHLY_RATED_PERCENTILE,
+  RATING_SUPPORTED_VOTES,
 } from '../config.ts';
 import type { SourceName, SourceRating } from '../sources/types.ts';
 
@@ -14,12 +15,24 @@ import type { SourceName, SourceRating } from '../sources/types.ts';
  * - Shrink toward that source's own mean in this library, in proportion to how few votes
  *   there are (a Bayesian average). Prior weight = the source's median vote count here.
  * - Sources are never pooled: each keeps its own mean and its own "highly rated" line.
- * - Preference where scopes match: Hardcover → AniList → Open Library. A series score is
- *   only ever shown as the series' score.
+ * - Choose scope and trust first, then the most ratings. A series score stays labelled.
  */
 
 export interface RatedFrom extends SourceRating {
   source: SourceName;
+  sourceId: string;
+  match:
+    | 'confirmed'
+    | 'accepted'
+    | 'provisional'
+    | 'tie'
+    | 'rejected'
+    | 'unidentified'
+    | 'other_candidate'
+    | 'left_unidentified';
+  strongIsbn: boolean;
+  matchScore: number;
+  url: string | null;
 }
 
 export interface SourceStats {
@@ -61,10 +74,15 @@ export function shrink(r: SourceRating, s: Pick<SourceStats, 'mean' | 'medianVot
   return (v * n + s.mean * m) / (n + m);
 }
 
-/** Per-source statistics over every rating in this library (one per item and source). */
+/** Per-source statistics over eligible ratings, counting each source record once. */
 export function ratingStats(all: RatedFrom[]): RatingStats {
   const by = new Map<SourceName, RatedFrom[]>();
+  const seen = new Set<string>();
   for (const r of all) {
+    if (!eligibleMatch(r) || !validRating(r)) continue;
+    const key = `${r.source}:${r.sourceId}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
     if (!by.has(r.source)) by.set(r.source, []);
     by.get(r.source)!.push(r);
   }
@@ -93,6 +111,17 @@ export function ratingStats(all: RatedFrom[]): RatingStats {
 
 export interface CommunityRating {
   source: SourceName;
+  sourceId: string;
+  match: 'confirmed' | 'accepted' | 'provisional';
+  strongIsbn: boolean;
+  matchScore: number;
+  url: string | null;
+  tier: RatingTier;
+  reason: RatingReason;
+  label: string | null;
+  /** Other trusted ratings also have few votes; unknown counts make no claim. */
+  fewElsewhere: boolean;
+  hiddenGem: boolean;
   /** As the source says it, e.g. 4.2 of 5. */
   raw: number;
   scale: number;
@@ -108,26 +137,146 @@ export interface CommunityRating {
   fewVotes: boolean;
 }
 
-/** The community rating to use, by preference, with its scope (§12.2). */
-export function communityRating(ratings: RatedFrom[], stats: RatingStats): CommunityRating | null {
-  const pick = [...ratings].sort(
-    (a, b) => PREFERENCE.indexOf(a.source) - PREFERENCE.indexOf(b.source),
-  )[0];
-  if (!pick) return null;
+export type RatingTier = 1 | 2 | 3 | 4 | 5;
+export type RatingReason =
+  | 'more_ratings'
+  | 'only_rating'
+  | 'series_fallback'
+  | 'unconfirmed_only'
+  | 'sparse_rating'
+  | 'match_tiebreak'
+  | 'supported_rating'
+  | 'item_scope'
+  | 'trusted_match'
+  | 'no_rating';
+export interface RatingSelection {
+  chosen: CommunityRating | null;
+  others: RatedFrom[];
+  excluded: { rating: RatedFrom; why: string }[];
+  reason: RatingReason;
+}
+
+type EligibleRating = RatedFrom & { match: CommunityRating['match'] };
+
+const eligibleMatch = (r: RatedFrom): r is EligibleRating =>
+  r.match === 'confirmed' || r.match === 'accepted' || r.match === 'provisional';
+
+function validRating(r: RatedFrom): boolean {
+  return (
+    Number.isFinite(r.value) &&
+    Number.isFinite(r.scale) &&
+    r.scale > 0 &&
+    r.value >= 0 &&
+    r.value <= r.scale &&
+    (r.count === null || (Number.isInteger(r.count) && r.count >= 0)) &&
+    ['book', 'volume', 'series'].includes(r.scope)
+  );
+}
+
+/** Eligibility shared by selection and source statistics; a tie never supplies a rating. */
+export function eligibleRatings(ratings: RatedFrom[], hasSeries: boolean) {
+  const eligible: EligibleRating[] = [];
+  const excluded: RatingSelection['excluded'] = [];
+  for (const r of ratings) {
+    if (!eligibleMatch(r)) excluded.push({ rating: r, why: r.match });
+    else if (!validRating(r)) excluded.push({ rating: r, why: 'invalid_rating' });
+    else if (r.scope === 'series' && !hasSeries) excluded.push({ rating: r, why: 'no_series' });
+    else eligible.push(r);
+  }
+  return { eligible, excluded };
+}
+
+/** The first non-empty trust/scope/support tier, then votes, then match evidence (§20). */
+export function ratingTier(r: RatedFrom): RatingTier {
+  if (r.match === 'provisional') return 5;
+  const supported = r.count !== null && r.count >= RATING_SUPPORTED_VOTES;
+  return r.scope === 'series' ? (supported ? 2 : 4) : supported ? 1 : 3;
+}
+
+function compare(a: RatedFrom, b: RatedFrom): number {
+  const preference = (r: RatedFrom) => {
+    const n = PREFERENCE.indexOf(r.source);
+    return n < 0 ? PREFERENCE.length : n;
+  };
+  return (
+    ratingTier(a) - ratingTier(b) ||
+    (b.count ?? -1) - (a.count ?? -1) ||
+    Number(b.match === 'confirmed') - Number(a.match === 'confirmed') ||
+    Number(b.strongIsbn) - Number(a.strongIsbn) ||
+    Number(b.match === 'accepted') - Number(a.match === 'accepted') ||
+    b.matchScore - a.matchScore ||
+    preference(a) - preference(b) ||
+    a.source.localeCompare(b.source) ||
+    a.sourceId.localeCompare(b.sourceId)
+  );
+}
+
+/** One result for every reader: chosen evidence, alternatives, exclusions and explanation. */
+export function communityRating(
+  ratings: RatedFrom[],
+  stats: RatingStats,
+  hasSeries = false,
+): RatingSelection {
+  const { eligible, excluded } = eligibleRatings(ratings, hasSeries);
+  const [pick, ...others] = eligible.sort(compare);
+  if (!pick) return { chosen: null, others, excluded, reason: 'no_rating' };
+  const tier = ratingTier(pick);
+  const peer = others.find((r) => ratingTier(r) === tier);
+  let reason: RatingReason;
+  if (tier === 5) reason = 'unconfirmed_only';
+  else if (pick.scope === 'series') reason = 'series_fallback';
+  else if (eligible.length === 1) reason = 'only_rating';
+  else if (peer) reason = pick.count !== peer.count ? 'more_ratings' : 'match_tiebreak';
+  else if (others.every((r) => r.match === 'provisional')) reason = 'trusted_match';
+  else if (tier === 1 && others.some((r) => r.scope !== 'series')) reason = 'supported_rating';
+  else reason = tier === 3 ? 'sparse_rating' : 'item_scope';
   const s = stats.get(pick.source);
   const score = s ? shrink(pick, s) : normalise(pick);
+  const fewVotes =
+    pick.count !== null && pick.count >= HIDDEN_GEM_MIN_VOTES && pick.count <= (s?.fewVotes ?? -1);
+  const trustedOthers = others.filter((r) => r.match !== 'provisional' && r.count !== null);
+  const fewElsewhere =
+    trustedOthers.some((r) => r.source !== pick.source) &&
+    trustedOthers.every((r) => r.count! <= (stats.get(r.source)?.fewVotes ?? -1));
+  const highlyRated = score >= (s?.highlyRated ?? HIGHLY_RATED_FALLBACK);
+  const label =
+    tier === 5
+      ? 'Unconfirmed match'
+      : pick.scope === 'series'
+        ? `Whole series; this volume has ${eligible.some((r) => r.match !== 'provisional' && r.scope !== 'series') ? 'few ratings' : 'no rating'}`
+        : tier === 3
+          ? pick.count === null
+            ? 'Number of ratings unknown'
+            : 'Few ratings'
+          : null;
   return {
-    source: pick.source,
-    raw: pick.value,
-    scale: pick.scale,
-    votes: pick.count,
-    scope: pick.scope,
-    score: Math.round(score),
-    highlyRated: score >= (s?.highlyRated ?? HIGHLY_RATED_FALLBACK),
-    fewVotes:
-      pick.count !== null &&
-      pick.count !== undefined &&
-      pick.count >= HIDDEN_GEM_MIN_VOTES &&
-      pick.count <= (s?.fewVotes ?? -1),
+    chosen: {
+      source: pick.source,
+      sourceId: pick.sourceId,
+      match: pick.match,
+      strongIsbn: pick.strongIsbn,
+      matchScore: pick.matchScore,
+      url: pick.url,
+      tier,
+      reason,
+      label,
+      raw: pick.value,
+      scale: pick.scale,
+      votes: pick.count,
+      scope: pick.scope,
+      score: Math.round(score),
+      highlyRated,
+      fewVotes,
+      fewElsewhere,
+      hiddenGem:
+        highlyRated &&
+        fewVotes &&
+        pick.scope !== 'series' &&
+        pick.match !== 'provisional' &&
+        trustedOthers.every((r) => r.count! <= (stats.get(r.source)?.fewVotes ?? -1)),
+    },
+    others,
+    excluded,
+    reason,
   };
 }

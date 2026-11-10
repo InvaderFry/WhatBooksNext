@@ -25,7 +25,9 @@ owner has already made. Don't reopen those decisions. Then read the latest
   table (`app.release.test.ts` — a new table must get a row there), Diagnostics' last Open, the
   accessibility sweep in `npm run screenshots`, README for a stranger. Open: the owner's second
   quality session and a stranger-install try (§21); Windows checks in the M4/M6 notes.
-- **Next:** `docs/plans/online-ratings-and-refreshes.md`: rating choice and Hidden gems, best
+- **Ratings Stage 1 built:** scope/trust/vote selection, source-target statistics, honest Hidden
+  gems, export evidence and Diagnostics tier counts; see the Stage 1 section of `docs/milestones/M6.md`.
+- **Next:** `docs/plans/online-ratings-and-refreshes.md`: best
   details per field, a "From each source" book page, then automatic refresh. One pull request per
   stage, in order. Google Books was dropped; the plan says why.
 - Series rows are rebuilt by `syncSeries` (`server/src/identify/series.ts`) from stored facts
