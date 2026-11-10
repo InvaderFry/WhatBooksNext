@@ -158,11 +158,23 @@ measures. There is no public review text (`userInfo.review` is one user's own re
 calls every record a "volume"; that does not mean a numbered manga or comic volume.
 
 Google's documented setup identifies public requests with an API key, so PLAN.md's old "works
-without a key at low volume" is not something to rely on. Google's terms restrict keeping
-copies beyond what its cache headers allow, require attribution and links, and require Google's
-results to be shown apart from other providers' in Google's order. The trial is designed so
-none of that is needed yet: **nothing from Google is stored or used in recommendations during
-the trial.**
+without a key at low volume" is not something to rely on: two keyless requests from the
+development container on 2026-11-10 were both refused with HTTP 429.
+
+**How long Google data may be kept.** Neither Google's API terms nor the Books API terms give a
+number of days or months. The only limit is the response itself: Google APIs Terms §5(e) forbids
+building databases or "permanent copies" of API content, or keeping "cached copies longer than
+permitted by the cache header", unless the content owner permits it. §5(e) also forbids creating
+derivative works, so storing a score computed from Google's rating does not get around the rule.
+On termination (§8(b)) any cached content must be deleted. So there is **no fixed allowance such as
+12 months**, and a manual "purge" button at the end of a longer period would not make that period
+allowed. What is allowed depends on the `Cache-Control`/`Expires` headers Google actually sends,
+which the trial records. If they allow little or no caching, Google cannot feed rankings; it
+could only be shown live on a book's page (see stage 5).
+
+Google's terms also require attribution and links, and require Google's results to be shown apart
+from other providers' in Google's order. The trial is designed so none of that is needed yet:
+**nothing from Google is stored or used in recommendations during the trial.**
 
 ### What to build
 
@@ -182,7 +194,8 @@ the trial.**
   against a known identity) plus some that have no rating yet. It stops at 300 requests or the
   first quota error, whichever comes first, and can be cancelled. Results stay in memory.
 - A **title-free report**, shown in Settings and included in Diagnostics → Copy report:
-  requests used, errors and quota pauses; per kind: matched / provisional / tie / none;
+  requests used, errors and quota pauses; the `Cache-Control`, `Expires` and `ETag` headers seen
+  on search and on single-record answers (values only, no content); per kind: matched / provisional / tie / none;
   agreement with the existing identity (same ISBN or same title and author) / disagreement /
   can't tell; how many matches carry a rating, the spread of `ratingsCount` and how many reach
   20; how many currently unrated items Google would rate; how many items stage 1's selector
@@ -201,6 +214,11 @@ Proceed to stage 5 only if both hold (the owner can overrule):
 - no wrong Google match that the trial would have accepted with high confidence; and
 - Google gives a supported rating (20 or more) to at least 10% of sampled books that are
   unrated or sparse today, **or** the selector would switch to Google for at least 10% of them.
+  For example: of 100 books checked, if 40 have no rating or a weak one today, Google must give a
+  solid rating to at least 4 of those 40.
+
+The cache headers then decide **which** stage 5 to build: stored (5a) if they allow keeping
+answers long enough for the scheduler to refresh them within quota, otherwise live-only (5b).
 
 Otherwise record the title-free findings in the milestone notes and remove the trial code, so
 the app carries no Google obligations it does not use.
@@ -244,14 +262,24 @@ Built around the existing `LookupManager`, not as a second lookup engine. Indepe
 
 ## Stage 5 — Google Books as a regular source (only if the trial passes)
 
-- Add Google alongside the book sources for books, collected comics and manga volumes, so it can
+- Add Google (5a only) alongside the book sources for books, collected comics and manga volumes, so it can
   supply a better-supported rating even when Hardcover found the book. Single comic issues keep
   using Metron and ComicVine.
-- Provider-specific retention, built before Google is enabled in normal use: inspect real cache
-  headers; give Google rows an expiry in `source_cache` and in `item_matches`; purge expired
-  raw and normalised Google content; let the stage 4 scheduler re-fetch within quota. Exclude
-  Google content from backups and **delete it from full snapshots** as `secrets` already are,
-  unless Google's terms are confirmed to allow keeping it. Owner-entered data stays separate.
+- **Retention follows the cache headers, automatically.** There is no owner-chosen period and no
+  manual purge in place of expiry. A "Remove all Google Books data" button is still provided (for
+  turning Google off, or Google's §8(b) deletion on termination), in addition to automatic
+  expiry, never instead of it.
+  - **5a, stored:** each Google row in `source_cache` and `item_matches` gets an `expires_at`
+    from the headers of the answer it came from; expired rows are deleted on startup and hourly,
+    raw and normalised alike; the stage 4 scheduler re-fetches what is still wanted within
+    Google's quota, and an expired rating counts as unknown until it is re-fetched. Google content
+    is excluded from backups and **deleted from full snapshots** as `secrets` already are.
+  - **5b, live only:** Google is not used for ranking or modes. The book page asks Google when it
+    is opened (or on a "Check Google Books" button) and shows the answer with attribution, held in
+    memory only for as long as the headers allow.
+  - Either way, keeping only Google's volume id (to fetch the same record again) is assumed
+    acceptable but must be checked against the terms before it is stored; if in doubt, re-search.
+- Owner-entered data stays separate and is never expired.
 - Attribution and links on every Google rating and record. Where Google search candidates are
   listed (Needs review, the match picker), show them as their own labelled group in Google's
   order. Keep Google's values apart from the app's own explanation.
