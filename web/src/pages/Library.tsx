@@ -183,7 +183,12 @@ export function Library({
           label="Sort by"
           value={params.sort}
           allLabel="Title"
-          options={{ added: 'First seen', touched: 'Last touched', rating: 'Your rating' }}
+          options={{
+            added: 'First seen',
+            touched: 'Last touched',
+            rating: 'Your rating',
+            community: 'Online rating',
+          }}
         />
         <div className="field">
           <label htmlFor="dir">Order</label>
@@ -244,6 +249,13 @@ export function Library({
         <strong>Ready to read</strong> keeps books with a file on this PC right now, or marked “Also
         in iCloud”.
       </p>
+      {params.sort === 'community' && (
+        <p className="hint">
+          <strong>Online rating</strong> is adjusted for how many people rated a book, as What next
+          does: a 5.0 from 2 ratings doesn’t jump ahead of a 4.3 from 5,000. Books without an online
+          rating come last.
+        </p>
+      )}
 
       {noFolders && (
         <Notice>
@@ -290,6 +302,17 @@ export function Library({
                     {PROGRESS_LABELS[item.user.progress]}
                   </span>
                   {item.user.rating !== null && <span>Your rating {item.user.rating}/10</span>}
+                  {item.community && (
+                    <span>
+                      Online {item.community.raw.toFixed(item.community.scale >= 100 ? 0 : 1)}/
+                      {item.community.scale}
+                      {item.community.votes !== null &&
+                        ` from ${item.community.votes.toLocaleString()}`}{' '}
+                      ({item.community.sourceLabel}
+                      {item.community.scope === 'series' ? ', whole series' : ''}
+                      {item.community.unconfirmed ? ', unconfirmed match' : ''})
+                    </span>
+                  )}
                 </div>
                 <AvailabilityLabels a={item.availability} />
               </div>

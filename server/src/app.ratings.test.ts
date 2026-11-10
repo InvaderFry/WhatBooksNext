@@ -127,6 +127,38 @@ describe('Stage 1 rating integration', () => {
     ).toEqual([b, a]);
   });
 
+  it('sorts the Library by the online rating, adjusted for votes, with unrated books last either way', async () => {
+    const popular = book(),
+      few = book(),
+      none = book();
+    save(popular, [rating({ sourceId: 'p-ol', source: 'openlibrary', value: 4.3, count: 5000 })]);
+    save(few, [rating({ sourceId: 'f-ol', source: 'openlibrary', value: 5, count: 2 })]);
+    // Enough other Open Library books that shrinkage has a mean and median to pull toward.
+    for (let n = 0; n < 6; n++)
+      save(book(), [rating({ sourceId: `o-${n}`, source: 'openlibrary', value: 3, count: 200 })]);
+    const order = async (dir: string) =>
+      (await get(`/api/items?sort=community&dir=${dir}`)).body.items.map(
+        (i: { id: string }) => i.id,
+      );
+    const desc = await order('desc');
+    expect(desc.indexOf(popular)).toBeLessThan(desc.indexOf(few));
+    expect(desc.at(-1)).toBe(none);
+    expect((await order('asc')).at(-1)).toBe(none);
+    const row = (await get('/api/items?sort=community&dir=desc')).body.items.find(
+      (i: { id: string }) => i.id === popular,
+    );
+    expect(row.community).toMatchObject({
+      raw: 4.3,
+      scale: 5,
+      votes: 5000,
+      sourceLabel: 'Open Library',
+      unconfirmed: false,
+    });
+    expect(
+      (await get('/api/items')).body.items.find((i: { id: string }) => i.id === none).community,
+    ).toBeNull();
+  });
+
   it('keeps confirmation and ISBN evidence local to their own source and excludes tied, rejected and wrong-volume ratings', async () => {
     const id = book();
     save(id, [
