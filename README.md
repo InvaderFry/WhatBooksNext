@@ -5,13 +5,13 @@ they already own. It's a local web app for Windows. It lists your folders, works
 file is, and tracks your reading with one tap. It isn't a reader: you keep reading in your usual
 apps.
 
-**Status: Milestone 5 of 6 — all ten modes and taste learning built; Windows checks remain.**
-This version has the library and tracking (folders, scanning, progress, the shortlist, backup and
-restore), reads inside your files (titles, authors, word and page counts, covers, fingerprints
-that recognise moved and copied files), looks your books up online for ratings and details, and
+**Status: version 1 (Milestone 6 of 6) — feature-complete; a few Windows behaviours are still
+to be confirmed on a real PC (listed under [Limitations](#limitations)).** It lists your folders,
+reads inside your files (titles, authors, word and page counts, covers, fingerprints that
+recognise moved and copied files), looks your books up online for ratings and details, and
 **What next** suggests what to read in ten different ways, with the reasons behind each pick.
-The full plan is in [`PLAN.md`](PLAN.md), and milestone notes are in
-[`docs/milestones/`](docs/milestones/).
+**Stats** shows what you've read and what's waiting. The full plan is in [`PLAN.md`](PLAN.md),
+and milestone notes are in [`docs/milestones/`](docs/milestones/).
 
 ## Install and start (Windows)
 
@@ -145,6 +145,13 @@ settings with only the "read catalog" permission (Settings links straight to tha
 it in **Settings → Online lookups**. It stays on this PC: it's never in a backup, an export or the
 Diagnostics report. Then press **Diagnostics → Test Hardcover**.
 
+**Metron token** (for single comic issues): make a free account at metron.cloud, create an API
+token on your account page, and paste it in **Settings → Online lookups → Metron**. Then press
+**Diagnostics → Test Metron**. **ComicVine key** (a slower fallback, 200 requests an hour, for
+non-commercial use): make a free account at comicvine.gamespot.com, copy your API key from its
+API page, paste it under **ComicVine**, and press **Diagnostics → Test ComicVine**. Like the
+Hardcover token, these stay on this PC.
+
 ## Store books, spreadsheets and Calibre
 
 - **Store books** (Kindle, Apple Books, Google Play, Kobo, GlobalComix): Library → **Add a store
@@ -176,7 +183,17 @@ last finish date; other export columns are ignored.
 Compatibility is checked against [public sample layouts](fixtures/imports/README.md).
 A fresh authenticated export from each service still needs a real-user check.
 
-## Backups
+## Stats
+
+**Stats** keeps facts apart from estimates. The facts are what you marked and what your files
+say: books finished each year (this year so far against last year by the same date), how much of
+each kind and each folder you've read ("12 of 340"), why you stopped books, how many you marked
+Never, your ratings, what taste has learned, your takeaways, and how many books have a rating, a
+length and a series. A book finished on a date you didn't record is listed apart and counted in
+no year. The **estimate** is the reading time of your backlog: it adds up only the books whose
+length is known, and says how many that is. Never and reference books stay out of the backlog.
+
+## Backups, snapshots and export
 
 Go to **Settings → Download a backup** for a JSON file of your library, progress, ratings, notes
 and settings, including your answers in Needs review and the matches found online. It doesn't
@@ -186,6 +203,15 @@ connecting any drive, and the next scan reconnects the files.
 
 The app also keeps its own safety snapshots in `data/snapshots`: one before each database
 update (the last 5) and one before each restore (the last 3).
+
+**Settings → Export and snapshots** has two more:
+
+- **Take a full snapshot** saves a complete copy of the app's data — everything in a backup plus
+  the cover images and the details found online — in a new folder under `data/full-snapshots`
+  (the newest 3 are kept). API keys are left out. Its `README.txt` says how to go back to it.
+- **Download as CSV** gives one row per book for Excel or Google Sheets: your progress, dates,
+  rating, notes, series, where it is, and what was found online. It's not a backup and can't be
+  restored. Dates you didn't record stay empty.
 
 ## Privacy and security
 
@@ -201,11 +227,68 @@ between that check and the read, and that gap is accepted.
 
 Text from files (titles, descriptions) is shown as plain text, never as web page code.
 
+## Updating
+
+1. **Settings → Download a backup**, just in case.
+2. Close the black window.
+3. Download and unzip the new version into a **new** folder, and copy the `data` folder from the
+   old one into it.
+4. Double-click `start-whatBooksNext.bat`. It installs what the new version needs, and before the
+   database is changed it saves a safety copy in `data\snapshots` (`pre-migration-…`).
+
+(Developers with a clone: `git pull`, `npm install`, `npm run build`, `npm start`.) Details:
+[INSTALL.md → Updating](INSTALL.md#updating-to-a-new-version).
+
 ## If it won't start
 
-See **[INSTALL.md → If something goes wrong](INSTALL.md#if-something-goes-wrong)**. It covers
-Node.js not being found, install errors ("EPERM"), the port being in use, and a failed database
-update. Updating and uninstalling are covered in [INSTALL.md](INSTALL.md) too.
+The black window always says why. The usual causes:
+
+- **Node.js missing or too old.** Install the current LTS from <https://nodejs.org> (version 24
+  or newer), then start again. Restart the PC if Windows still can't find it.
+- **Port 4818 in use.** whatBooksNext may already be running in another window. Otherwise start
+  it on another port (`set PORT=4820`, then `start-whatBooksNext.bat`).
+- **"The database couldn't be updated."** Nothing was changed. The message names the safety copy
+  saved just before (`data\snapshots\pre-migration-v…-….sqlite`). To go back: close the window,
+  replace `data\whatbooksnext.sqlite` with that file (delete `whatbooksnext.sqlite-wal` and
+  `-shm` if they're there), and run the previous version of the app. Then ask for help with the
+  message and the Diagnostics report.
+- **Install errors ("EPERM").** Something (often OneDrive or antivirus) holds the app's files.
+  Delete the `node_modules` folder and start again, or move the app out of a OneDrive folder.
+
+Step-by-step versions of all of these are in
+**[INSTALL.md → If something goes wrong](INSTALL.md#if-something-goes-wrong)**.
+
+## Performance
+
+Measured with `npm run benchmark`: 5,000 generated files (40% EPUB, 30% PDF, 20% CBZ, 10% MOBI)
+on a 4-core 2.1 GHz Linux machine with 16 GB and a local disk.
+
+| Step                             | Time                                |
+| -------------------------------- | ----------------------------------- |
+| Listing (names, sizes, grouping) | 2.8 s                               |
+| Reading inside the files         | 40 s                                |
+| Fingerprinting and finishing     | 14 s                                |
+| Rescan with nothing changed      | 4.7 s                               |
+| What next / Stats                | 147 ms / 272 ms                     |
+| Library page while a scan runs   | median 40 ms, 95th percentile 64 ms |
+
+These aren't Windows or USB-drive numbers, and the test files are small. Real comics are tens or
+hundreds of megabytes, and fingerprinting reads every byte, so a first scan of a large USB drive
+can take an hour or more. It runs in the background, last, and carries on after a cancel.
+
+## Limitations
+
+- **Windows only, for now.** Mac and Linux should mostly work but are untested.
+- **Needs checking on a real Windows PC** (built and tested against a stand-in): a drive letter
+  changing, iCloud or OneDrive files downloading while the app watches, and Open / Show in folder
+  on every kind of file. Diagnostics shows whether the last Open worked.
+- **Ratings are thin without keys**, and Western comics have almost none anywhere.
+- **Reading times are estimates**: assumed reading speeds, give or take 20%.
+- **Taste learning** tends to suggest more of what you already read (see Tune).
+- **Store books** (Kindle, Kobo…) are added by hand or by spreadsheet: their libraries can't be
+  read.
+- **Goodreads and StoryGraph imports** are checked against public sample layouts, not yet against
+  a fresh export from each service.
 
 ## For developers
 

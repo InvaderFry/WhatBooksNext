@@ -44,6 +44,8 @@ import { registerOperationRoutes } from './routes/operations.ts';
 import { registerStoreRoutes } from './routes/store.ts';
 import { registerCalibreRoutes } from './routes/calibre.ts';
 import { registerHistoryImportRoutes } from './routes/historyImport.ts';
+import { registerStatsRoutes } from './routes/stats.ts';
+import { listFullSnapshots } from './lib/fullSnapshot.ts';
 import { Sources } from './sources/index.ts';
 import type { Fetcher } from './sources/types.ts';
 import { syncSeries } from './identify/series.ts';
@@ -124,6 +126,24 @@ export function createApp(ctx: AppContext) {
   app.use(requestGuard({ port: ctx.port, devPorts: ctx.devPorts }));
   app.use(express.json({ limit: MAX_JSON_BODY }));
 
+  // The last Open / Show in folder and how it went, for Diagnostics ("Open works", §15). Kept in
+  // memory: it's about this PC now, not data to back up.
+  let lastLaunch: {
+    action: 'open' | 'show';
+    ok: boolean;
+    at: string;
+    error: string | null;
+  } | null = null;
+  const launched = async (action: 'open' | 'show', fn: () => Promise<void>) => {
+    try {
+      await fn();
+      lastLaunch = { action, ok: true, at: nowIso(), error: null };
+    } catch (err) {
+      lastLaunch = { action, ok: false, at: nowIso(), error: (err as Error).message };
+      throw err;
+    }
+  };
+
   const itemIdOr404 = (raw: string): string => {
     const id = resolveItemId(db, raw);
     if (!id) throw new HttpError(404, 'No such item.');
@@ -159,6 +179,13 @@ export function createApp(ctx: AppContext) {
   registerStoreRoutes(app, { db, sources, itemIdOr404 });
   registerHistoryImportRoutes(app, db);
   registerCalibreRoutes(app, { db, platform, scans, dataDir: ctx.dataDir });
+  registerStatsRoutes(app, {
+    db,
+    sources,
+    scans,
+    dataDir: ctx.dataDir,
+    reach: () => reach.get(),
+  });
 
   // ---- Scan reminder (§9.7) -------------------------------------------------------------------
   // A folder whose last complete scan is over 30 days old, unless the banner was dismissed in
@@ -558,33 +585,44 @@ export function createApp(ctx: AppContext) {
     return { abs, availability: f.availability };
   };
 
+  // Every attempt is recorded, its file checks included: a drive unplugged since the last
+  // Open must not leave that earlier success showing in Diagnostics.
   app.post(
     '/api/files/:fileId/open',
-    route(async (req) => {
-      const { abs } = await fileForAction(req);
-      // Re-check right now, not the scan's answer (§9.5).
-      const state = platform.supportsPlaceholders
-        ? availabilityFromAttributes(await platform.checkAttributes(abs))
-        : 'present';
-      if (state !== 'present' && req.body?.confirmDownload !== true) {
-        throw new NeedsConfirmation(
-          state === 'placeholder'
-            ? 'This file is in the cloud and will download when opened. Open anyway?'
-            : "This file's download state can't be checked, so opening it may download it. Open anyway?",
-        );
-      }
-      await platform.openFile(abs);
-      return { ok: true };
-    }),
+    route((req) => launched('open', () => openChecked(req))),
   );
+  const openChecked = async (req: Request) => {
+    const { abs } = await fileForAction(req);
+    // Re-check right now, not the scan's answer (§9.5).
+    const state = platform.supportsPlaceholders
+      ? availabilityFromAttributes(await platform.checkAttributes(abs))
+      : 'present';
+    if (state !== 'present' && req.body?.confirmDownload !== true) {
+      throw new NeedsConfirmation(
+        state === 'placeholder'
+          ? 'This file is in the cloud and will download when opened. Open anyway?'
+          : "This file's download state can't be checked, so opening it may download it. Open anyway?",
+      );
+    }
+    await launchOrExplain(() => platform.openFile(abs));
+  };
+  /** A launcher that won't start is the PC's problem, said plainly — not a server crash. */
+  const launchOrExplain = async (fn: () => Promise<void>) => {
+    try {
+      await fn();
+    } catch (err) {
+      throw new HttpError(500, `The file couldn't be opened. (${(err as Error).message})`);
+    }
+  };
 
   app.post(
     '/api/files/:fileId/show',
-    route(async (req) => {
-      const { abs } = await fileForAction(req);
-      await platform.showInFolder(abs);
-      return { ok: true };
-    }),
+    route((req) =>
+      launched('show', async () => {
+        const { abs } = await fileForAction(req);
+        await launchOrExplain(() => platform.showInFolder(abs));
+      }),
+    ),
   );
 
   // ---- Backup and restore (§16) ----------------------------------------------------------------
@@ -677,6 +715,13 @@ export function createApp(ctx: AppContext) {
         lastSnapshot: snapshots[0]
           ? { kind: snapshots[0].kind, createdAt: snapshots[0].createdAt }
           : null,
+        snapshots: {
+          preMigration: snapshots.filter((x) => x.kind === 'pre-migration').length,
+          preRestore: snapshots.filter((x) => x.kind === 'pre-restore').length,
+          full: ctx.dataDir ? listFullSnapshots(ctx.dataDir).length : 0,
+        },
+        dataFolder: includeNames ? ctx.dataDir : null,
+        lastLaunch,
         placeholderDetection: platform.supportsPlaceholders
           ? 'On: files with RecallOnDataAccess, RecallOnOpen or Offline set count as online-only.'
           : 'Not available on this platform: files count as present.',

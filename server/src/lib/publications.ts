@@ -3,7 +3,7 @@ import { MATCH_ACCEPT, SERIES_PUBLICATION_CACHE_DAYS } from '../config.ts';
 import { titleCompareKey } from '../identify/filename.ts';
 import { usedMatches } from '../identify/lookups.ts';
 import type { Sources } from '../sources/index.ts';
-import type { PublishedVolume } from '../sources/types.ts';
+import { SourceError, type PublishedVolume } from '../sources/types.ts';
 import { HttpError, nowIso, parseJson, todayLocal } from '../util.ts';
 import type { SeriesMember } from './series.ts';
 
@@ -100,7 +100,25 @@ function anchorKey(a: { name: string; position: number | null }) {
   return JSON.stringify([a.name, a.position]);
 }
 
+/** A remembered failed check that still applies (same anchor, younger than the refresh time). */
+export function publicationProblem(db: DB, seriesId: string): string | null {
+  const p = db
+    .prepare(
+      'SELECT anchor_book_id, anchor_key, problem, checked_at FROM series_publication_problems WHERE series_id = ?',
+    )
+    .get(seriesId) as
+    { anchor_book_id: string; anchor_key: string; problem: string; checked_at: string } | undefined;
+  if (!p) return null;
+  const age = Date.now() - Date.parse(p.checked_at);
+  if (!Number.isFinite(age) || age < 0 || age > SERIES_PUBLICATION_CACHE_DAYS * 86_400_000)
+    return null;
+  const a = anchor(db, seriesId);
+  if (!a || a.bookId !== p.anchor_book_id || anchorKey(a) !== p.anchor_key) return null;
+  return p.problem;
+}
+
 export function publicationPending(db: DB, seriesId: string): boolean {
+  if (publicationProblem(db, seriesId) !== null && !publicationView(db, seriesId, [])) return false;
   const row = db
     .prepare('SELECT checked_at FROM series_publications WHERE series_id = ?')
     .get(seriesId) as { checked_at: string } | undefined;
@@ -143,9 +161,25 @@ export async function refreshPublications(
   const a = anchor(db, seriesId)!;
   const old = db.prepare('SELECT 1 FROM series_publications WHERE series_id = ?').get(seriesId);
   if (!refresh && !publicationPending(db, seriesId)) return false;
-  const catalogue = await sources.hardcover.publishedSeries(a.bookId, a.name, a.position, {
-    refresh: refresh || Boolean(old),
-  });
+  let catalogue;
+  try {
+    catalogue = await sources.hardcover.publishedSeries(a.bookId, a.name, a.position, {
+      refresh: refresh || Boolean(old),
+    });
+  } catch (err) {
+    // Remember an answer that retrying won't change, so it isn't asked (and listed) every run.
+    if (err instanceof SourceError && !err.transient)
+      db.prepare(
+        `INSERT INTO series_publication_problems (series_id, anchor_book_id, anchor_key, problem, checked_at)
+         VALUES (?, ?, ?, ?, ?) ON CONFLICT (series_id) DO UPDATE SET anchor_book_id = excluded.anchor_book_id,
+         anchor_key = excluded.anchor_key, problem = excluded.problem, checked_at = excluded.checked_at`,
+      ).run(seriesId, a.bookId, anchorKey(a), err.message, nowIso());
+    throw new SourceError(
+      'hardcover',
+      `“${a.name}”: ${(err as Error).message}`,
+      err instanceof SourceError ? err.transient : true,
+    );
+  }
   // The owner may have corrected/merged the book while a polite source request was waiting.
   const current = anchor(db, seriesId);
   if (
@@ -169,6 +203,7 @@ export async function refreshPublications(
     JSON.stringify(catalogue.entries),
     nowIso(),
   );
+  db.prepare('DELETE FROM series_publication_problems WHERE series_id = ?').run(seriesId);
   return true;
 }
 

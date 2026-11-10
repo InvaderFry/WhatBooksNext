@@ -7,7 +7,7 @@ import {
 } from '../config.ts';
 import type { DB } from '../db/database.ts';
 import { titleCompareKey } from '../identify/filename.ts';
-import { todayLocal } from '../util.ts';
+import { decodeEntities, todayLocal } from '../util.ts';
 import { SourceClient } from './client.ts';
 import { DailyUsage } from './usage.ts';
 import {
@@ -198,8 +198,8 @@ export function parseHardcover(payload: unknown): SourceRecord[] {
     const rec: SourceRecord = {
       source: 'hardcover',
       sourceId: String(d.id),
-      title: d.title,
-      authors: d.author_names ?? [],
+      title: decodeEntities(d.title),
+      authors: (d.author_names ?? []).map(decodeEntities),
       isbns: (d.isbns ?? []).slice(0, 20),
       subjects: [...(d.genres ?? []), ...(d.tags ?? [])],
       url: d.slug ? `https://hardcover.app/books/${encodeURIComponent(d.slug)}` : undefined,
@@ -349,8 +349,31 @@ export class Hardcover implements SourceAdapter {
     );
     const candidates = [...new Map(matching.map((r) => [r.series!.id, r])).values()];
     const featured = candidates.filter((r) => r.featured === true);
-    const chosen =
+    let chosen =
       candidates.length === 1 ? candidates[0] : featured.length === 1 ? featured[0] : undefined;
+    if (!chosen && candidates.length === 0 && position !== null) {
+      // The names differ (a file's "march" against Hardcover's "March Trilogy", say), but the
+      // matched book is in exactly one real series, at the same number: that's the one. Two
+      // checks still agree — the confirmed book and its number — and a compilation never counts.
+      const atPosition = [
+        ...new Map(
+          rows
+            .filter(
+              (r) =>
+                r?.series &&
+                r.compilation === false &&
+                Number.isInteger(r.series.id) &&
+                r.series.id > 0 &&
+                r.position === position,
+            )
+            .map((r) => [r.series!.id, r]),
+        ).values(),
+      ];
+      const real = new Set(
+        rows.filter((r) => r?.series && r.compilation === false).map((r) => r.series!.id),
+      );
+      if (atPosition.length === 1 && real.size === 1) chosen = atPosition[0];
+    }
     if (!chosen?.series)
       throw new SourceError(
         'hardcover',
@@ -367,7 +390,9 @@ export class Hardcover implements SourceAdapter {
       `series-publications:v1:${chosen.series.id}`,
       opts.refresh,
     );
-    return parsePublishedSeries(payload, String(chosen.series.id), name, opts.today);
+    // Checked against the series the membership named (the same as the file's name, unless the
+    // fallback above chose it by the book and its number).
+    return parsePublishedSeries(payload, String(chosen.series.id), chosen.series.name, opts.today);
   }
 
   usageToday(): number {

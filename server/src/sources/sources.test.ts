@@ -4,8 +4,9 @@ import { describe, expect, it } from 'vitest';
 import { CIRCUIT_FAILURES } from '../config.ts';
 import { kindFromEvidence, techTitle } from '../identify/kinds.ts';
 import { picturesFile } from '../identify/lookups.ts';
-import { decide, scoreCandidate, type MatchFacts } from '../identify/match.ts';
+import { decide, numberIn, scoreCandidate, type MatchFacts } from '../identify/match.ts';
 import { memoryDb } from '../testing/helpers.ts';
+import { decodeEntities } from '../util.ts';
 import { parseAniList } from './anilist.ts';
 import { SourceClient } from './client.ts';
 import { Hardcover, normaliseToken, parseHardcover } from './hardcover.ts';
@@ -305,6 +306,122 @@ describe('matching (§11.2)', () => {
     expect(r.decision).toBe('tie');
     expect(r.best).toBeNull();
     expect(r.ranked).toHaveLength(2);
+  });
+
+  it('reads a volume written as a word, so "Book Three" never ties with "Vol. 2"', () => {
+    expect(numberIn('Night Harbor: Book Two')).toBe('2');
+    expect(numberIn('Night Harbor, Volume Three')).toBe('3');
+    expect(numberIn('The Book of Two Ways')).toBeNull();
+    const base = { ...tm[0]!, isbns: [], rating: undefined, authors: ['Odo Venn'] };
+    const records = [
+      { ...base, sourceId: 'plain', title: 'Night Harbor' },
+      { ...base, sourceId: 'v2', title: 'Night Harbor, Vol. 2: Dark Tides' },
+      { ...base, sourceId: 'b3', title: 'Night Harbor: Book Three' },
+    ];
+    // The filename gives no number in digits, only in its title.
+    const r = decide(
+      facts({ title: 'Night Harbor: Book Three', titleSource: 'filename', kind: 'comic' }),
+      records,
+    );
+    expect(r.decision).not.toBe('tie');
+    expect(r.best?.record.sourceId).toBe('b3');
+    expect(r.ranked.find((c) => c.record.sourceId === 'v2')!.score).toBeLessThanOrEqual(0.3);
+    // A digit on one side and a word on the other are the same book.
+    const same = decide(
+      facts({ title: 'Night Harbor Vol. 3', titleSource: 'filename', volume: '3', kind: 'comic' }),
+      [records[2]!],
+    );
+    expect(same.ranked[0]!.evidence.title).toBe(1);
+  });
+
+  it('keeps two different story names apart, and a series named with a number apart from one without', () => {
+    const base = { ...tm[0]!, isbns: [], rating: undefined, authors: ['Odo Venn'] };
+    const comic = facts({
+      title: 'Night Harbor: Falling Tide',
+      titleSource: 'filename',
+      kind: 'comic',
+    });
+    const plain = scoreCandidate(comic, { ...base, sourceId: 'p', title: 'Night Harbor' });
+    const other = scoreCandidate(comic, {
+      ...base,
+      sourceId: 'v2',
+      title: 'Night Harbor, Vol. 2: Dark Tides',
+    });
+    expect(other.score).toBeLessThanOrEqual(0.3);
+    expect(other.evidence.notes.join(' ')).toMatch(/different story/);
+    expect(plain.score).toBeGreaterThan(other.score);
+    // A named book with no number is none of the numbered volumes, unless the story agrees.
+    const artBook = facts({
+      title: 'Night Harbor: Collected Sketches',
+      titleSource: 'filename',
+      kind: 'manga',
+    });
+    expect(
+      scoreCandidate(artBook, { ...base, sourceId: 'v7', title: 'Night Harbor, Vol. 7' }).score,
+    ).toBeLessThanOrEqual(0.3);
+    expect(
+      scoreCandidate(artBook, {
+        ...base,
+        sourceId: 'vs',
+        title: 'Night Harbor, Vol. 9: Collected Sketches',
+      }).score,
+    ).toBeGreaterThan(0.3);
+    // A prose subtitle like "A Novel" names no story.
+    const novel = scoreCandidate(
+      facts({ title: 'Glass Bells: A Novel', titleSource: 'filename' }),
+      {
+        ...base,
+        sourceId: 'n',
+        title: 'Glass Bells: Stories',
+      },
+    );
+    expect(novel.score).toBeGreaterThan(0.3);
+
+    const issue = facts({ title: 'Lantern Ward #1', titleSource: 'filename', kind: 'comic' });
+    const same = scoreCandidate(issue, {
+      ...base,
+      authors: [],
+      sourceId: 'a',
+      title: 'Lantern Ward #1',
+    });
+    const eight = scoreCandidate(issue, {
+      ...base,
+      authors: [],
+      sourceId: 'b',
+      title: 'Lantern Ward 8 #1',
+    });
+    expect(eight.evidence.title).toBeLessThan(same.evidence.title);
+    expect(eight.score).toBeLessThan(same.score);
+  });
+
+  it('calls several part-title matches with nothing else agreeing "not found", not a tie', () => {
+    const base = { ...tm[0]!, isbns: [], rating: undefined, subtitle: undefined };
+    const r = decide(facts({ title: 'Pitch In: Wren Hollow', titleSource: 'filename' }), [
+      { ...base, sourceId: 'a', title: 'Pitch In!', authors: ['Ada Fen'] },
+      { ...base, sourceId: 'b', title: 'Pitch In', authors: ['Ivo Brask'] },
+    ]);
+    expect(r.decision).toBe('unidentified');
+    // An exact title still asks the owner (two real runs with one name).
+    const exact = decide(facts({ title: 'Pitch In', titleSource: 'filename' }), [
+      { ...base, sourceId: 'a', title: 'Pitch In', authors: ['Ada Fen'] },
+      { ...base, sourceId: 'b', title: 'Pitch In', authors: ['Ivo Brask'] },
+    ]);
+    expect(exact.decision).toBe('tie');
+  });
+
+  it('treats one book listed twice with a misspelt or HTML-encoded author as one book', () => {
+    const base = { ...tm[0]!, isbns: [], rating: undefined, subtitle: undefined };
+    const r = decide(facts({ title: 'Cloud Widgets for Builders', titleSource: 'filename' }), [
+      { ...base, sourceId: 'a', title: 'Cloud Widgets for Builders', authors: ['Kaja Wrzosód'] },
+      {
+        ...base,
+        sourceId: 'b',
+        title: 'Cloud Widgets for Builders',
+        authors: [decodeEntities('Kaja Wrzos&#322;ód')],
+      },
+    ]);
+    expect(r.decision).not.toBe('tie');
+    expect(decodeEntities('A &amp; B &#x141;ódź')).toBe('A & B Łódź');
   });
 
   it('never matches a different volume of the same series', () => {

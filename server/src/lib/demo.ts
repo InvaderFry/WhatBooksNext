@@ -426,20 +426,47 @@ export async function buildDemoLibrary(
  * and to lift the owned books of an author rated highly here.
  */
 function addHistory(db: DB): void {
+  /** "YYYY-MM", n months before this one: a month, honestly approximate. */
+  const monthsAgo = (n: number) => {
+    const d = new Date();
+    d.setDate(1);
+    d.setMonth(d.getMonth() - n);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  };
   const books: {
     title: string;
     author: string;
     kind: 'fiction' | 'comic' | 'self_help' | 'nonfiction';
     rating?: number;
     dnf?: boolean;
+    /** Months ago it was finished (so Stats has years to show); unknown when absent. */
+    monthsAgo?: number;
   }[] = [
-    { title: 'The Ferryman’s Almanac', author: 'Odile Brannagh', kind: 'fiction', rating: 9 },
-    { title: 'Lamps Along the Weir', author: 'Odile Brannagh', kind: 'fiction', rating: 10 },
+    {
+      title: 'The Ferryman’s Almanac',
+      author: 'Odile Brannagh',
+      kind: 'fiction',
+      rating: 9,
+      monthsAgo: 2,
+    },
+    {
+      title: 'Lamps Along the Weir',
+      author: 'Odile Brannagh',
+      kind: 'fiction',
+      rating: 10,
+      monthsAgo: 14,
+    },
     { title: 'A Winter of Wicks', author: 'Odile Brannagh', kind: 'fiction', rating: 9 },
-    { title: 'Brassbound #1', author: 'Rue Fenwick', kind: 'comic', rating: 9 },
+    { title: 'Brassbound #1', author: 'Rue Fenwick', kind: 'comic', rating: 9, monthsAgo: 6 },
     { title: 'Kettle City Nights', author: 'Rue Fenwick', kind: 'comic', rating: 8 },
     { title: 'The Pocket Planner', author: 'Dorit Allenby', kind: 'self_help', rating: 4 },
-    { title: 'Ten Minute Mornings', author: 'Cass Wrenfield', kind: 'self_help', rating: 3 },
+    {
+      title: 'Ten Minute Mornings',
+      author: 'Cass Wrenfield',
+      kind: 'self_help',
+      rating: 3,
+      monthsAgo: 26,
+    },
     { title: 'Habits of Tidy Minds', author: 'Ivo Pellerin', kind: 'self_help', rating: 4 },
     { title: 'Moss and Mortar', author: 'Juno Teague', kind: 'fiction' },
     {
@@ -464,7 +491,14 @@ function addHistory(db: DB): void {
       kindOverride: b.kind,
       ...(b.dnf
         ? { progress: 'dnf', dnfReason: 'not_for_me' }
-        : { progress: 'finished', finishedPrecision: 'unknown', rating: b.rating ?? null }),
+        : b.monthsAgo !== undefined
+          ? {
+              progress: 'finished',
+              finishedOn: monthsAgo(b.monthsAgo),
+              finishedPrecision: 'approximate',
+              rating: b.rating ?? null,
+            }
+          : { progress: 'finished', finishedPrecision: 'unknown', rating: b.rating ?? null }),
     });
   }
 }

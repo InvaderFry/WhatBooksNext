@@ -8,6 +8,7 @@ import { ItemPage } from './pages/ItemPage.tsx';
 import { Library } from './pages/Library.tsx';
 import { Settings } from './pages/Settings.tsx';
 import { Shortlist } from './pages/Shortlist.tsx';
+import { Stats } from './pages/Stats.tsx';
 import { Triage } from './pages/Triage.tsx';
 import { Tune } from './pages/Tune.tsx';
 import { WhatNext } from './pages/WhatNext.tsx';
@@ -20,6 +21,7 @@ const NAV = [
   { view: 'triage', label: 'Triage' },
   { view: 'shortlist', label: 'Shortlist' },
   { view: 'review', label: 'Needs review' },
+  { view: 'stats', label: 'Stats' },
   { view: 'settings', label: 'Settings' },
   { view: 'diagnostics', label: 'Diagnostics' },
 ] as const;
@@ -84,6 +86,7 @@ export function App() {
       review: 'Needs review',
       health: 'Library health',
       tune: 'Tune',
+      stats: 'Stats',
       item: 'Book',
     };
     document.title = `${titles[view] ?? 'What next'} · whatBooksNext`;
@@ -173,6 +176,7 @@ export function App() {
         {view === 'review' && <Review key={dataVersion} onChanged={() => void refreshState()} />}
         {view === 'health' && <Health key={dataVersion} />}
         {view === 'tune' && <Tune key={dataVersion} />}
+        {view === 'stats' && <Stats key={dataVersion} />}
       </main>
     </>
   );

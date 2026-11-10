@@ -220,7 +220,8 @@ function MatchSummary({ report }: { report: MatchReport }) {
       </table>
       <p className="muted small">
         Western comics have almost no community ratings anywhere; their picks rest on your own
-        signals. Comic lookups (Metron, ComicVine) come in a later version.
+        signals. Single comic issues are looked up only on Metron and ComicVine, which need a free
+        key (Settings → Online lookups).
       </p>
     </details>
   );

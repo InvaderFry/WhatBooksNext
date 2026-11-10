@@ -13,6 +13,13 @@ export const MIGRATION_SNAPSHOTS_KEPT = 5;
 /** Pre-restore snapshots kept, separately, so neither kind pushes the other out (§16, §20). */
 export const RESTORE_SNAPSHOTS_KEPT = 3;
 
+/**
+ * Full local snapshots (database + covers, §16) kept in data/full-snapshots. Assumption: the
+ * owner takes one by hand now and then; three go back far enough without filling the disk
+ * (each holds every cover).
+ */
+export const FULL_SNAPSHOTS_KEPT = 3;
+
 /** Scan reminder after this many days without a complete scan, as the owner asked (§9.7). */
 export const SCAN_REMINDER_DAYS = 30;
 

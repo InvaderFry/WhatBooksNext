@@ -2,7 +2,12 @@ import { MIN_SUGGESTION_KEY_LENGTH } from '../config.ts';
 import type { DB } from '../db/database.ts';
 import { newId, nowIso, parseJson } from '../util.ts';
 import { SOURCE_LABELS, type SourceName } from '../sources/types.ts';
-import { groupUnassignedFiles, hashesDisagree, knownConflict } from './grouping.ts';
+import {
+  groupUnassignedFiles,
+  hashesDisagree,
+  knownConflict,
+  sameFormatGroup,
+} from './grouping.ts';
 import {
   filesOfItem,
   hasOwnerData,
@@ -292,7 +297,12 @@ export function addCrossFolderSuggestions(db: DB): number {
         const a = files[i]!;
         const b = files[j]!;
         if (a.item_id === b.item_id) continue;
-        if (a.folder_id === b.folder_id && a.rel_dir === b.rel_dir) continue; // same folder: rule 2
+        const sameDir = a.folder_id === b.folder_id && a.rel_dir === b.rel_dir;
+        // Same folder: rule 2 groups new files automatically. Two that are already apart —
+        // because they were scanned before a rule learned they're versions of one book (an
+        // "optimized" copy), or because the owner split them — are only suggested, so an
+        // owner's split is never undone silently. A declined suggestion isn't asked again.
+        if (sameDir && !sameFormatGroup(a, b)) continue;
         if (knownConflict(a, b)) continue; // different editions or languages: separate works
         const key = `cross_folder:${pairKey(a.item_id!, b.item_id!)}`;
         if (seen.has(key)) continue;
@@ -300,13 +310,19 @@ export function addCrossFolderSuggestions(db: DB): number {
         if (
           addReview(db, {
             kind: 'cross_folder',
-            tier: 4,
+            // Same folder, same name: very likely one book, so it's shown, not tucked away.
+            tier: sameDir ? 2 : 4,
             key,
             itemIds: [a.item_id!, b.item_id!].sort(),
             fileIds: [a.id, b.id],
             detail: {
-              why:
-                a.format !== b.format
+              why: sameDir
+                ? `Another version of this book in the same folder${
+                    a.quality_tag || b.quality_tag
+                      ? ` (${(a.quality_tag ?? b.quality_tag)!.toLowerCase()})`
+                      : ''
+                  }.`
+                : a.format !== b.format
                   ? `The same name as a ${b.format.toUpperCase()} in another folder.`
                   : a.size === b.size
                     ? 'The same name and size in another folder, but the contents differ.'

@@ -19,7 +19,12 @@ owner has already made. Don't reopen those decisions. Then read the latest
   remain open in the M4 notes.
 - **M5 built** (`docs/milestones/M5.md`): the ten modes (`server/src/lib/modes.ts`, one shared
   pool), taste learning (`lib/taste.ts`, pure), Tune and topics (`lib/tune.ts`, in `settings`),
-  Still reading?, triage sources and bulk triage (`routes/modes.ts`). Next is **M6**.
+  Still reading?, triage sources and bulk triage (`routes/modes.ts`).
+- **M6 built** (`docs/milestones/M6.md`): Stats (`lib/stats.ts`, pure), CSV export
+  (`lib/export.ts`), full snapshots (`lib/fullSnapshot.ts`), restore regression across every
+  table (`app.release.test.ts` — a new table must get a row there), Diagnostics' last Open, the
+  accessibility sweep in `npm run screenshots`, README for a stranger. Open: the owner's second
+  quality session and a stranger-install try (§21); Windows checks in the M4/M6 notes.
 - Series rows are rebuilt by `syncSeries` (`server/src/identify/series.ts`) from stored facts
   and owner corrections. Call it after anything that changes items' names, numbers, kinds or
   matches. Gap rules are pure, in `server/src/lib/series.ts`.

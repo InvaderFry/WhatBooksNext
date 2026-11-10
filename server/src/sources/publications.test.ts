@@ -131,6 +131,35 @@ describe('published series catalogues', () => {
     await expect(hc.publishedSeries('101', 'Invented Storms', 2)).rejects.toThrow(/confidently/);
   });
 
+  it("uses the matched book's only series at the same number when its name differs from the file's", async () => {
+    const membership = (rows: unknown[]) => async (_url: unknown, init: RequestInit) => {
+      const body = JSON.parse(String(init.body));
+      return Response.json(
+        body.query.includes('SeriesMembership')
+          ? { data: { book_series: rows } }
+          : payload([entry(1), entry(2), entry(3)]),
+      );
+    };
+    const only = {
+      position: 2,
+      featured: false,
+      compilation: false,
+      series: { id: 42, name: 'Invented Storms' },
+    };
+    const hc = new Hardcover(null, () => 'token', membership([only]));
+    // The files call it "storms"; Hardcover calls it "Invented Storms". Book 2 on both sides.
+    const p = await hc.publishedSeries('102', 'storms', 2);
+    expect(p.entries.map((e) => e.position)).toEqual([1, 2, 3]);
+    // A different number, or a second real series, is still too uncertain.
+    await expect(hc.publishedSeries('102', 'storms', 3)).rejects.toThrow(/confidently/);
+    const two = new Hardcover(
+      null,
+      () => 'token',
+      membership([only, { ...only, position: 7, series: { id: 50, name: 'Storm Omnibus' } }]),
+    );
+    await expect(two.publishedSeries('102', 'storms', 2)).rejects.toThrow(/confidently/);
+  });
+
   it('refuses a compilation membership rather than calling its single issues volumes', async () => {
     const hc = new Hardcover(
       null,

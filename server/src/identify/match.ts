@@ -17,8 +17,15 @@ import { normalizeForCompare, titleCompareKey } from './filename.ts';
 /**
  * Bump when scoring or derived source fields change: the next lookup rebuilds from the cache.
  * Version 9 also brings explicit comic run start years into existing stored matches.
+ * Version 10 reads volume numbers written as words ("Book Two") on both sides.
+ * Version 11: different story names are different books ("Series: Falling Sun" vs "Series,
+ * Vol. 2: Dark Days"), and "Archangel 8 #1" is no longer series "Archangel". A named book
+ * with no number ("Series: Art Book") is none of the series' numbered volumes.
+ * (Version 12 adds that last rule.) Version 13: several candidates that each match only part
+ * of the title, with nothing else agreeing, are "not found" rather than a tie; one book listed
+ * twice with a misspelt or HTML-encoded author name is one book.
  */
-export const MATCH_VERSION = 9;
+export const MATCH_VERSION = 13;
 
 export interface MatchFacts {
   title: string;
@@ -52,6 +59,11 @@ export interface MatchEvidence {
   author: 'agrees' | 'conflicts' | 'unknown';
   isbn: 'strong' | 'candidate' | 'none';
   notes: string[];
+  /**
+   * Our title names something (a subtitle) the record's title lacks, and nothing else —
+   * author, ISBN, year, run — agrees. Several such candidates mean "not found", not a tie.
+   */
+  weak?: boolean;
 }
 
 export interface ScoredCandidate {
@@ -119,10 +131,35 @@ export function similarity(a: string, b: string): number {
  */
 const NUMBER_MARK = /(?:^|[\s,:(])(?:vol(?:ume)?\.?|book|no\.?|#)\s*(\d+(?:\.\d+)?)\b/i;
 const TRAILING_NUMBER = /\s(\d{1,3}(?:\.\d+)?)\s*$/;
+/**
+ * "Book Two", "Volume Three": publishers and the owner's files write the number as a word as
+ * often as a digit ("March: Book Two"). Read as its digit, so "Book Three" and "Vol. 2" are two
+ * different books, and "Book Two" and "Book 2" one.
+ */
+const WORD_NUMBERS = [
+  'one',
+  'two',
+  'three',
+  'four',
+  'five',
+  'six',
+  'seven',
+  'eight',
+  'nine',
+  'ten',
+  'eleven',
+  'twelve',
+];
+const WORD_MARK = new RegExp(
+  `(?:^|[\\s,:(])(?:vol(?:ume)?\\.?|book)\\s+(${WORD_NUMBERS.join('|')})\\b`,
+  'i',
+);
 
 export function numberIn(title: string): string | null {
   const m = NUMBER_MARK.exec(title) ?? TRAILING_NUMBER.exec(title);
-  return m ? String(parseFloat(m[1]!)) : null;
+  if (m) return String(parseFloat(m[1]!));
+  const w = WORD_MARK.exec(title);
+  return w ? String(WORD_NUMBERS.indexOf(w[1]!.toLowerCase()) + 1) : null;
 }
 
 function ourNumber(f: MatchFacts): string | null {
@@ -133,10 +170,34 @@ function ourNumber(f: MatchFacts): string | null {
 
 /** The title without its volume marker and number, for comparing the series part. */
 function withoutNumber(t: string): string {
-  return t
+  const marked = t
     .replace(/[\s,:(]*(?:vol(?:ume)?\.?|book|no\.?|#)\s*\d+(?:\.\d+)?\)?/gi, ' ')
-    .replace(TRAILING_NUMBER, ' ')
-    .trim();
+    .replace(
+      new RegExp(`[\\s,:(]*(?:vol(?:ume)?\\.?|book)\\s+(?:${WORD_NUMBERS.join('|')})\\b\\)?`, 'gi'),
+      ' ',
+    );
+  // A bare trailing number is the volume only when nothing else marked one: in "Archangel 8 #1"
+  // the 8 is part of the series' name, and "Archangel 8" is not "Archangel".
+  return (marked === t ? marked.replace(TRAILING_NUMBER, ' ') : marked).replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * The story name after the main title ("Series: Falling Sun", "Series, Vol. 2: Dark Days" →
+ * "Falling Sun", "Dark Days"), without volume numbers; null when there's none. Generic
+ * descriptions ("A Novel", "Stories") don't name a story.
+ */
+function storyName(t: string): string | null {
+  const m = /[:—–]| - /.exec(t);
+  if (!m) return null;
+  const rest = withoutNumber(t.slice(m.index + m[0].length)).replace(/^[\s,:-]+/, '');
+  if (!titleCompareKey(rest)) return null;
+  if (
+    /^(?:an? )?(?:novel|novella|memoir|stories|short stories|graphic novel|collection)s?$/i.test(
+      rest,
+    )
+  )
+    return null;
+  return rest;
 }
 
 /**
@@ -298,6 +359,29 @@ export function scoreCandidate(f: MatchFacts, r: SourceRecord): ScoredCandidate 
     notes.push(`Volume ${theirs}, not ${ours}.`);
   }
 
+  // Two different story names are two different books ("Series: Falling Sun" is not "Series,
+  // Vol. 2: Dark Days"), unless both carry the same volume number. Only for comics and numbered
+  // volumes, where a subtitle names the story; a prose book's subtitle varies between editions.
+  const ourStory = storyName(f.title.replace(EDITION_SUFFIX, ''));
+  const theirStory = storyName(fullTitleOf(r));
+  if (
+    ourStory &&
+    theirStory &&
+    title >= 0.75 &&
+    !(ours && theirs && ours === theirs) &&
+    (isVisual(f) || ours || theirs) &&
+    similarity(titleCompareKey(ourStory), titleCompareKey(theirStory)) < 0.5
+  ) {
+    score = Math.min(score, 0.3);
+    notes.push(`A different story: “${theirStory}”, not “${ourStory}”.`);
+  }
+  // A named book with no number ("Series: Exclusive Art Book") is none of the series' numbered
+  // volumes ("Series, Vol. 7") — unless that volume carries the same story name.
+  if (ourStory && !ours && theirs && !theirStory && title >= 0.75) {
+    score = Math.min(score, 0.3);
+    notes.push(`Volume ${theirs} of the series, not “${ourStory}”.`);
+  }
+
   if (isbn === 'strong') {
     // An EPUB's own ISBN is strong evidence, but only with a title that isn't plainly different.
     score = title >= 0.5 ? Math.max(score, 0.97) : Math.max(score, 0.7);
@@ -313,7 +397,28 @@ export function scoreCandidate(f: MatchFacts, r: SourceRecord): ScoredCandidate 
   if (author === 'agrees') notes.push('Author matches.');
   if (author === 'conflicts') notes.push('Author differs.');
   if (author === 'unknown' && f.authors.length === 0) notes.push('No author to check against.');
-  return { record: r, score: round(score), evidence: { title: round(title), author, isbn, notes } };
+  const corroborated =
+    author === 'agrees' ||
+    isbn !== 'none' ||
+    notes.some((n) => n === 'Year matches.' || n.startsWith('Same run'));
+  return {
+    record: r,
+    score: round(score),
+    evidence: {
+      title: round(title),
+      author,
+      isbn,
+      notes,
+      // Our title names something the record's doesn't ("Batter Up: Charlie Brown" against
+      // "Batter Up!"). A shorter title of ours against longer records ("Lamplighting" against
+      // its "Volume One" and "Volume Two") is a real question, so it isn't weak.
+      weak:
+        title < 1 &&
+        !corroborated &&
+        ourStory !== null &&
+        !titleCompareKey(fullTitleOf(r)).includes(titleCompareKey(ourStory)),
+    },
+  };
 }
 
 const round = (n: number) => Math.round(n * 1000) / 1000;
@@ -352,6 +457,15 @@ export function sameWork(a: SourceRecord, b: SourceRecord): boolean {
     );
   const sa = surnames(a);
   if ([...surnames(b)].some((x) => x !== '' && sa.has(x))) return true;
+  // The same full title and a surname spelt almost alike: one book entered twice with a
+  // misspelt name ("Mrzygód" / "Mrzygłód").
+  if (
+    fa === fb &&
+    [...surnames(b)].some(
+      (x) => x.length >= 5 && [...sa].some((y) => y.length >= 5 && similarity(x, y) >= 0.75),
+    )
+  )
+    return true;
   // One volume entered twice ("Series Vol. 2: Arc" and "Series - 2"), one record with no author.
   if (sameVolume(a, b) && (a.authors.length === 0 || b.authors.length === 0)) return true;
   // The same full title, and one record has no author at all: one book entered twice.
@@ -413,6 +527,12 @@ export function decideRanked(ranked: ScoredCandidate[]): {
   // The next *different* work: duplicates of the top one say nothing about a rival, and must
   // not hide one (two copies of A, then B, all scoring alike, is still A-or-B).
   const rival = ranked.slice(1).find((c) => !sameWork(top.record, c.record));
-  if (rival && top.score - rival.score < MATCH_TIE_MARGIN) return { decision: 'tie', best: null };
+  if (rival && top.score - rival.score < MATCH_TIE_MARGIN) {
+    // Different books that each share only part of the title, with nothing else to go on
+    // ("Batter Up: Charlie Brown" against three unrelated "Batter Up!"s): not found, not a
+    // question for the owner.
+    if (top.evidence.weak && rival.evidence.weak) return { decision: 'unidentified', best: null };
+    return { decision: 'tie', best: null };
+  }
   return { decision: top.score >= MATCH_ACCEPT ? 'accepted' : 'provisional', best: top };
 }

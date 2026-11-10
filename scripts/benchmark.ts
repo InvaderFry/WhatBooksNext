@@ -82,6 +82,15 @@ const l0 = performance.now();
 const all = (await (await call('/api/items?limit=1000')).json()) as { total: number };
 const libraryMs = performance.now() - l0;
 
+// What next and Stats assemble the whole library each time: how long at 5,000 items?
+const timed = async (url: string) => {
+  const t = performance.now();
+  await (await call(url)).json();
+  return performance.now() - t;
+};
+const nextMs = await timed('/api/next');
+const statsMs = await timed('/api/stats');
+
 const rescan0 = performance.now();
 await call('/api/scan', { method: 'POST', body: '{}' });
 await app2.scans.wait();
@@ -101,6 +110,7 @@ console.log(
     `Whole first scan: ${s(scanMs)}`,
     `Rescan with nothing changed: ${s(rescanMs)}`,
     `Library, 1,000 items in one request: ${libraryMs.toFixed(0)} ms`,
+    `What next (Read next): ${nextMs.toFixed(0)} ms; Stats: ${statsMs.toFixed(0)} ms`,
     `Library page during the scan (${latencies.length} requests): median ${pct(0.5).toFixed(0)} ms, 95th percentile ${pct(0.95).toFixed(0)} ms, worst ${latencies.at(-1)!.toFixed(0)} ms`,
   ].join('\n'),
 );
