@@ -1,4 +1,4 @@
-# Online ratings and automatic refreshes
+# Online ratings, best details and automatic refreshes
 
 Status: implementation plan; no application changes made. Researched 2026-11-10; revised the same
 day against `main` after M6 (modes, taste, stats, export and full snapshots are all built), and
@@ -11,8 +11,12 @@ again to drop Google Books (see the end).
   instead of a fixed source order. Show the other sources' ratings and say why one was chosen.
 - **Keep Hidden gems**, adjusted so it stays honest under the new choice (stage 1, below).
 - **No Google Books.** Considered and dropped; reasons at the end of this plan.
-- Refresh automatically while the app runs: every 7 days for books in progress or on the
-  shortlist, every 30 days for the rest, in small batches.
+- **Every source's rating is kept and shown**, and among trustworthy matches the one with the most
+  ratings is used. Review text is not needed.
+- Refresh automatically while the app runs, **by how likely something has changed**: 7 days for
+  books in progress or on the shortlist, 30 days where a source has no match, no rating or few
+  ratings, 90 days where a confirmed or accepted match already has a well-supported rating. Small
+  batches; ongoing series keep their existing 7-day check.
 
 Decisions made in this plan on the owner's behalf (say so if any should change):
 
@@ -60,6 +64,9 @@ scale, vote count (missing stays `null`, distinct from 0), this source's decisio
 record's link, and when that source last answered successfully.
 
 ### Selection (one pure function in `lib/ratings.ts`)
+
+Every source's rating for an item is already kept, in `item_matches` (which is backed up); this
+stage changes only which one is used. Nothing is deleted.
 
 Eligible: a rating whose match is owner-confirmed, accepted or provisional; not rejected, not a
 tie; a valid value and scale; and, for a series score, an item that belongs to that series.
@@ -161,12 +168,24 @@ Built around the existing `LookupManager`, not as a second lookup engine.
 - **When:** check after startup and periodically while running. Nothing runs in demo mode, after
   shutdown, when the setting is off, during a scan, or while a manual lookup runs (it defers).
   After a long time closed, catch up gradually.
-- **What is due:** per item and source, from `lookup_state.looked_up_at`: 7 days for in-progress
-  and shortlisted items (`REFRESH_ACTIVE_DAYS`), 30 for the rest (`REFRESH_OTHER_DAYS`). Add
+- **What is due:** per item and source, from `lookup_state.looked_up_at`, by how likely that
+  source's answer has changed:
+
+  | Item and source                                                                                                   | Every   | Constant               |
+  | ----------------------------------------------------------------------------------------------------------------- | ------- | ---------------------- |
+  | Item in progress or shortlisted (any source)                                                                      | 7 days  | `REFRESH_ACTIVE_DAYS`  |
+  | Source found no match, a tie, only a provisional match, no rating, or fewer than `RATING_SUPPORTED_VOTES` ratings | 30 days | `REFRESH_OPEN_DAYS`    |
+  | Confirmed or accepted match with a supported rating                                                               | 90 days | `REFRESH_SETTLED_DAYS` |
+
+  The 30-day group is where new information appears (books added to Hardcover or Open Library,
+  counts growing); a settled rating with thousands of votes barely moves in a month. Ongoing
+  series keep the existing 7-day published-series check. Items marked Never and items read
+  elsewhere with no file use the 90-day interval. Add
   next-eligible time and failure count per item and source in a numbered migration, and keep the
   time of the last real network answer apart from local re-scoring, so re-reading an old cached
   answer never looks fresh. Add the new columns to backup (owner-relevant timings) or its
   commented exclusion list, and to `app.release.test.ts`.
+
 - **How much:** batches of up to 25 source requests. New items and the owner's own actions
   first, then in-progress and shortlisted, then the oldest. Automatic work may use at most 20% of
   a source's daily allowance where it has one (Hardcover, Metron); count every real request,
@@ -183,15 +202,72 @@ Built around the existing `LookupManager`, not as a second lookup engine.
   unchanged before saving (merges, splits and edits during a request), as manual lookups already
   do. Call `syncSeries` after a batch that changed series facts, as manual lookups do. Owner
   corrections (`user_item`) are never touched.
-- **Controls:** Settings: automatic refresh on/off (on by default; off in demo), the two
+- **Controls:** Settings: automatic refresh on/off (on by default; off in demo), the three
   intervals shown (fixed values from `config.ts`, not editable), pause/resume and
   "Refresh due books now". Diagnostics: per source, how many are due, last success, requests used
   by automatic work, pauses and failures. Item page: "Refresh due" and "Refresh failed; showing
   the previous result" labels; a refresh never blanks a page.
-- **Checks (fake clock, no network):** due selection by status; priority order; 429, quota and
-  5xx handling; budget enforcement including secondary requests; cancellation and restart;
+- **Checks (fake clock, no network):** due selection for each of the three groups, including an
+  item moving between them (started reading → 7 days; rating became supported → 90 days);
+  priority order; 429, quota and 5xx handling; budget enforcement including secondary requests; cancellation and restart;
   demo/off/scan/manual deferral; a removed rating becomes unrated; a failure keeps the old
   result; confirmed, accepted and rejected decisions survive a refresh and a restore.
+
+## Stage 4 — best details from each source (proposed; owner to confirm)
+
+### How details are chosen today
+
+Each file is searched on the sources for its kind (title, author, ISBN, series and volume or
+issue). Every candidate is scored; 0.90 or more is accepted, 0.60–0.90 is provisional, a near
+draw is a tie for the owner. Every source's candidates are stored in `item_matches`, but the
+details shown are picked inconsistently:
+
+- **Title:** the owner's title, else the file's own embedded title, else the accepted match's
+  title (only when the file's title was guessed from its filename), else the filename guess
+  (`lib/library.ts`). The file's title is kept as the fact underneath.
+- **Subjects:** pooled from every used match and the file (`lib/rankData.ts`).
+- **Pages:** from whichever used match happens to come first that has them; measured file
+  lengths come first for duration.
+- **First publication year:** from the chosen match (`refreshDerivedFacts`).
+- **Description:** from one record.
+
+### Proposal: the best value per detail, not the "most detailed" source
+
+No source is best at everything: Open Library is built for first publication years and ISBNs,
+Hardcover for ratings, descriptions and series, AniList for manga tags and volume counts, Metron
+for comic issues and creators, and the files themselves for this exact copy. Choosing one whole
+source per book throws the others' strengths away. So choose each detail separately, with one
+pure function (`lib/details.ts`) used everywhere, like the rating selector:
+
+- **Only from matches to this book:** owner-confirmed or accepted. Provisional matches offer
+  values as suggestions on the item page, never as facts. A value never comes from a tie or a
+  rejected candidate, so details from two different books are never mixed.
+- **Owner corrections win, then the files, then the sources.** The files describe the copy the
+  owner has; sources describe the work or another edition.
+- **Per detail:**
+
+  | Detail                 | Rule                                                                                                                                                                                                                                                           |
+  | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+  | Title and subtitle     | As today, but when several sources are accepted, take the title from the strongest match (owner-confirmed, then strong ISBN, then score), with Hardcover, Open Library, AniList, Metron as the tie-break. Title and subtitle always come from the same record. |
+  | Authors / creators     | The file's own when present; otherwise the strongest match's. Comic creators from Metron, then ComicVine.                                                                                                                                                      |
+  | First publication year | Open Library for books; AniList for manga; Metron/ComicVine series start for comics. If accepted sources disagree by more than a year, show both on the item page and use the preferred one.                                                                   |
+  | Pages                  | Measured from the file first; otherwise a source record matched by the file's ISBN; otherwise the strongest match's. Always labelled with where it came from.                                                                                                  |
+  | Description            | The longest plain-text description from an accepted match, preferring Hardcover; shown with its source.                                                                                                                                                        |
+  | Subjects, genres, tags | Merged from all accepted matches and the file, de-duplicated, each with its source.                                                                                                                                                                            |
+  | Series, number, status | Unchanged: `syncSeries` rules.                                                                                                                                                                                                                                 |
+  | Rating                 | Stage 1.                                                                                                                                                                                                                                                       |
+
+- **Shown with its source.** The stage 2 list becomes **From each source**: each source's
+  rating and details side by side, with the value in use marked and why.
+- **No new requests and no migration:** everything is already stored. It works on existing data
+  the moment it is merged and refreshes with stage 3.
+- **Before and after:** a title-free count of how many items' displayed title, year, pages and
+  description changed, in the pull request. Search keeps matching both the displayed title and
+  the file's.
+- **Checks:** a provisional match never supplies a fact; an owner title always wins; an embedded
+  title beats an online one; two accepted sources with different titles pick the stronger match;
+  a measured page count beats a source's; disagreeing years are both shown; a description is
+  shown as text, never HTML (scenario 23).
 
 ## Documentation for every stage
 
