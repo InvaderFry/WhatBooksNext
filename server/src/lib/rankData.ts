@@ -11,7 +11,15 @@ import {
   type FolderReachability,
   type ItemSummary,
 } from './library.ts';
-import { communityRating, ratingStats, type RatedFrom, type RatingStats } from './ratings.ts';
+import {
+  communityRating,
+  eligibleRatings,
+  ratingStats,
+  type RatedFrom,
+  type RatingStats,
+  type RatingSelection,
+} from './ratings.ts';
+import { ratingEvidence } from './ratingEvidence.ts';
 import { holdingOf, type RankItem } from './recommend.ts';
 import { loadCoverage, viaStates } from './coverage.ts';
 import { positionLabel, type Coverage } from './series.ts';
@@ -53,6 +61,9 @@ interface ItemFactRow {
 export interface RankData {
   items: RankItem[];
   stats: RatingStats;
+  ratings: Map<string, RatingSelection>;
+  /** Every stored rating with its own match status, for the before/after report. */
+  evidence: Map<string, RatedFrom[]>;
   /** Everything the library view has, by id (for detail views). */
   library: Map<string, ItemSummary>;
   used: Map<string, MatchRow[]>;
@@ -123,6 +134,8 @@ export function loadRankData(db: DB, reach: FolderReachability): RankData {
   const { matches, rejected, overrides } = allMatchInputs(db);
   const used = new Map<string, MatchRow[]>();
   const allRatings: RatedFrom[] = [];
+  const evidence = new Map<string, RatedFrom[]>();
+  const ratings = new Map<string, RatingSelection>();
   for (const i of items) {
     const u = chooseUsed(
       matches.get(i.id) ?? [],
@@ -130,8 +143,13 @@ export function loadRankData(db: DB, reach: FolderReachability): RankData {
       rejected.get(i.id) ?? new Set(),
     );
     used.set(i.id, u);
-    for (const m of u)
-      if (m.record.rating) allRatings.push({ ...m.record.rating, source: m.source });
+    const rs = ratingEvidence(
+      matches.get(i.id) ?? [],
+      overrides.get(i.id) ?? null,
+      rejected.get(i.id) ?? new Set(),
+    );
+    evidence.set(i.id, rs);
+    allRatings.push(...eligibleRatings(rs, !!facts.get(i.id)?.series_id).eligible);
   }
   const stats = ratingStats(allRatings);
 
@@ -139,11 +157,8 @@ export function loadRankData(db: DB, reach: FolderReachability): RankData {
     const f = facts.get(i.id);
     const u = used.get(i.id) ?? [];
     const override = overrides.get(i.id);
-    const ratings = u
-      .filter((m) => m.record.rating)
-      .map((m) => ({ ...m.record.rating!, source: m.source }));
-    // A series rating is only used for an item that is part of a series (§12.2).
-    const usable = ratings.filter((r) => r.scope !== 'series' || f?.series_id);
+    const selection = communityRating(evidence.get(i.id) ?? [], stats, !!f?.series_id);
+    ratings.set(i.id, selection);
     const pdfType = f?.pdf_override ?? f?.pdf_type ?? null;
     const sourcePages = u.find((m) => m.record.pages)?.record;
     const dates = fileDates.get(i.id) ?? [];
@@ -225,7 +240,7 @@ export function loadRankData(db: DB, reach: FolderReachability): RankData {
         },
         unitFor(i.kind, f?.volume_label ?? null, f?.issue_label ?? null),
       ),
-      community: communityRating(usable, stats),
+      community: selection.chosen,
       firstPublishYear: f?.publication_year ?? null,
       acquired,
       effort: i.user.effortOverride ?? estimateEffort(i.kind, i.isReference),
@@ -238,6 +253,8 @@ export function loadRankData(db: DB, reach: FolderReachability): RankData {
   return {
     items: rankItems,
     stats,
+    ratings,
+    evidence,
     library: new Map(items.map((i) => [i.id, i])),
     used,
     arrivals,

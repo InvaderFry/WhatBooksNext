@@ -84,7 +84,7 @@ on screen, and none ever shows a finished, Never, hidden or "did not finish" boo
 | Next in series        | The next book you own in each series you've started; an earlier skipped one first  |
 | One-sitting reads     | Whole books or single installments whose measured length fits (2 hours by default) |
 | Waiting on your shelf | Highly rated, unstarted, the ones you've had longest first                         |
-| Hidden gems           | Highly rated with few ratings for their source (a missing count isn't "obscure")   |
+| Hidden gems           | Highly rated trusted books/volumes with few ratings everywhere checked             |
 | Classics you missed   | Highly rated, unstarted, first published 25+ years ago                             |
 | Still relevant?       | A review of undecided tech books: Want, Mark as reference, Never or Decide later   |
 | Mood                  | Escape, Learn or Skim: moves matching books up without hiding the rest             |
@@ -125,6 +125,17 @@ never files or your reading history.
 | Hardcover    | optional free token | book ratings with vote counts, series, genres           |
 | Metron       | optional free token | single comic issues: series, run, cover year, ended?    |
 | ComicVine    | optional free key   | comic issues Metron can't find (200 requests an hour)   |
+
+The community rating comes from a trusted match (confirmed by you or accepted by the app),
+with scope first, then the most ratings. A supported book/volume rating (at least 20 ratings)
+comes before a supported whole-series score, then sparse book/volume and sparse series scores.
+An unconfirmed match is a labelled last resort. Counts from different sites are never added,
+and each series rating counts once in its source's statistics. Your personal rating still
+replaces the community part of the ranking; the Library's rating sort stays personal-only.
+**Hidden gems** needs at least 5 ratings on a trusted book/volume match, few for its source,
+and few on every other trusted source with a known count. Unknown counts don't prove obscurity.
+**Diagnostics → Rating evidence** shows the five tier counts and how many default What next
+picks use an unconfirmed rating. CSV export appends `community_scope` and `community_match`.
 
 Everything works without a key. Lookups run after each scan (you can turn that off in
 **Settings → Online lookups**), about one book a second, and pick up where they stopped. **Sources

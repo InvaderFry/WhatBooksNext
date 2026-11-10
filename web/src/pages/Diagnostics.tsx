@@ -40,7 +40,87 @@ interface Diag {
     requests: number;
     note: string;
   }[];
+  ratings: {
+    tiers: Record<string, number>;
+    unknown: number;
+    whatNext: { total: number; provisional: number };
+  };
   lookups: { pending: number; running: boolean };
+}
+
+interface RatingChanges {
+  items: number;
+  changedSource: number;
+  gained: number;
+  lost: number;
+  movedTier: number;
+  tierMoves: Record<string, number>;
+  modes: { mode: string; before: number; after: number; entering: number; leaving: number }[];
+  sourceTargets: { source: string; before: number; after: number }[];
+}
+
+const MODE_NAMES: Record<string, string> = {
+  hidden_gems: 'Hidden gems',
+  classics: 'Classics',
+  waiting: 'Waiting on your shelf',
+};
+
+/** Plain lines, for the page and the copied report alike. */
+function ratingChangeLines(c: RatingChanges): string[] {
+  return [
+    `Compared with the old fixed rating order, across ${c.items} books:`,
+    `  rating now from a different source: ${c.changedSource}; gained a rating: ${c.gained}; lost a rating: ${c.lost}`,
+    `  moved evidence tier: ${c.movedTier}${
+      Object.keys(c.tierMoves).length
+        ? ` (${Object.entries(c.tierMoves)
+            .map(([k, n]) => `${k}: ${n}`)
+            .join(', ')})`
+        : ''
+    }`,
+    ...c.modes.map(
+      (m) =>
+        `  ${MODE_NAMES[m.mode] ?? m.mode}: ${m.before} before, ${m.after} now (${m.entering} joined, ${m.leaving} left)`,
+    ),
+  ];
+}
+
+/** Stage 1 before/after on this library: counts only, never titles, run on request. */
+function RatingChangeCheck({ onResult }: { onResult: (c: RatingChanges) => void }) {
+  const [result, setResult] = useState<RatingChanges | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  return (
+    <div>
+      <button
+        type="button"
+        className="secondary"
+        disabled={busy}
+        onClick={async () => {
+          setBusy(true);
+          setError(null);
+          try {
+            const r = await api.post<RatingChanges>('/api/diagnostics/rating-changes', {});
+            setResult(r);
+            onResult(r);
+          } catch (e) {
+            setError((e as Error).message);
+          } finally {
+            setBusy(false);
+          }
+        }}
+      >
+        {busy ? 'Comparing…' : 'Compare with the old rating order'}
+      </button>
+      {error && <Notice kind="error">{error}</Notice>}
+      {result && (
+        <ul className="plain">
+          {ratingChangeLines(result).map((l) => (
+            <li key={l}>{l.trim()}</li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
 }
 
 interface HardcoverTest {
@@ -69,6 +149,7 @@ export function Diagnostics() {
   const [diag, setDiag] = useState<Diag | null>(null);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [ratingChanges, setRatingChanges] = useState<RatingChanges | null>(null);
 
   useEffect(() => {
     api
@@ -77,7 +158,11 @@ export function Diagnostics() {
       .catch((e: Error) => setError(e.message));
   }, [names]);
 
-  const report = diag ? toReport(diag) : '';
+  const report = diag
+    ? [toReport(diag), ...(ratingChanges ? ['', ...ratingChangeLines(ratingChanges)] : [])].join(
+        '\n',
+      )
+    : '';
 
   return (
     <div className="page">
@@ -157,6 +242,27 @@ export function Diagnostics() {
               </li>
             </ul>
           </section>
+          <section className="section" aria-labelledby="ratings-h">
+            <h2 id="ratings-h">Rating evidence</h2>
+            <p className="muted">All library items, including finished and read elsewhere.</p>
+            <ul className="plain">
+              {Object.entries(diag.ratings.tiers).map(([tier, count]) => (
+                <li key={tier}>
+                  Tier {tier} — {RATING_TIERS[tier]}: {count}
+                </li>
+              ))}
+              <li>Unknown: {diag.ratings.unknown}</li>
+              <li>
+                Default What next picks using an unconfirmed rating (tier 5):{' '}
+                {diag.ratings.whatNext.provisional} of {diag.ratings.whatNext.total}
+              </li>
+            </ul>
+            <p className="muted">
+              See how the new rating choice changed your library: counts only, never titles. It is
+              added to the report below.
+            </p>
+            <RatingChangeCheck onResult={setRatingChanges} />
+          </section>
           <section className="section" aria-labelledby="sources-h">
             <h2 id="sources-h">Online sources</h2>
             <ul className="check-list">
@@ -211,6 +317,14 @@ export function Diagnostics() {
   );
 }
 
+const RATING_TIERS: Record<string, string> = {
+  1: 'trusted book or volume, supported',
+  2: 'trusted whole series, supported',
+  3: 'trusted book or volume, few or unknown ratings',
+  4: 'trusted whole series, few or unknown ratings',
+  5: 'unconfirmed match',
+};
+
 function toReport(d: Diag): string {
   const lines = [
     'whatBooksNext diagnostics',
@@ -234,6 +348,11 @@ function toReport(d: Diag): string {
     '',
     `Deep scan: ${d.deepScan.filesRead} read, ${d.deepScan.filesHashed} hashed, ${d.deepScan.covers} covers, ${d.deepScan.problems} problems`,
     `Lookups waiting: ${d.lookups.pending}${d.lookups.running ? ' (running)' : ''}`,
+    ...Object.entries(d.ratings.tiers).map(
+      ([tier, count]) => `Rating tier ${tier} (${RATING_TIERS[tier]}): ${count}`,
+    ),
+    `Rating unknown: ${d.ratings.unknown}`,
+    `Default What next picks on tier 5: ${d.ratings.whatNext.provisional} of ${d.ratings.whatNext.total}`,
     ...d.sources.map(
       (s) =>
         `${s.label}: ${s.configured ? s.state : 'no key'}; requests this run ${s.requests}${s.lastError ? `; last error: ${s.lastError}` : ''}`,

@@ -45,6 +45,8 @@ import { registerStoreRoutes } from './routes/store.ts';
 import { registerCalibreRoutes } from './routes/calibre.ts';
 import { registerHistoryImportRoutes } from './routes/historyImport.ts';
 import { registerStatsRoutes } from './routes/stats.ts';
+import { loadRankData } from './lib/rankData.ts';
+import { ratingChangeReport, ratingDiagnostics } from './lib/ratingDiagnostics.ts';
 import { listFullSnapshots } from './lib/fullSnapshot.ts';
 import { Sources } from './sources/index.ts';
 import type { Fetcher } from './sources/types.ts';
@@ -666,6 +668,11 @@ export function createApp(ctx: AppContext) {
   );
 
   // ---- Diagnostics (§15) -----------------------------------------------------------------------
+  // Stage 1 before/after on the owner's own library: title-free counts, run on request.
+  app.post(
+    '/api/diagnostics/rating-changes',
+    route(async () => ratingChangeReport(db, loadRankData(db, await reach.get()))),
+  );
   app.get(
     '/api/diagnostics',
     route(async (req) => {
@@ -726,6 +733,7 @@ export function createApp(ctx: AppContext) {
           ? 'On: files with RecallOnDataAccess, RecallOnOpen or Offline set count as online-only.'
           : 'Not available on this platform: files count as present.',
         folders: folderChecks,
+        ratings: ratingDiagnostics(db, loadRankData(db, r).items),
         deepScan: {
           // Counts only; Library health lists the files.
           filesRead: db

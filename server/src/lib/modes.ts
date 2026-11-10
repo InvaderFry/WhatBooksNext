@@ -88,7 +88,7 @@ export const MODES: ModeInfo[] = [
     id: 'hidden_gems',
     label: 'Hidden gems',
     description:
-      'Highly rated, but with few ratings for their source — the bottom quarter in your library, and at least 5. A book with no rating count isn’t treated as obscure.',
+      'Highly rated from a trusted book or volume match, with at least 5 ratings and few ratings everywhere we looked — the bottom quarter for each source in your library. Unknown counts aren’t evidence of obscurity.',
     usesTime: false,
   },
   {
@@ -346,16 +346,14 @@ function waiting(all: RankItem[], s: Situation, o: ModeOptions): ModeResult {
 
 function hiddenGems(all: RankItem[], s: Situation, o: ModeOptions): ModeResult {
   const p = pool(all, s);
-  const items = p.items.filter(
-    (i) => i.community?.highlyRated && i.community.fewVotes && i.community.scope !== 'series',
-  );
+  const items = p.items.filter((i) => i.community?.hiddenGem);
   const cards = cardsFor(items, all, s, p.twins).sort(byScore);
   cards.forEach((c) => {
     const r = items.find((i) => i.id === c.id)!.community!;
     c.reasons.splice(
       1,
       0,
-      `Only ${r.votes} ratings on ${SOURCE_LABELS[r.source]} — few for your library`,
+      `Only ${r.votes} ratings on ${SOURCE_LABELS[r.source]} — few for your library${r.fewElsewhere ? '; and few elsewhere' : ''}`,
     );
   });
   return {

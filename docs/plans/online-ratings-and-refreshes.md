@@ -1,6 +1,6 @@
 # Online ratings, best details and automatic refreshes
 
-Status: implementation plan; no application changes made. Researched 2026-11-10 and revised the
+Status: Stage 1 implemented; stages 2–4 remain planned. Researched 2026-11-10 and revised the
 same day: against `main` after M6, to drop Google Books (see the end), and after two independent
 reviews whose corrections are folded in.
 
@@ -52,8 +52,12 @@ authority throughout. A missing community rating stays unknown and neutral.
   `communityRating`. Its `matchConfirmed` flag is per item (owner override, or any used match
   with strong ISBN evidence, Calibre included).
 - Readers of the chosen rating: the blend and its reasons/limits (`lib/recommend.ts`); **Waiting
-  on your shelf**, **Hidden gems** and **Classics** (`lib/modes.ts`); sorting
-  (`routes/reading.ts`); the item page (`OnlineCard.tsx`); the CSV export (`lib/export.ts`).
+  on your shelf**, **Hidden gems** and **Classics** (`lib/modes.ts`); the **triage queue
+  order** (rated books first, highest first, in the triage route of `routes/reading.ts`); the item
+  page (`OnlineCard.tsx`); the CSV export (`lib/export.ts`). It picks up the new choice with no
+  change of its own.
+- **Not a reader, and unchanged:** the Library page's "rating" sort (`lib/library.ts`) uses only
+  the owner's personal rating. Stage 1 leaves it as it is.
 - Details: the title is the owner's, else the file's embedded title, else an accepted match's
   title (only when the file's title came from its filename), else the filename guess
   (`lib/library.ts`). Subjects are pooled from every used match (provisional included) and the

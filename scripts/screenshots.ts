@@ -182,6 +182,36 @@ try {
       },
     ],
     [
+      'item-rating-unconfirmed',
+      '/?view=library&q=river',
+      async (p) => {
+        await p
+          .getByRole('link', { name: /River of Clocks/ })
+          .first()
+          .click();
+        const confirm = p.getByRole('link', { name: 'Check and confirm this match' });
+        await confirm.focus();
+        await p.keyboard.press('Enter');
+        await p.locator('#possible-matches[open]').waitFor();
+        await p
+          .getByRole('button', { name: /^This is it:/ })
+          .first()
+          .waitFor();
+      },
+    ],
+    [
+      'item-rating-series',
+      '/?view=library&q=starfall',
+      async (p) => {
+        await p
+          .getByRole('link', { name: /Starfall Academy/ })
+          .first()
+          .click();
+        await p.getByRole('link', { name: 'Check and confirm this match' }).waitFor();
+        await p.getByText('rating is for the whole series', { exact: false }).waitFor();
+      },
+    ],
+    [
       'item-online-only',
       '/?view=library',
       async (p) => {
@@ -370,6 +400,7 @@ try {
       const page = await browser.newPage({
         viewport: { width, height: 900 },
         colorScheme: scheme,
+        reducedMotion: 'reduce',
         deviceScaleFactor: 1,
       });
       // SHOTS=next,tune takes only those (names start with these).
