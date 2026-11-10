@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { api, type TriageList } from '../api.ts';
+import { api, PROGRESS_LABELS, type BulkPreview, type TriageList } from '../api.ts';
 import { Cover, creatorsText, KindText, Notice } from '../components.tsx';
-import { hrefFor, onLinkClick } from '../url.ts';
+import { hrefFor, onLinkClick, updateParams, type Params } from '../url.ts';
 
 /**
  * Triage (PLAN.md §13.5): one book at a time — Want / Maybe / Never / Already read, plus Skip
@@ -34,7 +34,20 @@ const ACTIONS: { action: Action; label: string; key: string }[] = [
   { action: 'skip', label: 'Skip', key: 's' },
 ];
 
-export function Triage({ onChanged }: { onChanged: () => void }) {
+/** Which books to sort (§13.5): everything, new arrivals, or one library folder. */
+function sourceQuery(params: Params): string {
+  const source = params.source === 'new' || params.source === 'folder' ? params.source : '';
+  const folder = source === 'folder' ? (params.folder ?? '') : '';
+  return `${source ? `&source=${source}` : ''}${folder ? `&folder=${encodeURIComponent(folder)}` : ''}`;
+}
+
+export function Triage({ params, onChanged }: { params: Params; onChanged: () => void }) {
+  if (params.bulk === '1') return <BulkTriage params={params} onChanged={onChanged} />;
+  return <OneAtATime params={params} onChanged={onChanged} />;
+}
+
+function OneAtATime({ params, onChanged }: { params: Params; onChanged: () => void }) {
+  const src = sourceQuery(params);
   const [data, setData] = useState<TriageList | null>(null);
   const [history, setHistory] = useState<Done[]>([]);
   const [announce, setAnnounce] = useState('');
@@ -44,8 +57,10 @@ export function Triage({ onChanged }: { onChanged: () => void }) {
 
   const load = useCallback(async () => {
     const skip = skipped().join(',');
-    setData(await api.get<TriageList>(`/api/triage?limit=1&skip=${encodeURIComponent(skip)}`));
-  }, []);
+    setData(
+      await api.get<TriageList>(`/api/triage?limit=1&skip=${encodeURIComponent(skip)}${src}`),
+    );
+  }, [src]);
   useEffect(() => {
     void load();
   }, [load]);
@@ -106,7 +121,7 @@ export function Triage({ onChanged }: { onChanged: () => void }) {
       setAnnounce(`Undone: ${last.title}.`);
       // The undone book comes back first, so the owner can decide again.
       const d = await api.get<TriageList>(
-        `/api/triage?limit=50&skip=${encodeURIComponent(skipped().join(','))}`,
+        `/api/triage?limit=50&skip=${encodeURIComponent(skipped().join(','))}${src}`,
       );
       const back = d.items.find((i) => i.id === last.id);
       setData({ ...d, items: back ? [back, ...d.items.filter((i) => i.id !== last.id)] : d.items });
@@ -114,7 +129,7 @@ export function Triage({ onChanged }: { onChanged: () => void }) {
     } finally {
       setBusy(false);
     }
-  }, [history, busy, onChanged]);
+  }, [history, busy, onChanged, src]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -148,6 +163,7 @@ export function Triage({ onChanged }: { onChanged: () => void }) {
           you’re unsure about. It’s optional: recommendations work without it.
         </p>
       </div>
+      {data && <SourcePicker data={data} params={params} />}
       <div className="visually-hidden" aria-live="polite">
         {announce}
       </div>
@@ -222,6 +238,242 @@ export function Triage({ onChanged }: { onChanged: () => void }) {
           Undo{history[0] ? ` (${history[0].title})` : ''} <kbd aria-hidden="true">U</kbd>
         </button>
       </div>
+    </div>
+  );
+}
+
+function SourcePicker({ data, params }: { data: TriageList; params: Params }) {
+  const source = data.source;
+  return (
+    <div className="triage-source">
+      <fieldset className="segmented">
+        <legend>Sort which books?</legend>
+        {(
+          [
+            ['all', 'Everything'],
+            ['new', `New arrivals (${data.newArrivals})`],
+            ['folder', 'One folder'],
+          ] as const
+        ).map(([id, label]) => (
+          <label key={id} className={source === id ? 'on' : ''}>
+            <input
+              type="radio"
+              name="source"
+              value={id}
+              checked={source === id}
+              onChange={() =>
+                updateParams({
+                  source: id === 'all' ? '' : id,
+                  folder: id === 'folder' ? (params.folder ?? data.folders[0]?.id ?? '') : '',
+                })
+              }
+            />
+            {label}
+          </label>
+        ))}
+      </fieldset>
+      {source === 'folder' && (
+        <p>
+          <label>
+            Folder{' '}
+            <select
+              value={data.folder ?? ''}
+              onChange={(e) => updateParams({ folder: e.target.value })}
+            >
+              {data.folders.map((f) => (
+                <option key={f.id} value={f.id}>
+                  {f.path} ({f.untriaged} to sort)
+                </option>
+              ))}
+            </select>
+          </label>
+        </p>
+      )}
+      <p className="small">
+        {params.bulk === '1' ? (
+          <a href={hrefFor({ ...params, bulk: '' })} onClick={onLinkClick({ ...params, bulk: '' })}>
+            Sort one at a time
+          </a>
+        ) : (
+          <a
+            href={hrefFor({ ...params, view: 'triage', bulk: '1' })}
+            onClick={onLinkClick({ ...params, view: 'triage', bulk: '1' })}
+          >
+            Mark several as Already read or Never at once
+          </a>
+        )}
+      </p>
+    </div>
+  );
+}
+
+/** Bulk Already read / Never on a selection, with a preview first and Undo after (§13.5). */
+function BulkTriage({ params, onChanged }: { params: Params; onChanged: () => void }) {
+  const src = sourceQuery(params);
+  const [data, setData] = useState<TriageList | null>(null);
+  const [chosen, setChosen] = useState<Set<string>>(new Set());
+  const [preview, setPreview] = useState<BulkPreview | null>(null);
+  const [done, setDone] = useState<{ text: string; undo: string } | null>(null);
+  const [announce, setAnnounce] = useState('');
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setData(await api.get<TriageList>(`/api/triage?limit=500${src}`));
+    setChosen(new Set());
+    setPreview(null);
+  }, [src]);
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const ask = async (action: 'read' | 'never') => {
+    setError(null);
+    try {
+      const r = await api.post<{ preview: BulkPreview }>('/api/triage/bulk', {
+        ids: [...chosen],
+        action,
+      });
+      setPreview(r.preview);
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  };
+  const apply = async () => {
+    if (!preview) return;
+    const r = await api.post<{ done: number; undo: string }>('/api/triage/bulk', {
+      ids: [...chosen],
+      action: preview.action,
+      preview: false,
+    });
+    const text = `${r.done} ${r.done === 1 ? 'book' : 'books'} marked ${preview.action === 'read' ? 'Already read' : 'Never'}.`;
+    setDone({ text, undo: r.undo });
+    setAnnounce(text);
+    await load();
+    onChanged();
+  };
+  const undo = async () => {
+    if (!done) return;
+    const r = await api.post<{ restored: number; skipped: number }>('/api/triage/bulk/undo', {
+      undo: done.undo,
+    });
+    const text = `Undone for ${r.restored} ${r.restored === 1 ? 'book' : 'books'}${r.skipped ? `; ${r.skipped} changed since, so left as they are` : ''}.`;
+    setDone(null);
+    setAnnounce(text);
+    await load();
+    onChanged();
+  };
+
+  const items = data?.items ?? [];
+  const all = items.length > 0 && items.every((i) => chosen.has(i.id));
+  return (
+    <div className="page narrow">
+      <div className="page-head">
+        <h1>Triage several at once</h1>
+        <p className="muted">
+          Tick books you’ve already read, or never want suggested, then choose what to do. You see
+          what will change before anything does, and can undo it after.
+        </p>
+      </div>
+      {data && <SourcePicker data={data} params={params} />}
+      <div className="visually-hidden" aria-live="polite">
+        {announce}
+      </div>
+      {error && <Notice kind="error">{error}</Notice>}
+      {done && (
+        <Notice kind="success">
+          {done.text}{' '}
+          <button type="button" className="link-button" onClick={() => void undo()}>
+            Undo
+          </button>
+        </Notice>
+      )}
+      {data && items.length === 0 && <Notice>Nothing left to sort here.</Notice>}
+      {items.length > 0 && (
+        <>
+          <p className="row-actions wrap">
+            <label className="check">
+              <input
+                type="checkbox"
+                checked={all}
+                onChange={() => setChosen(all ? new Set() : new Set(items.map((i) => i.id)))}
+              />
+              Select all {items.length}
+              {data && data.remaining > items.length ? ` shown (of ${data.remaining})` : ''}
+            </label>
+          </p>
+          <ul className="bulk-list" aria-label="Books to sort">
+            {items.map((i) => (
+              <li key={i.id}>
+                <label className="check">
+                  <input
+                    type="checkbox"
+                    checked={chosen.has(i.id)}
+                    onChange={() => {
+                      const next = new Set(chosen);
+                      if (next.has(i.id)) next.delete(i.id);
+                      else next.add(i.id);
+                      setChosen(next);
+                      setPreview(null);
+                    }}
+                  />
+                  {i.title}
+                  {i.creators.length > 0 && (
+                    <span className="muted small"> · {creatorsText(i.creators)}</span>
+                  )}
+                </label>
+              </li>
+            ))}
+          </ul>
+          <div className="row-actions wrap">
+            <button type="button" disabled={chosen.size === 0} onClick={() => void ask('read')}>
+              Already read ({chosen.size})
+            </button>
+            <button
+              type="button"
+              className="secondary danger"
+              disabled={chosen.size === 0}
+              onClick={() => void ask('never')}
+            >
+              Never ({chosen.size})
+            </button>
+          </div>
+        </>
+      )}
+      {preview && (
+        <section className="section digest" aria-labelledby="preview-h">
+          <h2 id="preview-h">
+            Mark {preview.changes} {preview.changes === 1 ? 'book' : 'books'}{' '}
+            {preview.action === 'read' ? 'Already read' : 'Never'}?
+          </h2>
+          {preview.action === 'read' && (
+            <p>Their finish dates stay unknown, so they don’t count toward any year.</p>
+          )}
+          {preview.already > 0 && <p>{preview.already} already are, and stay as they are.</p>}
+          {preview.inProgress.length > 0 && (
+            <>
+              <p>These have progress recorded, which this replaces:</p>
+              <ul>
+                {preview.inProgress.map((x) => (
+                  <li key={x.id}>
+                    {x.title} <span className="muted small">({PROGRESS_LABELS[x.progress]})</span>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+          {preview.shortlisted.length > 0 && (
+            <p>On your shortlist: {preview.shortlisted.map((x) => x.title).join(', ')}.</p>
+          )}
+          <div className="row-actions wrap">
+            <button type="button" onClick={() => void apply()}>
+              Yes, mark {preview.changes}
+            </button>
+            <button type="button" className="secondary" onClick={() => setPreview(null)}>
+              Cancel
+            </button>
+          </div>
+        </section>
+      )}
     </div>
   );
 }

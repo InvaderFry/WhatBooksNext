@@ -254,9 +254,21 @@ export function tasteFor(
   const sum = matched.reduce((a, s) => a + s.affinity, 0);
   const x = (TASTE_STRENGTH[m.strength] * sum) / Math.sqrt(matched.length);
   const score = Math.round((0.5 + 0.5 * Math.tanh(2 * x)) * 1000) / 1000;
-  const best = [...matched].sort((a, b) => b.affinity - a.affinity)[0]!;
-  return { score, reason: best.affinity >= TASTE_REASON_MIN ? signalSentence(best) : null };
+  // The reason names the most specific signal that stands out: an author says more than
+  // "fiction", which would otherwise be the reason on nearly every card.
+  const best = matched
+    .filter((s) => s.affinity >= TASTE_REASON_MIN)
+    .sort((a, b) => SPECIFIC[a.type] - SPECIFIC[b.type] || b.affinity - a.affinity)[0];
+  return { score, reason: best ? signalSentence(best) : null };
 }
+
+const SPECIFIC: Record<Signal['type'], number> = {
+  author: 0,
+  artist: 1,
+  genre: 2,
+  publisher: 3,
+  kind: 4,
+};
 
 /** A true sentence about a learned signal: "You rate fantasy highly", "You finish manga". */
 export function signalSentence(s: Signal): string {
@@ -293,9 +305,19 @@ export function tasteSummary(m: TasteModel) {
     minGroups: TASTE_MIN_GROUPS,
     strength: m.strength,
     likes: likes.map((s) => ({ ...s, text: signalSentence(s) })),
-    dislikes: dislikes.map((s) => ({
-      ...s,
-      text: `Less of ${s.type === 'author' ? `books by ${s.label}` : s.type === 'artist' ? `comics drawn by ${s.label}` : s.type === 'publisher' ? `books from ${s.label}` : s.label}`,
-    })),
+    dislikes: dislikes.map((s) => ({ ...s, text: dislikeSentence(s) })),
   };
+}
+
+/** "You rate self-help low", "You stop books by X as Not for me". */
+export function dislikeSentence(s: Signal): string {
+  const what =
+    s.type === 'author'
+      ? `books by ${s.label}`
+      : s.type === 'artist'
+        ? `comics drawn by ${s.label}`
+        : s.type === 'publisher'
+          ? `books from ${s.label}`
+          : s.label;
+  return s.rated ? `You rate ${what} low` : `You stop ${what} as “Not for me”`;
 }

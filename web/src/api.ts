@@ -399,6 +399,10 @@ export interface Card {
   reasons: string[];
   limitations: string[];
   score: number;
+  topics?: string[];
+  /** Still relevant? only (§13.10). */
+  signals?: string[];
+  deferred?: boolean;
 }
 
 export interface CardGap {
@@ -472,17 +476,41 @@ export interface TimePreset {
   minutes: number | null;
 }
 
+export type ModeId =
+  | 'read_next'
+  | 'continue'
+  | 'next_in_series'
+  | 'one_sitting'
+  | 'waiting'
+  | 'hidden_gems'
+  | 'classics'
+  | 'still_relevant'
+  | 'mood'
+  | 'surprise';
+export type Mood = 'escape' | 'learn' | 'skim';
+
 export interface ReadNext {
+  view: ModeId;
   cards: Card[];
   mightFit: Card[];
   total: number;
   coverage: { eligible: number; rated: number; lengthKnown: number };
+  leftOut?: { ongoing: number; unknown: number; missing: number };
+  empty?: string;
   situation: {
     time: string;
     mode: 'read_for' | 'finish_within';
     ready: boolean;
     show: 'all' | 'books' | 'tech' | 'comics';
+    mood: Mood | null;
+    complete: boolean;
+    topic: string | null;
   };
+  modes: { id: ModeId; label: string; description: string; usesTime: boolean }[];
+  moods: { id: Mood; label: string; description: string }[];
+  topics: string[];
+  taste: { on: boolean; outcomes: number };
+  stillReading: number;
   presets: TimePreset[];
   lookups: { pending: number; running: boolean };
   hardcover: boolean | null;
@@ -584,8 +612,13 @@ export interface ItemOnline {
 }
 
 export interface TriageList {
+  source: 'all' | 'new' | 'folder';
+  folder: string | null;
   remaining: number;
   triaged: number;
+  newArrivals: number;
+  lastScan: { id: string; newItems: number } | null;
+  folders: { id: string; path: string; untriaged: number }[];
   items: (Card & {
     kindIsGuess: boolean;
     description: string | null;
@@ -638,4 +671,43 @@ export function formatRange(d: { low: number; high: number }): string {
   const a = r(d.low / 60);
   const b = Math.max(r(d.high / 60), a);
   return a === b ? `~${a} h` : `~${a}–${b} h`;
+}
+
+export interface Signal {
+  key: string;
+  label: string;
+  type: 'genre' | 'author' | 'artist' | 'publisher' | 'kind';
+  affinity: number;
+  evidence: number;
+  rated: boolean;
+  text: string;
+}
+
+export type WeightKey = 'rating' | 'timeFit' | 'taste' | 'momentum' | 'triage' | 'recency';
+export type TasteStrength = 'off' | 'low' | 'normal' | 'high';
+
+export interface Tune {
+  weights: Record<WeightKey, number>;
+  defaults: Record<WeightKey, number>;
+  explain: Record<WeightKey, { label: string; explain: string }>;
+  strength: TasteStrength;
+  taste: {
+    active: boolean;
+    outcomes: number;
+    groups: number;
+    threshold: number;
+    minGroups: number;
+    strength: TasteStrength;
+    likes: Signal[];
+    dislikes: Signal[];
+  };
+}
+
+export interface BulkPreview {
+  action: 'read' | 'never';
+  count: number;
+  changes: number;
+  already: number;
+  inProgress: { id: string; title: string; progress: Progress }[];
+  shortlisted: { id: string; title: string }[];
 }

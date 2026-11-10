@@ -20,7 +20,8 @@ import { LookupManager } from '../identify/lookups.ts';
 import { Sources } from '../sources/index.ts';
 import { addCoverage, setSuggestedCoverage } from './coverage.ts';
 import { createStoreItem } from './store.ts';
-import { applyUserPatch, shortlistAdd } from './progress.ts';
+import { applyUserPatch, ensureUserRow, shortlistAdd } from './progress.ts';
+import { newId } from '../util.ts';
 
 /**
  * The demo library (DEMO=1, PLAN.md §17): clearly labelled, no keys, no owner files. Every
@@ -150,6 +151,12 @@ function driveFiles(): Record<string, Buffer> {
     'Tech/Widget Patterns - Ada Quill.pdf': textPdf(10, 20, {
       Title: 'Widget Patterns',
       Author: 'Ada Quill',
+    }),
+    // A tech book tied to one version of a (real) language: first in Still relevant? (§13.10).
+    // The title and author are invented; nothing is claimed about any real book.
+    'Tech/widgetrecipesforpython2.pdf': textPdf(8, 60, {
+      Title: 'Widget Recipes for Python 2',
+      Author: 'Mags Oduya',
     }),
     ...Object.fromEntries(
       [1, 2, 4, 7].map((n) => [
@@ -333,6 +340,31 @@ export async function buildDemoLibrary(
   applyUserPatch(db, byFile('saltroadsongs.epub'), { triage: 'want' });
   applyUserPatch(db, byFile('Widget Patterns - Ada Quill.pdf'), { triage: 'maybe' });
 
+  // M5: modes and taste (§13.10, §13.11, §17 "enough rated/finished/DNF history for taste
+  // learning to switch on").
+  applyUserPatch(db, byFile('widgetrecipesforpython2.pdf'), { kindOverride: 'tech' });
+  // When the owner says they got two books, so Waiting on your shelf has dates to go by (the
+  // demo's files all share one copy date, which counts as unknown).
+  db.prepare('UPDATE user_item SET acquired_on = ?, acquired_precision = ? WHERE item_id = ?').run(
+    '2019-06',
+    'approximate',
+    byFile('saltroadsongs.epub'),
+  );
+  ensureUserRow(db, byFile('Widget Patterns - Ada Quill.pdf'));
+  db.prepare('UPDATE user_item SET acquired_on = ?, acquired_precision = ? WHERE item_id = ?').run(
+    '2021-03-14',
+    'exact',
+    byFile('Widget Patterns - Ada Quill.pdf'),
+  );
+  // A book started months ago and not touched since: Still reading? asks about it.
+  const stalled = byFile('saltandember.epub');
+  applyUserPatch(db, stalled, { progress: 'sampled' }, daysAgo(130));
+  db.prepare('UPDATE user_item SET progress_at = ? WHERE item_id = ?').run(
+    new Date(today.getTime() - 130 * 86_400_000).toISOString(),
+    stalled,
+  );
+  addHistory(db);
+
   const lookups = new LookupManager(db, new Sources(db, { demo: true }));
   lookups.start();
   await lookups.wait();
@@ -384,5 +416,55 @@ export async function buildDemoLibrary(
   shortlistAdd(db, byFile('thelanternkeepers_3rdedition.epub'));
   shortlistAdd(db, byFile('Starfall Academy v01.cbz'));
   shortlistAdd(db, byFile('nightorchard.epub'));
+
   return p;
+}
+
+/**
+ * Reading done elsewhere (history-only, §7): invented titles and authors. Enough rated,
+ * finished and "Not for me" outcomes, from several authors, for taste learning to switch on —
+ * and to lift the owned books of an author rated highly here.
+ */
+function addHistory(db: DB): void {
+  const books: {
+    title: string;
+    author: string;
+    kind: 'fiction' | 'comic' | 'self_help' | 'nonfiction';
+    rating?: number;
+    dnf?: boolean;
+  }[] = [
+    { title: 'The Ferryman’s Almanac', author: 'Odile Brannagh', kind: 'fiction', rating: 9 },
+    { title: 'Lamps Along the Weir', author: 'Odile Brannagh', kind: 'fiction', rating: 10 },
+    { title: 'A Winter of Wicks', author: 'Odile Brannagh', kind: 'fiction', rating: 9 },
+    { title: 'Brassbound #1', author: 'Rue Fenwick', kind: 'comic', rating: 9 },
+    { title: 'Kettle City Nights', author: 'Rue Fenwick', kind: 'comic', rating: 8 },
+    { title: 'The Pocket Planner', author: 'Dorit Allenby', kind: 'self_help', rating: 4 },
+    { title: 'Ten Minute Mornings', author: 'Cass Wrenfield', kind: 'self_help', rating: 3 },
+    { title: 'Habits of Tidy Minds', author: 'Ivo Pellerin', kind: 'self_help', rating: 4 },
+    { title: 'Moss and Mortar', author: 'Juno Teague', kind: 'fiction' },
+    {
+      title: 'A Short History of Invented Hats',
+      author: 'Pim Ostrava',
+      kind: 'nonfiction',
+      dnf: true,
+    },
+  ];
+  const now = nowIso();
+  for (const b of books) {
+    const id = newId();
+    db.prepare(
+      `INSERT INTO items (id, title, title_source, creators, identifiers, created_at, updated_at)
+       VALUES (?, ?, 'owner', ?, '{}', ?, ?)`,
+    ).run(id, b.title, JSON.stringify([{ name: b.author }]), now, now);
+    db.prepare(
+      `INSERT INTO locations (id, item_id, kind, note, created_at, updated_at)
+       VALUES (?, ?, 'history', 'Read elsewhere (demo)', ?, ?)`,
+    ).run(newId(), id, now, now);
+    applyUserPatch(db, id, {
+      kindOverride: b.kind,
+      ...(b.dnf
+        ? { progress: 'dnf', dnfReason: 'not_for_me' }
+        : { progress: 'finished', finishedPrecision: 'unknown', rating: b.rating ?? null }),
+    });
+  }
 }
