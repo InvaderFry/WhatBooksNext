@@ -18,6 +18,7 @@ import {
 } from '../components.tsx';
 import { hrefFor, onLinkClick, updateParams, useParams } from '../url.ts';
 import { AddFolderForm } from './Settings.tsx';
+import { AddStoreBook } from './StoreBooks.tsx';
 
 const PAGE = 100;
 
@@ -37,6 +38,7 @@ export function Library({
   onScanStarted: () => void;
 }) {
   const params = useParams();
+  const [adding, setAdding] = useState(false);
   const [items, setItems] = useState<ItemSummary[] | null>(null);
   const [total, setTotal] = useState(0);
   const [limit, setLimit] = useState(PAGE);
@@ -126,12 +128,22 @@ export function Library({
     <div className="page">
       <div className="page-head">
         <h1>Library</h1>
+        <button
+          type="button"
+          className="small secondary"
+          onClick={() => setAdding(!adding)}
+          aria-expanded={adding}
+        >
+          Add a store book…
+        </button>
         <p className="muted" aria-live="polite">
           {items === null
             ? 'Loading…'
             : `${total.toLocaleString()} ${total === 1 ? 'item' : 'items'}${filtersActive ? ' match' : ''}`}
         </p>
       </div>
+
+      {adding && <AddStoreBook onClose={() => setAdding(false)} />}
 
       <form className="filters" role="search" onSubmit={(e) => e.preventDefault()}>
         <div className="field grow">

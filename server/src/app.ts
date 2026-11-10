@@ -40,6 +40,7 @@ import { getSetting, registerReadingRoutes } from './routes/reading.ts';
 import { route } from './routes/route.ts';
 import { registerSeriesRoutes } from './routes/series.ts';
 import { registerOperationRoutes } from './routes/operations.ts';
+import { registerStoreRoutes } from './routes/store.ts';
 import { Sources } from './sources/index.ts';
 import type { Fetcher } from './sources/types.ts';
 import { syncSeries } from './identify/series.ts';
@@ -151,6 +152,7 @@ export function createApp(ctx: AppContext) {
   });
   registerSeriesRoutes(app, { db, reach: () => reach.get(), itemIdOr404 });
   registerOperationRoutes(app, { db, scans, itemIdOr404 });
+  registerStoreRoutes(app, { db, sources, itemIdOr404 });
 
   // ---- Scan reminder (§9.7) -------------------------------------------------------------------
   // A folder whose last complete scan is over 30 days old, unless the banner was dismissed in

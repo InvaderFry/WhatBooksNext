@@ -22,6 +22,7 @@ import { hrefFor, onLinkClick } from '../url.ts';
 import { OnlineCard } from './OnlineCard.tsx';
 import { CollectsSection, SeriesSection } from './SeriesCard.tsx';
 import { MergeCard, SplitCard } from './MergeSplit.tsx';
+import { PlacesSection } from './StoreBooks.tsx';
 
 type Patch = Partial<{
   progress: Progress;
@@ -330,6 +331,12 @@ export function ItemPage({
           }}
         />
       )}
+
+      <PlacesSection
+        itemId={item.id}
+        hasFiles={item.files.length > 0}
+        onChanged={() => void load()}
+      />
 
       <OnlineCard itemId={item.id} onChanged={() => void load()} />
 

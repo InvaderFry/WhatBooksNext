@@ -34,6 +34,7 @@ export const BACKUP_TABLES = [
   'review_state',
   'pick_feedback',
   'collection_coverage',
+  'import_keys',
 ] as const;
 
 /**
@@ -50,6 +51,7 @@ const ADDED_IN: Record<string, number> = {
   pick_feedback: 3,
   series_user: 5,
   collection_coverage: 6,
+  import_keys: 8,
 };
 
 /**

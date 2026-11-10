@@ -1,13 +1,9 @@
 import type { Express } from 'express';
 import type { DB } from '../db/database.ts';
 import type { FolderReachability } from '../lib/library.ts';
-import {
-  markReadElsewhere,
-  removeHistoryEntry,
-  seriesView,
-  setSeriesStatus,
-} from '../lib/seriesView.ts';
+import { markReadElsewhere, seriesView, setSeriesStatus } from '../lib/seriesView.ts';
 import { actOnCoverage, addCoverage } from '../lib/coverage.ts';
+import { removeFilelessItem } from '../lib/store.ts';
 import { HttpError } from '../util.ts';
 import { route } from './route.ts';
 
@@ -99,11 +95,11 @@ export function registerSeriesRoutes(app: Express, d: SeriesDeps): void {
     }),
   );
 
-  // Removes an entry that only records reading elsewhere (never a book with files or a store copy).
+  // Removes a book with no files: an entry read elsewhere, or a store title. Never one with files.
   app.delete(
     '/api/items/:id',
     route((req) => {
-      removeHistoryEntry(db, d.itemIdOr404(String(req.params.id)));
+      removeFilelessItem(db, d.itemIdOr404(String(req.params.id)));
       return { ok: true };
     }),
   );

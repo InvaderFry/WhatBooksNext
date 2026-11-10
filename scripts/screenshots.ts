@@ -140,6 +140,45 @@ try {
         await p.getByRole('button', { name: 'Split', exact: true }).waitFor();
       },
     ],
+    [
+      'library-add-store',
+      '/?view=library',
+      async (p) => {
+        await p.getByRole('button', { name: 'Add a store book…' }).click();
+        await p.getByRole('button', { name: 'Type it in' }).click();
+      },
+    ],
+    [
+      'item-store',
+      '/?view=library&q=cartographer',
+      async (p) => {
+        await p
+          .getByRole('link', { name: /Cartographer of Small Rains/ })
+          .first()
+          .click();
+        await p.getByRole('heading', { name: 'In a store app' }).waitFor();
+      },
+    ],
+    [
+      'settings-csv',
+      '/?view=settings',
+      async (p) => {
+        await p.getByLabel('CSV file').setInputFiles({
+          name: 'my-kindle-books.csv',
+          mimeType: 'text/csv',
+          buffer: Buffer.from(
+            'title,author,store,progress,rating\n' +
+              'The Cartographer of Small Rains,Wenna Holloway,Kindle,read,4/5\n' +
+              'Glass Harbor,Mira Vantongeren,Apple Books,,\n' +
+              'The Orchard Ledger,Pim Arkwright,Kindle,to-read,\n',
+          ),
+        });
+        await p.getByRole('button', { name: 'Import', exact: true }).waitFor();
+        await p
+          .getByRole('heading', { name: 'Store books from a spreadsheet' })
+          .scrollIntoViewIfNeeded();
+      },
+    ],
     ['shortlist', '/?view=shortlist', async () => {}],
     [
       'keyboard-focus',

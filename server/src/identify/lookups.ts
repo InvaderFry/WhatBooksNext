@@ -44,6 +44,7 @@ const MIN_KEPT_SCORE = 0.3;
 
 interface FactsRow {
   id: string;
+  identifiers: string;
   title: string;
   title_source: string | null;
   creators: string;
@@ -59,7 +60,7 @@ export function matchFactsFor(db: DB, itemId: string): MatchFacts | null {
   const i = db
     .prepare(
       `SELECT i.id, i.title, i.title_source, i.creators, i.series_hint, i.volume_label,
-         i.issue_label, i.kind, u.title_override, u.kind_override
+         i.issue_label, i.kind, i.identifiers, u.title_override, u.kind_override
        FROM items i LEFT JOIN user_item u ON u.item_id = i.id WHERE i.id = ?`,
     )
     .get(itemId) as FactsRow | undefined;
@@ -85,6 +86,10 @@ export function matchFactsFor(db: DB, itemId: string): MatchFacts | null {
         isbns.add(id.value.replace(/[^0-9Xx]/g, ''));
     for (const c of md?.isbnCandidates ?? []) candidates.add(c);
   }
+  // Identifiers typed in or imported for a book with no files (a store title): as strong as
+  // an EPUB's own.
+  const own = parseJson<{ isbn?: string[] }>(i.identifiers, {});
+  for (const x of own.isbn ?? []) isbns.add(x.replace(/[^0-9Xx]/g, ''));
   const parse = parseJson<ParsedName | null>(files[0]?.parsed, null);
   const years = new Set<number>();
   for (const y of [parse?.year?.value, parse?.startYear?.value])
@@ -110,11 +115,17 @@ export function matchFactsFor(db: DB, itemId: string): MatchFacts | null {
   const title = i.title_override ?? i.title;
   return {
     title,
-    titleSource: i.title_override || i.title_source === 'embedded' ? 'embedded' : 'filename',
+    titleSource:
+      i.title_override || i.title_source === 'embedded' || i.title_source === 'owner'
+        ? 'embedded'
+        : 'filename',
     // The filename's raw form only stands in for a title taken from the filename: when the
     // file's own metadata names the book, a differing filename is no evidence (a translation
     // saved under the original's name, for one).
-    rawTitle: i.title_override || i.title_source === 'embedded' ? undefined : parse?.rawTitle,
+    rawTitle:
+      i.title_override || i.title_source === 'embedded' || i.title_source === 'owner'
+        ? undefined
+        : parse?.rawTitle,
     authors: creators.map((c) => c.name),
     seriesHint: i.series_hint,
     volume: i.volume_label,

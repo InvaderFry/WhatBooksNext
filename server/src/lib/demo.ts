@@ -18,6 +18,7 @@ import { fillerFor } from '../testing/helpers.ts';
 import { LookupManager } from '../identify/lookups.ts';
 import { Sources } from '../sources/index.ts';
 import { addCoverage, setSuggestedCoverage } from './coverage.ts';
+import { createStoreItem } from './store.ts';
 import { applyUserPatch, shortlistAdd } from './progress.ts';
 
 /**
@@ -345,6 +346,22 @@ export async function buildDemoLibrary(
   setSuggestedCoverage(db, byFile('Copperline Vol. 2 (2021).cbz'), 'demo', [
     { seriesId: copperline, first: 5, last: 8 },
   ]);
+
+  // Books owned in store apps (§14): one the owner can read on the iPad, one not confirmed.
+  createStoreItem(db, {
+    title: 'The Cartographer of Small Rains',
+    author: 'Wenna Holloway',
+    kind: 'fiction',
+    store: 'kindle',
+    readable: false,
+  });
+  createStoreItem(db, {
+    title: 'A Field Guide to Quiet Machines',
+    author: 'Tobiah Renn',
+    kind: 'nonfiction',
+    store: 'apple_books',
+    readable: true,
+  });
 
   shortlistAdd(db, byFile('thelanternkeepers_3rdedition.epub'));
   shortlistAdd(db, byFile('Starfall Academy v01.cbz'));

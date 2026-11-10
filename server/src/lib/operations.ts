@@ -34,6 +34,7 @@ const ITEM_TABLES: [table: string, key: string][] = [
   ['lookup_state', 'item_id'],
   ['candidates_rejected', 'item_id'],
   ['collection_coverage', 'item_id'],
+  ['import_keys', 'item_id'],
 ];
 
 export interface Snapshot {

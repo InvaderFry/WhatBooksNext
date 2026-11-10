@@ -272,7 +272,7 @@ export function loadLibrary(db: DB, reach: FolderReachability, onlyIds?: string[
   // the owner's own title wins over both.
   const items = db
     .prepare(
-      `SELECT i.*, CASE WHEN i.identity = 'accepted' AND COALESCE(i.title_source, 'filename') != 'embedded'
+      `SELECT i.*, CASE WHEN i.identity = 'accepted' AND COALESCE(i.title_source, 'filename') NOT IN ('embedded', 'owner')
            THEN json_extract(m.data, '$.title') END AS online_title, s.name AS series_name
        FROM items i LEFT JOIN series s ON s.id = i.series_id
        LEFT JOIN item_matches m ON m.item_id = i.id AND m.source = i.match_source
