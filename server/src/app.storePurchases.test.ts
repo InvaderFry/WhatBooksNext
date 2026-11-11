@@ -305,8 +305,8 @@ describe('the collectors in the app', () => {
     expect(list).toEqual([
       {
         service: 'kindle',
-        state: 'not_checked',
-        checkedOn: null,
+        state: 'checked',
+        checkedOn: '2026-11-11',
         page: 'https://read.amazon.com/kindle-library',
       },
       { service: 'google_play', state: 'not_built', checkedOn: null, page: null },

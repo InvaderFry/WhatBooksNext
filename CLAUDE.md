@@ -35,11 +35,12 @@ owner has already made. Don't reopen those decisions. Then read the latest
   the plan says why.
 - **Store purchase imports** (`docs/plans/get-store-purchase-imports.md`): every store gets
   a collector (the owner ruled out waiting on official exports). **Store links built**
-  (`014_store_links.sql`, `checkStoreLink`/`STORE_LINK_HOSTS` in `lib/store.ts`; waiting on A1b).
+  (`014_store_links.sql`, `checkStoreLink`/`STORE_LINK_HOSTS` in `lib/store.ts`; A1b passed).
   **Stage 1a/1b built for Kindle (amazon.com)**: `tools/store-collector/` (core + `adapters/kindle.ts`;
   `npm run build:collector` writes the committed `console-scripts/`, a test checks they're fresh),
-  import in `lib/storePurchases.ts` (`015_store_purchases.sql`). Waiting on A2/A3; the adapter is
-  unchecked on a real account. Next: fix the adapter from the A2 report, then 1c (extension).
+  import in `lib/storePurchases.ts` (`015_store_purchases.sql`). **Checked on the owner's account
+  2026-11-11** (A2/A3). Next: 1c (the extension), then Stage 2 (Google Play Books, Kobo,
+  GlobalComix).
 - Automatic refresh: due rules are pure in `lib/refresh.ts`; `identify/refresher.ts` runs batches
   through `lookUpItem` (never a second lookup engine). `lookup_state.accepted_source_id` remembers
   the app's own accepted match: lookups keep it (a rival goes to Needs review as "Check this

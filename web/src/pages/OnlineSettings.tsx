@@ -73,7 +73,7 @@ export function OnlineSettings() {
                 await load();
               }}
             />
-            Look up new books automatically after each scan
+            Look up new books automatically after each scan or import
           </label>
           <RefreshSettings onStarted={() => setBannerKey((k) => k + 1)} />
           <ul className="folder-list">

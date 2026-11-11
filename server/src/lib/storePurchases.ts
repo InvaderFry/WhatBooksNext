@@ -47,9 +47,10 @@ export const COLLECTORS: Record<
   Service,
   { state: 'checked' | 'not_checked' | 'not_built'; checkedOn: string | null; page: string | null }
 > = {
+  // Checked on the owner's account 2026-11-11 (A2: complete over several pages, layout passed).
   kindle: {
-    state: 'not_checked',
-    checkedOn: null,
+    state: 'checked',
+    checkedOn: '2026-11-11',
     page: 'https://read.amazon.com/kindle-library',
   },
   google_play: { state: 'not_built', checkedOn: null, page: null },

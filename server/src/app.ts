@@ -117,16 +117,19 @@ export function createApp(ctx: AppContext) {
   syncSeries(db);
   // Lookups made before automatic refresh existed: when they answered, and what was accepted.
   prepareRefreshState(db);
+  // After a scan or an import, look up what's new — unless the owner turned that off (§12.1).
+  const lookUpNew = () => {
+    lookups.invalidate();
+    if (ctx.autoLookups === false || lookups.isRunning()) return;
+    if (!getSetting<boolean>(db, 'lookupsAfterScan', true)) return;
+    if (lookups.pending() > 0 || lookups.pendingSeries() > 0) lookups.start();
+  };
   const scans = new ScanManager(db, platform, {
     runner: ctx.runner,
     coversDir,
-    // After a scan, look up what's new — unless the owner turned that off (§12.1).
     onFinished: (s) => {
-      lookups.invalidate();
-      if (ctx.autoLookups === false) return;
-      if (s.status === 'failed' || lookups.isRunning()) return;
-      if (!getSetting<boolean>(db, 'lookupsAfterScan', true)) return;
-      if (lookups.pending() > 0 || lookups.pendingSeries() > 0) lookups.start();
+      if (s.status === 'failed') lookups.invalidate();
+      else lookUpNew();
     },
   });
   const refresher = new RefreshScheduler(db, sources, lookups, scans, {
@@ -193,7 +196,7 @@ export function createApp(ctx: AppContext) {
   registerModeRoutes(app, { db, reach: () => reach.get(), itemIdOr404 });
   registerSeriesRoutes(app, { db, sources, reach: () => reach.get(), itemIdOr404 });
   registerOperationRoutes(app, { db, scans, itemIdOr404 });
-  registerStoreRoutes(app, { db, sources, itemIdOr404 });
+  registerStoreRoutes(app, { db, sources, itemIdOr404, lookUpNew });
   registerHistoryImportRoutes(app, db);
   registerRefreshRoutes(app, { db, refresher, lookups, snapshotDir: ctx.snapshotDir });
   registerCalibreRoutes(app, { db, platform, scans, dataDir: ctx.dataDir });

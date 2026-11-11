@@ -1,9 +1,8 @@
 # Import store purchases: official exports first, then a browser extension
 
-Status: **Stage 0 decided** (the owner has over 12 books in each store, so all four get a
-collector), **Store links built** (waiting on owner action A1b), and **Stage 1a and 1b built for
-Kindle** (amazon.com; waiting on owner actions A2 and A3). The extension (1c) waits until A2 shows
-the extraction works. No store has been checked on a signed-in account yet. Written 2026-11-11. This revises a first draft from 2026-11-10 ("console scripts, then one
+Status: **Stage 0 decided** (all four stores get a collector), **Store links built and checked**
+(A1b), and **Stage 1a and 1b built and checked for Kindle on amazon.com** (A2 and A3,
+2026-11-11). Next: **1c**, the extension, then Stage 2. Written 2026-11-11. This revises a first draft from 2026-11-10 ("console scripts, then one
 extension") after a review. The review kept the draft's rules and its order of proving extraction
 before packaging it. It added: checking each store's official export before scraping anything,
 account safety limits, the owner's steps written for a non-programmer, building one store end to
@@ -450,6 +449,25 @@ owner's data winning.
   countries, and acquisition dates (not in this answer). The Kindle collector shows as
   **Not checked yet** until A2 passes; then set `COLLECTORS.kindle` in `lib/storePurchases.ts` to
   `checked` with the date.
+
+### Checked on the owner's account (2026-11-11)
+
+- **A2** (Chrome on Windows): a **complete** scan in 4 requests, with the layout check passing.
+  It found 155: 154 kept as purchases and 1 sample left out. Labels seen: `PURCHASE/EBOOK` and
+  `PURCHASE/EBOOK_SAMPLE` only. The fields were exactly what the adapter expects (`asin`,
+  `authors`, `mangaOrComicAsin`, `originType`, `percentageRead`, `productUrl`, `resourceType`,
+  `title`, `webReaderUrl`). Every kept book had a reader link and a progress figure, and none had
+  an ISBN. So **paging over several pages is proven on a real account**, and the sample rule
+  works.
+- **Still unproven:** the Kindle Unlimited, Prime and loan labels. The owner's library had none.
+  An unknown label goes to review as uncertain, so a wrong guess there can't add a book silently.
+- **A3:** the preview and import worked, by the owner's account (no titles shared).
+- **A1b:** a typed store link opened the right book. Kindle reader links come from the answer's
+  own `webReaderUrl`, so no link pattern needs checking for Kindle.
+- `COLLECTORS.kindle` is now **Checked on 2026-11-11**.
+- **Found after A3:** imported books had little detail until a lookup ran, and lookups started
+  only after a library scan. An import that adds books now starts lookups straight away, under
+  the same "Look up new books automatically after each scan or import" setting.
 
 ### 1c. Package as a browser extension
 

@@ -35,7 +35,13 @@ const searches = new Map<string, SourceRecord[]>();
 
 export function registerStoreRoutes(
   app: Express,
-  d: { db: DB; sources: Sources; itemIdOr404: (raw: string) => string },
+  d: {
+    db: DB;
+    sources: Sources;
+    itemIdOr404: (raw: string) => string;
+    /** Starts lookups for new books, as after a scan (when the owner allows it). */
+    lookUpNew?: () => void;
+  },
 ): void {
   const { db, sources } = d;
   const store = (v: unknown): Store => {
@@ -256,7 +262,9 @@ export function registerStoreRoutes(
       const attach = Array.isArray(b.attach)
         ? b.attach.filter((x): x is number => Number.isInteger(x))
         : [];
-      return importCsv(db, csvText(b), { attach, keepNew: b.keepNew !== false });
+      const r = importCsv(db, csvText(b), { attach, keepNew: b.keepNew !== false });
+      if (r.added > 0) d.lookUpNew?.();
+      return r;
     }),
   );
 
@@ -282,13 +290,16 @@ export function registerStoreRoutes(
     '/api/import/store-purchases',
     route((req) => {
       const b = (req.body ?? {}) as Record<string, unknown>;
-      return importPurchases(db, fileText(b), {
+      const r = importPurchases(db, fileText(b), {
         attach: keys(b.attach),
         uncertain: keys(b.uncertain),
         keepNew: b.keepNew !== false,
         accountName: accountName(b),
         confirmShrink: b.confirmShrink === true,
       });
+      // New store books are unverified until a lookup finds them: start it now, as after a scan.
+      if (r.added > 0) d.lookUpNew?.();
+      return r;
     }),
   );
   app.post(
