@@ -48,6 +48,11 @@ export interface SourceEntry {
   /** Why there is no rating, in plain words, when the source has a record but no rating. */
   ratingNote: string | null;
   used: { field: UsedField; reason: string }[];
+  /**
+   * The latest lookup's problem when an earlier answer is still shown (a failed lookup keeps the
+   * match it had): the error matters, an expired key above all. Null when the status says it.
+   */
+  problem: string | null;
 }
 
 export interface FromEachSource {
@@ -233,6 +238,12 @@ export function fromEachSource(input: FromEachSourceInput): FromEachSource {
         : null,
       ratingNote: r && !r.rating ? `${label} has no rating for this book` : null,
       used,
+      problem:
+        status === 'failed' || !l?.error
+          ? null
+          : l.outcome === 'failed'
+            ? `The last lookup failed (${l.error}); showing the earlier answer. It will be tried again.`
+            : l.error,
     };
   });
 

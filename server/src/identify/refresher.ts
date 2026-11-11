@@ -30,6 +30,7 @@ import {
   matchFactsFor,
   matchesOf,
   nextLocalDay,
+  withComicPartners,
   type LookupManager,
   type LookupStatus,
   type MatchRow,
@@ -375,12 +376,11 @@ export class RefreshScheduler {
         break;
       }
       if (!this.db.prepare('SELECT 1 FROM items WHERE id = ?').get(p.itemId)) continue;
-      let wanted = p.sources;
-      if (!wanted) {
-        const f = matchFactsFor(this.db, p.itemId);
-        if (!f) continue;
-        wanted = this.sources.forItem(f.kind, f.issue ?? null).map((s) => s.name);
-      }
+      const f = matchFactsFor(this.db, p.itemId);
+      if (!f) continue;
+      const itemSources = this.sources.forItem(f.kind, f.issue ?? null).map((s) => s.name);
+      // A due comic source brings its partner; a source past its limits stays out either way.
+      const wanted = p.sources ? withComicPartners(p.sources, itemSources) : itemSources;
       const srcs = wanted.filter((s) => this.blocked(s) === null);
       if (srcs.length === 0) continue;
       const estimate = srcs.reduce((a, s) => a + REQUESTS_PER_LOOKUP[s], 0);

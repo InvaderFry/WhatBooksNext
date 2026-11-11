@@ -236,6 +236,73 @@ describe('what a background refresh may change', () => {
   });
 });
 
+describe('review fixes', () => {
+  it('keeps an unconfirmed match through a failure and then an empty answer', async () => {
+    // A near title: found, but not certainly (provisional).
+    answers['rain ledger'] = [doc('W1', 'Rain Ledger: A Novel of Tides', 'Ola Pennant', [4.1, 50])];
+    const id = book();
+    await made.refresher.check();
+    expect(state(id).outcome).toBe('provisional');
+    clock += 100 * DAY;
+    failing = true;
+    await made.refresher.check();
+    expect(state(id).outcome).toBe('failed');
+    failing = false;
+    answers['rain ledger'] = [];
+    clock += 2 * DAY;
+    await made.refresher.check();
+    expect(state(id)).toMatchObject({
+      outcome: 'provisional',
+      error: KEPT_PREVIOUS,
+      failure_count: 2,
+    });
+    expect(
+      db
+        .prepare("SELECT COUNT(*) FROM item_matches WHERE item_id = ? AND source = 'openlibrary'")
+        .pluck()
+        .get(id),
+    ).toBe(1);
+  });
+
+  it('remembers an accepted match kept under a failed lookup from before the update', async () => {
+    const id = await acceptedBook();
+    // As an older database had it: the match accepted, the latest lookup failed, nothing remembered.
+    db.prepare(
+      `UPDATE lookup_state SET outcome = 'failed', error = 'down', accepted_source_id = NULL,
+         last_answer_at = NULL WHERE item_id = ?`,
+    ).run(id);
+    await made.close();
+    start();
+    expect(state(id)).toMatchObject({ accepted_source_id: '/works/W1', last_answer_at: null });
+    answers['rain ledger'] = [doc('W2', 'Rain Ledger', 'Ola Pennant', [3.2, 900])];
+    clock += 100 * DAY;
+    await made.refresher.check();
+    expect(state(id)).toMatchObject({
+      accepted_source_id: '/works/W1',
+      rival_source_id: '/works/W2',
+    });
+  });
+
+  it('never asks a source past its automatic share, even as a comic partner', async () => {
+    setSecret(db, 'metron_token', 'invented-metron-token');
+    setSecret(db, 'comicvine_key', 'invented-comicvine-key');
+    db.prepare(
+      "INSERT INTO settings (key, value, updated_at) VALUES ('refreshUsage:metron', ?, '')",
+    ).run(JSON.stringify({ day: todayLocal(), count: 1000 }));
+    const id = createStoreItem(db, { title: 'Copperline', store: 'kindle', kind: 'comic' });
+    db.prepare("UPDATE items SET issue_label = '48', series_hint = 'Copperline' WHERE id = ?").run(
+      id,
+    );
+    for (const source of ['metron', 'comicvine'])
+      db.prepare(
+        `INSERT INTO lookup_state (item_id, source, version, query, looked_up_at, outcome,
+           last_answer_at) VALUES (?, ?, 0, '{}', '2020-01-01T00:00:00Z', 'none', '2020-01-01T00:00:00Z')`,
+      ).run(id, source);
+    await made.refresher.check();
+    expect(requests.some((u) => u.includes('metron'))).toBe(false);
+  });
+});
+
 describe('how much, and when', () => {
   it('keeps each batch to its request budget, and carries on at the next check', async () => {
     // Open Library is asked once a second, so the test uses a budget of 4 instead of 25.

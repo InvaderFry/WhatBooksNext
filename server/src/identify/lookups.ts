@@ -760,8 +760,9 @@ export interface LookupResult {
 const COMIC_SOURCES: SourceName[] = ['metron', 'comicvine'];
 
 /**
- * The sources to ask for an item. With `only`, just those; Metron and ComicVine always go
- * together, because ComicVine is asked only when Metron finds nothing.
+ * The sources to ask for an item: with `only`, exactly those and no others. A caller that wants
+ * ComicVine's fallback after Metron passes both (`withComicPartners`); one that left a source
+ * out (its allowance is used up) keeps it out.
  */
 function askedSources(
   sources: Sources,
@@ -770,9 +771,16 @@ function askedSources(
   only?: SourceName[],
 ): SourceAdapter[] {
   const all = sources.forItem(kind, issue);
-  if (!only) return all;
-  const comics = only.some((s) => COMIC_SOURCES.includes(s));
-  return all.filter((s) => only.includes(s.name) || (comics && COMIC_SOURCES.includes(s.name)));
+  return only ? all.filter((s) => only.includes(s.name)) : all;
+}
+
+/**
+ * Metron and ComicVine are asked together (ComicVine only when Metron finds nothing), so a due
+ * comic source brings its partner, from the sources this item uses.
+ */
+export function withComicPartners(wanted: SourceName[], itemSources: SourceName[]): SourceName[] {
+  if (!wanted.some((s) => COMIC_SOURCES.includes(s))) return wanted;
+  return [...new Set([...wanted, ...itemSources.filter((s) => COMIC_SOURCES.includes(s))])];
 }
 
 /**
@@ -911,7 +919,11 @@ async function lookUpOnce(
   db.transaction(() => {
     const now = nowIso();
     const rejected = rejectedFor(db, itemId);
-    const present = new Set(matchesOf(db, itemId).map((m) => `${m.source}:${m.sourceId}`));
+    const stored = matchesOf(db, itemId);
+    const present = new Set(stored.map((m) => `${m.source}:${m.sourceId}`));
+    // What each source's stored candidates still give, whatever the last lookup's outcome (a
+    // failed lookup keeps them, so "failed" can sit on top of a good match).
+    const held = decisionsFor(stored, rejected);
     const blank = (source: SourceName): LookupStateRow => ({
       item_id: itemId,
       source,
@@ -956,22 +968,25 @@ async function lookUpOnce(
       const d = decide(facts, records, rejected);
       // An automatic refresh that no longer finds the book clearly keeps what it had, and
       // tries again sooner (a site hiccup shouldn't take a book's rating away).
+      const had = held.get(s.name)?.decision;
       if (
         opts.background &&
         prev &&
         (d.decision === 'unidentified' || d.decision === 'tie') &&
-        (prev.outcome === 'matched' || prev.outcome === 'provisional')
+        (had === 'accepted' || had === 'provisional')
       ) {
         const failures = prev.failure_count + 1;
+        const outcome = had === 'accepted' ? 'matched' : 'provisional';
         writeState(db, {
           ...prev,
           looked_up_at: now,
+          outcome,
           error: KEPT_PREVIOUS,
           last_answer_at: answerAt,
           failure_count: failures,
           next_eligible_at: retryAt(itemId, s.name, failures, now),
         });
-        results.push({ source: s.name, outcome: prev.outcome, error: KEPT_PREVIOUS });
+        results.push({ source: s.name, outcome, error: KEPT_PREVIOUS });
         continue;
       }
       // The app's earlier choice stays unless the owner asked to start fresh, the search itself
@@ -1036,10 +1051,12 @@ async function lookUpOnce(
  * every start and after a restore.
  */
 export function prepareRefreshState(db: DB): number {
+  // A failed latest lookup keeps the candidates from before it, so its row may still hold an
+  // accepted match to remember; it has no known answer time, though, so that stays empty.
   const rows = db
     .prepare(
       `SELECT item_id, source, outcome FROM lookup_state
-       WHERE last_answer_at IS NULL AND outcome != 'failed'`,
+       WHERE last_answer_at IS NULL AND accepted_source_id IS NULL`,
     )
     .all() as { item_id: string; source: SourceName; outcome: string }[];
   if (rows.length === 0) return 0;
@@ -1059,9 +1076,9 @@ export function prepareRefreshState(db: DB): number {
     for (const [itemId, rs] of byItem) {
       const decisions = decisionsFor(matchesOf(db, itemId), rejectedFor(db, itemId));
       for (const r of rs) {
-        setAnswer.run(itemId, r.source);
+        if (r.outcome !== 'failed') setAnswer.run(itemId, r.source);
         const d = decisions.get(r.source);
-        if (r.outcome === 'matched' && d?.decision === 'accepted' && d.best)
+        if (d?.decision === 'accepted' && d.best)
           setAccepted.run(d.best.sourceId, itemId, r.source);
       }
     }
