@@ -327,9 +327,10 @@ describe('Stage 1 rating integration', () => {
       before: 13,
       after: 2,
     });
+    // "Before" is M6's frozen rule; "after" is the current, loosened Hidden gems rule.
     expect(report.modes.find((m) => m.mode === 'hidden_gems')).toMatchObject({
       before: 1,
-      after: 0,
+      after: 4,
       leaving: 1,
     });
     expect(JSON.stringify(report)).not.toContain('Invented Rating Case');

@@ -340,9 +340,15 @@ export const SERIES_PUBLICATION_CACHE_DAYS = 7;
 
 // ---- Modes and taste (M5, PLAN.md §13.10, §13.11, §20) -------------------------------------
 
-/** Hidden gems: votes in the bottom 25% for that source, and at least 5 votes (§20). */
-export const HIDDEN_GEM_VOTE_PERCENTILE = 0.25;
-export const HIDDEN_GEM_MIN_VOTES = 5;
+/**
+ * Hidden gems (§20), loosened after the owner's library had none: "few" is the bottom half of
+ * that source's counts here, or HIDDEN_GEM_FEW_FLOOR, whichever is higher (a library where most
+ * counts are tiny still has a usable line); at least HIDDEN_GEM_MIN_VOTES ratings, since 1–2
+ * are noise. Assumptions, to revisit at a quality session.
+ */
+export const HIDDEN_GEM_VOTE_PERCENTILE = 0.5;
+export const HIDDEN_GEM_FEW_FLOOR = 25;
+export const HIDDEN_GEM_MIN_VOTES = 3;
 
 /** Classics you missed: first published at least 25 years ago (§20). */
 export const CLASSICS_AGE_YEARS = 25;

@@ -1,4 +1,5 @@
 import {
+  HIDDEN_GEM_FEW_FLOOR,
   HIDDEN_GEM_MIN_VOTES,
   HIDDEN_GEM_VOTE_PERCENTILE,
   HIGHLY_RATED_FALLBACK,
@@ -73,6 +74,15 @@ function percentile(xs: number[], p: number): number {
   return s[idx]!;
 }
 
+/**
+ * The Hidden gems "few votes" line for one source: the bottom part of its known counts here, but
+ * never below HIDDEN_GEM_FEW_FLOOR. No known counts: no line (nothing counts as few).
+ */
+function fewLine(counts: number[], p: number): number {
+  if (counts.length === 0) return -1;
+  return Math.max(percentile(counts, p), HIDDEN_GEM_FEW_FLOOR);
+}
+
 /** Shrinks toward the source's mean: (v·n + mean·m) ÷ (n + m), with m the median vote count. */
 export function shrink(r: SourceRating, s: Pick<SourceStats, 'mean' | 'medianVotes'>): number {
   const v = normalise(r);
@@ -108,7 +118,7 @@ export function ratingStats(all: RatedFrom[]): RatingStats {
           ? HIGHLY_RATED_FALLBACK
           : percentile(shrunk, HIGHLY_RATED_PERCENTILE),
       // Only real counts: a rating with no count says nothing about obscurity.
-      fewVotes: percentile(
+      fewVotes: fewLine(
         rs.filter((r) => r.count !== null && r.count !== undefined).map((r) => r.count!),
         HIDDEN_GEM_VOTE_PERCENTILE,
       ),
@@ -249,6 +259,11 @@ export function communityRating(
   );
   const fewElsewhere = fewEverywhere && trustedOthers.some((r) => r.source !== pick.source);
   const highlyRated = score >= (s?.highlyRated ?? HIGHLY_RATED_FALLBACK);
+  // A gem's quality: its source's own score reaches that source's "highly rated" line, and it
+  // is still above the source's average after adjusting for few votes. The adjusted score alone
+  // can almost never qualify, because the adjustment pulls few-vote books to the average.
+  const gemQuality =
+    normalise(pick) >= (s?.highlyRated ?? HIGHLY_RATED_FALLBACK) && score > (s?.mean ?? 100);
   const label =
     tier === 5
       ? 'Unconfirmed match'
@@ -279,7 +294,7 @@ export function communityRating(
       fewVotes,
       fewElsewhere,
       hiddenGem:
-        highlyRated &&
+        gemQuality &&
         fewVotes &&
         pick.scope !== 'series' &&
         pick.match !== 'provisional' &&

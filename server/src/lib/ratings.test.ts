@@ -11,10 +11,11 @@ import {
 import { runMode } from './modes.ts';
 import { buildCard } from './recommend.ts';
 
+// Each source's average sits below its "highly rated" line, as in a real library.
 const stats = new Map<RatedFrom['source'], SourceStats>([
-  ['hardcover', { mean: 90, medianVotes: 25, rated: 30, highlyRated: 80, fewVotes: 10 }],
-  ['openlibrary', { mean: 90, medianVotes: 25, rated: 30, highlyRated: 80, fewVotes: 20 }],
-  ['anilist', { mean: 90, medianVotes: 25, rated: 30, highlyRated: 80, fewVotes: 10 }],
+  ['hardcover', { mean: 75, medianVotes: 25, rated: 30, highlyRated: 80, fewVotes: 10 }],
+  ['openlibrary', { mean: 75, medianVotes: 25, rated: 30, highlyRated: 80, fewVotes: 20 }],
+  ['anilist', { mean: 75, medianVotes: 25, rated: 30, highlyRated: 80, fewVotes: 10 }],
 ]);
 const select = (rs: RatedFrom[], hasSeries = false) => communityRating(rs, stats, hasSeries);
 
@@ -80,7 +81,7 @@ describe('rating selection, Stage 1', () => {
   it('uses a provisional rating only without trusted ratings and never makes it a Hidden gem', () => {
     const unconfirmed = rating({ source: 'openlibrary', count: 1_000_000, match: 'provisional' });
     expect(select([rating({ count: null }), unconfirmed]).chosen?.source).toBe('hardcover');
-    const r = select([rating({ count: 8, match: 'provisional' })]).chosen!;
+    const r = select([rating({ value: 5, count: 8, match: 'provisional' })]).chosen!;
     expect(r).toMatchObject({ tier: 5, label: 'Unconfirmed match', hiddenGem: false });
     const i = item({
       community: r,
@@ -127,7 +128,8 @@ describe('rating selection, Stage 1', () => {
       rated: 2,
       mean: 80,
       medianVotes: 505,
-      fewVotes: 10,
+      // The bottom half of {10, 1000} is 10, below the floor of 25 ratings.
+      fewVotes: 25,
     });
   });
 
@@ -152,7 +154,11 @@ describe('rating selection, Stage 1', () => {
       fewElsewhere: false,
     });
     expect(select([rating({ count: null })]).chosen?.hiddenGem).toBe(false);
-    expect(select([rating({ count: 4 })]).chosen?.hiddenGem).toBe(false);
+    // At least 3 ratings: 2 is noise, 3 can be a gem.
+    expect(select([rating({ count: 2 })]).chosen?.hiddenGem).toBe(false);
+    expect(select([rating({ count: 3 })]).chosen?.hiddenGem).toBe(true);
+    // Few ratings, but its own score is below the source's "highly rated" line.
+    expect(select([rating({ count: 8, value: 3.8 })]).chosen?.hiddenGem).toBe(false);
     const i = item({ community: select([hc, ol]).chosen });
     expect(runMode('hidden_gems', [i], situation(), page).cards[0]?.reasons.join(' ')).toContain(
       'and few elsewhere',
