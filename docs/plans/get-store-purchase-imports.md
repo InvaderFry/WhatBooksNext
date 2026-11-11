@@ -1,7 +1,7 @@
 # Import store purchases: official exports first, then a browser extension
 
-Status: **Stage 0 researched** (findings below; waiting on owner action A1) and **Store links
-built** (waiting on owner action A1b). No collector is started, and no store has been checked on a
+Status: **Stage 0 decided** (all four stores get a collector or are skipped by count; waiting on
+the owner's counts, A1) and **Store links built** (waiting on owner action A1b). No collector is started, and no store has been checked on a
 signed-in account. Written 2026-11-11. This revises a first draft from 2026-11-10 ("console scripts, then one
 extension") after a review. The review kept the draft's rules and its order of proving extraction
 before packaging it. It added: checking each store's official export before scraping anything,
@@ -40,6 +40,11 @@ comic pages.
   "I can read these in this store now" for many books at once. That sets
   `locations.confirmed_readable`. Store items stay eligible for recommendations under the existing
   rules.
+- **Updates must be on demand, without waiting** (decided 2026-11-11, after Stage 0). Amazon's
+  "Request your data" takes a day to a week for every update, so Kindle gets a collector the owner
+  can run whenever they like. Google Play Books gets one too: Takeout is quicker (minutes to
+  hours) but is still a fresh request and download for every update. The official exports are
+  only an optional, one-time completeness check, never the way updates arrive.
 - **Hand over a file.** The collector downloads a JSON file and the owner chooses it in the app.
   The collector never talks to the app, so `server/src/security.ts` stays as it is, and collecting
   works while the app is closed. Sending data straight to the app is a later idea, not part of this
@@ -57,7 +62,8 @@ comic pages.
 1. **Check each store's official export before writing a scraper (Stage 0).** An official file
    or API rarely breaks, needs no scraping and has no account risk. A scraper is built only where
    the official route is missing, incomplete or too hard for the owner. Even where a scraper is
-   still needed, the official export can confirm that a scan found everything.
+   still needed, the official export can confirm that a scan found everything. (Stage 0 found
+   no store whose export suits repeated updates; the owner then chose collectors for all four.)
 2. **Build one store end to end first (Stage 1):** collector, JSON file, preview and import, and
    the extension. Only then add the other stores. That proves the whole path once, and later stores
    reuse it.
@@ -149,18 +155,21 @@ Takeout folder from [imbue-ai/datalib#1233](https://github.com/imbue-ai/datalib/
 [Web Reader help](https://help.kobo.com/hc/en-us/articles/4408228476567); GlobalComix's
 [terms of use](https://globalcomix.com/terms-of-use).
 
-### Decision per store (provisional until A1)
+### Decision per store (2026-11-11)
 
-| Store             | Decision                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Amazon Kindle     | **Official route, to confirm.** The owner requests the Kindle and digital-orders data (A1). If `Digital.Content.Ownership` (or `Digital Items.csv`) has ASINs and an origin or rights type that tells purchases and free claims from samples, Kindle Unlimited and loans, write a parser in `lib/` and skip the Kindle collector. If it lacks that, build the collector and use the export's counts as the completeness check. |
-| Google Play Books | **Official route, to confirm.** The owner runs Takeout for "Google Play Store" and "Play Books" (A1). If `Library.json` lists books with a type and volume ID, that's the parser's input; Play Books' own folder fills reading dates. If books can't be told from uploads there, **collector**. The Books API is not pursued: its OAuth setup is too much for the owner.                                                       |
-| Kobo              | **Collector, or skip by count.** No self-service export. If the owner has fewer than about 10 Kobo books, use the store CSV or manual entry (decision 3). Otherwise a collector on My Books. The owner may also email a privacy request, only as a completeness check later: it's not needed to start.                                                                                                                         |
-| GlobalComix       | **Collector, or skip by count.** No export or API. Same rule as Kobo.                                                                                                                                                                                                                                                                                                                                                          |
+The owner decided that updates must come without waiting (see "Decisions the owner has made"),
+so no store uses an official export to bring books in.
 
-**Next:** A1 below. Once the owner's counts and the two exports' columns are in, record the final
-decision here and start Stage 1 with the store that has the most books and needs a collector (or
-the Kindle/Google parser, if an official route wins).
+| Store             | Decision                                                                                                                                                                                                                                                                                                 |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Amazon Kindle     | **Collector.** "Request your data" takes a day to a week per update, which the owner ruled out. The collector reads the signed-in library page ("Manage Your Content and Devices", Books). If the owner ever has an export anyway, its counts can check one scan once; no parser is written for it.      |
+| Google Play Books | **Collector.** Takeout is a fresh request and download for every update. The collector reads the signed-in Play Books library (play.google.com/books). Takeout's `Library.json` can check one scan's count once, if the owner wants. The Books API stays out: its OAuth setup is too much for the owner. |
+| Kobo              | **Collector, or skip by count.** No self-service export. If the owner has fewer than about 10 Kobo books, use the store CSV or manual entry (decision 3). Otherwise a collector on My Books. The owner may also email a privacy request, only as a completeness check later: it's not needed to start.   |
+| GlobalComix       | **Collector, or skip by count.** No export or API. Same rule as Kobo.                                                                                                                                                                                                                                    |
+
+**Next:** the owner's rough counts (A1). Stage 1 starts with whichever of Kindle and Google Play
+Books has more books, or Kindle if the owner can't say. Kobo and GlobalComix follow in Stage 2
+unless they're skipped by count.
 
 ## Store links
 
@@ -454,14 +463,14 @@ each store is **Checked on <date>**, **Not checked yet**, or **Not supported** (
 Tell the owner plainly, at the start of the message, when each is due (as PLAN.md §21 asks). Add
 these rows to PLAN.md §21 when the stage starts.
 
-| ID  | When                  | What the owner does (no command line)                                                                                                                                                                                                                                                                                                                          | Time                                 |
-| --- | --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ |
-| A1  | Stage 0               | Say roughly how many books you own in Kindle, Google Play Books, Kobo and GlobalComix. For each store where the agent found an official export, follow its steps to request it. When it arrives, open it and tell the agent only which columns it has and how many rows (no titles).                                                                           | 10 min, plus waiting days for Amazon |
-| A1b | Store links           | On a few store books (one per store you use), open the book page, add the link (copy it from the store's reader or book page in your browser), and click **Read in … ↗**. Say whether it opened the right book. Also say, without the ID itself, what shape the reader's address has (for example `read.amazon.com/?asin=…`), so link patterns can be checked. | 5 min                                |
-| A2  | Stage 1a              | Sign in to the first store in Edge or Chrome, open its library page, and paste the provided script into the browser's developer console (the steps include Chrome's "allow pasting" prompt). Wait for it to finish, then paste the **title-free report** into chat. Keep the downloaded JSON file private.                                                     | 10–15 min                            |
-| A3  | Stage 1b              | In whatBooksNext: store books → Import store purchases → choose the JSON file. Check that the preview looks right, then import. Say whether anything was wrong (no titles needed).                                                                                                                                                                             | 10 min                               |
-| A4  | Stage 1c              | Install the extension by following `INSTALL.md` (download the zip, unzip, open the browser's extensions page, turn on Developer mode, Load unpacked). Run **Scan this library** on the same store, import the file, and check that nothing is duplicated.                                                                                                      | 15 min                               |
-| A5  | Each new store or fix | Install the new extension version the same way (or click Reload on the extensions page after replacing the folder), run a scan, and paste the report.                                                                                                                                                                                                          | 10 min per store                     |
+| ID  | When                  | What the owner does (no command line)                                                                                                                                                                                                                                                                                                                          | Time             |
+| --- | --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------- |
+| A1  | Stage 0               | Say roughly how many books you own in Kindle, Google Play Books, Kobo and GlobalComix. No export requests are needed (decided 2026-11-11).                                                                                                                                                                                                                     | 2 min            |
+| A1b | Store links           | On a few store books (one per store you use), open the book page, add the link (copy it from the store's reader or book page in your browser), and click **Read in … ↗**. Say whether it opened the right book. Also say, without the ID itself, what shape the reader's address has (for example `read.amazon.com/?asin=…`), so link patterns can be checked. | 5 min            |
+| A2  | Stage 1a              | Sign in to the first store in Edge or Chrome, open its library page, and paste the provided script into the browser's developer console (the steps include Chrome's "allow pasting" prompt). Wait for it to finish, then paste the **title-free report** into chat. Keep the downloaded JSON file private.                                                     | 10–15 min        |
+| A3  | Stage 1b              | In whatBooksNext: store books → Import store purchases → choose the JSON file. Check that the preview looks right, then import. Say whether anything was wrong (no titles needed).                                                                                                                                                                             | 10 min           |
+| A4  | Stage 1c              | Install the extension by following `INSTALL.md` (download the zip, unzip, open the browser's extensions page, turn on Developer mode, Load unpacked). Run **Scan this library** on the same store, import the file, and check that nothing is duplicated.                                                                                                      | 15 min           |
+| A5  | Each new store or fix | Install the new extension version the same way (or click Reload on the extensions page after replacing the folder), run a scan, and paste the report.                                                                                                                                                                                                          | 10 min per store |
 
 Never share in chat: the JSON file, book titles, account names, emails, or anything from the
 store's sign-in.
