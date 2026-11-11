@@ -67,11 +67,11 @@ export const COLLECTORS: Record<
     checkedOn: '2026-11-11',
     page: 'https://www.kobo.com/us/en/library/books',
   },
-  // Built 2026-11-11 from the owner's fourth look-around report. Version 1's own request got HTTP
-  // 400; version 2 reads the page's own answers, starting from the home page. Not yet checked.
+  // Version 2 (reads the page's own answers, starting from the home page) checked on the owner's
+  // account 2026-11-11 ("I think that worked"; report not shared). Version 1's request got HTTP 400.
   globalcomix: {
-    state: 'not_checked',
-    checkedOn: null,
+    state: 'checked',
+    checkedOn: '2026-11-11',
     page: 'https://globalcomix.com',
   },
 };

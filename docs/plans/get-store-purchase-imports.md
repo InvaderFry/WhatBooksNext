@@ -5,7 +5,11 @@ Status: **Stage 0 decided** (all four stores get a collector). **Store links bui
 **deferred** to a nice-to-have (owner decision, 2026-11-11). **Stage 2:**
 
 - **Google Play Books** and **Kobo** are checked (2026-11-11).
-- **GlobalComix** version 1 was refused (HTTP 400). **Version 2** reads the page's own answers and waits on A2/A3.
+- **GlobalComix** is checked too (version 2, 2026-11-11). Version 1's own request was refused
+  (HTTP 400); version 2 reads the page's own answers.
+- **Every store in scope now has a checked collector.** Remaining real-account checks: the
+  Kindle Unlimited, Prime and loan labels; any Kobo preview or Kobo Plus marks; and the Kobo and
+  GlobalComix reports' counts, which weren't shared.
 
 Written 2026-11-11. This revises a first draft from 2026-11-10 ("console scripts, then one
 extension") after a review. The review kept the draft's rules and its order of proving extraction
@@ -789,6 +793,12 @@ Built for A6b:
   - `checkPage` refuses to start on `/my-shelf`, because there the list has already loaded.
   - `WatchAdapter` joins `Adapter` and `CardAdapter` as the third kind of collector.
 - **The same title twice** and **imports start lookups:** see "Google Play Books checked" above.
+
+### GlobalComix checked (2026-11-11)
+
+The owner ran version 2 (home page, then My Shelf → Purchases) and imported. The volumes came in
+with series and numbers, reading progress, and Read in GlobalComix links ("I think that worked").
+The report wasn't shared. `COLLECTORS.globalcomix` is **Checked on 2026-11-11**.
 
 **A collector that hasn't been checked is never shown as working.** In the extension and the app,
 each store is **Checked on <date>**, **Not checked yet**, or **Not supported** (with the reason).

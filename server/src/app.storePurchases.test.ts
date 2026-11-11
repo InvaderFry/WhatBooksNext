@@ -326,8 +326,8 @@ describe('the collectors in the app', () => {
       },
       {
         service: 'globalcomix',
-        state: 'not_checked',
-        checkedOn: null,
+        state: 'checked',
+        checkedOn: '2026-11-11',
         page: 'https://globalcomix.com',
       },
     ]);
