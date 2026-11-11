@@ -33,6 +33,8 @@ owner has already made. Don't reopen those decisions. Then read the latest
   choice, best details, "From each source" in `lib/fromEachSource.ts`, automatic refresh; notes in
   M6.md). **Next:** the owner's second quality session (§17.2), due now. Google Books was dropped;
   the plan says why.
+- **Store purchase imports** (`docs/plans/get-store-purchase-imports.md`): planned, not started.
+  Official exports first, then one store end to end (collector → JSON import → extension).
 - Automatic refresh: due rules are pure in `lib/refresh.ts`; `identify/refresher.ts` runs batches
   through `lookUpItem` (never a second lookup engine). `lookup_state.accepted_source_id` remembers
   the app's own accepted match: lookups keep it (a rival goes to Needs review as "Check this

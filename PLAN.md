@@ -986,7 +986,9 @@ honest empty state. Never loosen eligibility just to fill the screen.
   first (placeholder → confirm, §9.5). Use argument-safe launching (Windows: `explorer /select,` and
   the default-app handler; `open` / `xdg-open` elsewhere). Behind the platform adapter — **needs
   checking on the owner's machine.**
-- **Store items** show "Read in Kindle" etc. as a **label**, not a link.
+- **Store items** show **Read in Kindle ↗** etc. as a **link** to the book in that store's web reader
+  or store page, when one is known (owner decision 2026-11-11, replacing "a label, not a link"; rules in
+  [the store purchases plan](docs/plans/get-store-purchase-imports.md), "Store links").
 
 ## 15. Pages and statistics
 
