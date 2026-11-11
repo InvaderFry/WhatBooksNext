@@ -729,7 +729,7 @@ keys.
   trusted/file provenance. This selection never writes matching facts; kind, taste and topic
   inputs remain as before. Stage 3 shows every source's answer on the book page ("From each
   source").
-- **Refreshes** (stage 4): while the app runs, small batches (at most 25 requests, one per
+- **Refreshes** (stage 4): while the app runs, small batches (about 25 requests, one per
   ten-minute check) ask sources again: weekly for books in progress or shortlisted, monthly where a
   rating source has no supported trusted rating anywhere, every three months otherwise; failures
   retry after 1, 3 and 7 days. Automatic work uses at most a fifth of a daily allowance and never
@@ -1309,7 +1309,7 @@ use. Keep them in one config module, each with its reason in a comment.
 | Published-volume catalogue | Refresh after 7 days; at most 500 positions and 100 series memberships | Weekly checks avoid repeated requests per owned volume; bounds stay below Hardcover's documented 997-row relation limit and refuse truncated answers. |
 | Refresh intervals (`REFRESH_*_DAYS`) | 7 days in progress or shortlisted; 30 days where a rating source has no supported trusted rating anywhere; 90 days otherwise; each stretched by up to 10% per book | How likely an answer has changed; the stretch stops books looked up on one day falling due together. Assumptions. |
 | Refresh retries (`REFRESH_RETRY_DAYS`) | 1, 3, 7 days, then the group's interval | A site hiccup is retried soon; a lasting problem isn't asked about daily. |
-| Refresh batch (`REFRESH_BATCH_REQUESTS`, `REFRESH_CHECK_MS`) | At most 25 real requests per check; first check 3 minutes after start, then every 10 minutes | Background work stays small; a long time closed is caught up gradually. |
+| Refresh batch (`REFRESH_BATCH_REQUESTS`, `REFRESH_CHECK_MS`) | About 25 real requests per check (checked before each book; a source's retry can add one or two); first check 3 minutes after start, then every 10 minutes | Background work stays small; a long time closed is caught up gradually. |
 | Automatic share of a daily allowance (`REFRESH_DAILY_SHARE`) | 20% (1,000 of Hardcover's and Metron's 5,000) | Leaves most of the allowance for the owner's own lookups. |
 | Pre-migration snapshots kept | 5 | A few versions back, without filling the disk. |
 | Pre-restore snapshots kept | 3, separately | A restore must never push out the migration snapshots, or the other way round. |

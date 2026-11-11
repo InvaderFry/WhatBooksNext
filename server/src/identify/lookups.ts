@@ -938,6 +938,11 @@ async function lookUpOnce(
       next_eligible_at: null,
       failure_count: 0,
     });
+    // A remembered choice belongs to the search that made it: once the search changes (the owner
+    // corrected the title, say), it is released even when this source didn't answer, or a later
+    // retry with the same new search would keep the old book.
+    const sameSearch = (prev: LookupStateRow | undefined) =>
+      prev?.query === qKey ? {} : { accepted_source_id: null, rival_source_id: null };
     for (const r of settled) {
       if (r.status === 'rejected') {
         const e = r.reason as Error;
@@ -950,6 +955,7 @@ async function lookUpOnce(
         writeState(db, {
           ...blank(source),
           ...(prev ?? {}),
+          ...sameSearch(prev),
           version: MATCH_VERSION,
           query: qKey,
           looked_up_at: now,
@@ -1028,6 +1034,7 @@ async function lookUpOnce(
       writeState(db, {
         ...blank(s.name),
         ...(prev ?? {}),
+        ...sameSearch(prev),
         version: MATCH_VERSION,
         query: qKey,
         looked_up_at: now,

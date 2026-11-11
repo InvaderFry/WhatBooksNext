@@ -283,6 +283,23 @@ describe('review fixes', () => {
     });
   });
 
+  it('lets a corrected title choose again even when the first lookup after it fails', async () => {
+    const id = await acceptedBook();
+    expect((await api.patch(`/api/items/${id}`, { titleOverride: 'Salt Orchard' })).status).toBe(
+      200,
+    );
+    failing = true;
+    await api.post('/api/lookups', {});
+    await made.lookups.wait();
+    expect(state(id)).toMatchObject({ outcome: 'failed', accepted_source_id: null });
+    failing = false;
+    answers['salt orchard'] = [doc('S1', 'Salt Orchard', 'Ola Pennant', [4, 40])];
+    await api.post('/api/lookups', {});
+    await made.lookups.wait();
+    expect(state(id).accepted_source_id).toBe('/works/S1');
+    expect((await online(id)).community.sourceId).toBe('/works/S1');
+  });
+
   it('never asks a source past its automatic share, even as a comic partner', async () => {
     setSecret(db, 'metron_token', 'invented-metron-token');
     setSecret(db, 'comicvine_key', 'invented-comicvine-key');

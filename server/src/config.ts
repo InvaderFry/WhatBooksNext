@@ -258,7 +258,12 @@ export const REFRESH_RETRY_DAYS = [1, 3, 7] as const;
  */
 export const REFRESH_JITTER = 0.1;
 
-/** One automatic batch makes at most this many real requests (searches and record fetches). */
+/**
+ * One automatic batch stops starting books once this many real requests (searches and record
+ * fetches) are made or the next book's estimate would pass it. A source that asks for a retry
+ * (429) can take a batch a request or two over; the sources' own daily allowances are checked
+ * before every request regardless.
+ */
 export const REFRESH_BATCH_REQUESTS = 25;
 
 /**
