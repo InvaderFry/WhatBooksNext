@@ -1,8 +1,10 @@
-# Import store purchases: official exports first, then a browser extension
+# Import store purchases: official exports checked, then console-script collectors
 
-Status: **Stage 0 decided** (all four stores get a collector), **Store links built and checked**
-(A1b), and **Stage 1a and 1b built and checked for Kindle on amazon.com** (A2 and A3,
-2026-11-11). Next: **1c**, the extension, then Stage 2. Written 2026-11-11. This revises a first draft from 2026-11-10 ("console scripts, then one
+Status: **Stage 0 decided** (all four stores get a collector). **Store links built and checked**
+(A1b). **Stage 1 done for Kindle on amazon.com** (A2 and A3, 2026-11-11). The extension (1c) is
+**deferred** to a nice-to-have (owner decision, 2026-11-11). **Stage 2 started**: the look-around
+script is built, and it's waiting on the owner's reports for Google Play Books, Kobo (US) and
+GlobalComix (A6). Written 2026-11-11. This revises a first draft from 2026-11-10 ("console scripts, then one
 extension") after a review. The review kept the draft's rules and its order of proving extraction
 before packaging it. It added: checking each store's official export before scraping anything,
 account safety limits, the owner's steps written for a non-programmer, building one store end to
@@ -45,6 +47,13 @@ comic pages.
   can run whenever they like. Google Play Books gets one too: Takeout is quicker (minutes to
   hours) but is still a fresh request and download for every update. The official exports are
   only an optional, one-time completeness check, never the way updates arrive.
+- **Console scripts are the supported way; the extension is a nice-to-have** (decided
+  2026-11-11, after Stage 1). For now only the owner uses the app, and they're happy to paste
+  the script into the console. Stage 1c and owner actions A4 and A5 move to "Later: the browser
+  extension". Every collector stays a console script built from the shared core, so an extension
+  can still wrap it later without a rewrite.
+- **Stage 2 order** (decided 2026-11-11): Google Play Books, then Kobo (kobo.com/us), then
+  GlobalComix. All three get a look-around first, in one sitting (A6).
 - **Hand over a file.** The collector downloads a JSON file and the owner chooses it in the app.
   The collector never talks to the app, so `server/src/security.ts` stays as it is, and collecting
   works while the app is closed. Sending data straight to the app is a later idea, not part of this
@@ -469,7 +478,9 @@ owner's data winning.
   only after a library scan. An import that adds books now starts lookups straight away, under
   the same "Look up new books automatically after each scan or import" setting.
 
-### 1c. Package as a browser extension
+### 1c. Package as a browser extension (deferred: see "Later: the browser extension")
+
+Deferred by the owner on 2026-11-11. The design below stays as the plan for when it's wanted.
 
 - One Manifest V3 extension for **Microsoft Edge and Google Chrome** (Edge is the Windows
   default). Firefox comes later; it won't keep an unsigned extension installed.
@@ -485,16 +496,23 @@ owner's data winning.
   and review process when it comes up.
 
 **Done when (Stage 1):** the first store works end to end on the owner's signed-in account. That
-means owner actions A2–A4 have been done, the title-free reports match the store's own count (or
+means owner actions A2–A3 have been done (A4 only once the extension is built), the title-free reports match the store's own count (or
 the official export's count), and tests, typecheck, lint and format pass on Ubuntu and Windows CI.
 If the owner's library fits on one page, multi-page scanning is proven only on fixtures. Record
 that as a remaining real-account check, not as supported.
 
 ## Stage 2: the remaining stores
 
-For each store whose Stage 0 decision is "collector", in order of the owner's book counts: add an
-adapter, then prove it with the console script and the owner's report, then add it to the
-extension. Release a new extension version with each one. For every store, also check its reader and
+For each store whose Stage 0 decision is "collector", in the owner's order (Google Play Books,
+Kobo, GlobalComix):
+
+1. **Look around** (A6, all three stores in one sitting). The owner runs the look-around script on
+   the store's library page while scrolling to the bottom, and pastes its report.
+2. Write the adapter from that report, with invented fixtures that copy the reported structure.
+3. Prove it with the console script and the owner's title-free report (A2 for that store), then
+   the import (A3).
+
+There's no extension version to release while the extension is deferred. For every store, also check its reader and
 book-page link pattern ("Store links"). Things to check on a signed-in account:
 
 | Store             | Check                                                                                                                                                                                                                                                          |
@@ -503,6 +521,37 @@ book-page link pattern ("Store links"). Things to check on a signed-in account:
 | Amazon Kindle     | Purchases and permanent free books, told apart from samples, personal documents, loans and Kindle Unlimited; ASINs; country-specific library pages; how it pages.                                                                                              |
 | Kobo              | Purchases, told apart from previews and Kobo Plus; product IDs; archive and library filters; how it pages; reading status.                                                                                                                                     |
 | GlobalComix       | Purchases and permanent unlocks, told apart from subscription, follows and reading lists; whether the unit is an issue, volume or collection; release/collection IDs; how it pages; reading status. A permanent unlock counts even without a downloadable PDF. |
+
+### The look-around script (built 2026-11-11)
+
+`tools/store-collector/probe/` and `console/probe.ts`, built into `console-scripts/probe.js`.
+Settings → Import store purchases shows its steps for any store without a script, with a
+**Copy the look-around script** button.
+
+- **It only watches.** It wraps the page's own `fetch` and `XMLHttpRequest` while the owner
+  scrolls, and puts them back on Finish or Cancel. It makes no request of its own and sends
+  nothing anywhere: the report stays on screen to copy.
+- **What it reports:**
+  - each kind of request: method, URL pattern, status, content type and the **shape** of the
+    answer;
+  - the requests made before it started (URL patterns only);
+  - data built into the page (Google's `AF_initDataCallback` blocks, JSON script tags,
+    `__NUXT__` and similar), as shapes;
+  - repeated page elements (likely book cards), with counts, attribute names and link patterns.
+- **The shape rules:**
+  - Answers are read as JSON, or as Google's `)]}'` batch lines. JSON inside strings is opened up.
+  - Several records of one kind are merged into one shape. Mixed arrays keep each position,
+    because Google's answers put a different field at each position.
+  - Keys that look like IDs or emails are collapsed into `<id-like keys>`.
+- **It never shows a value that could name a book, an ID or the owner:**
+  - Strings show only as a description (`text(10–50)`, `id-like(17)`, `digits(13)`, `date text`,
+    `link <pattern>`).
+  - The exceptions are known label words (purchase, sample, free…) and UPPER_SNAKE labels like
+    `PURCHASE_TYPE_SAMPLE`.
+  - URLs show as patterns: ID and slug segments become `:id` and `:slug`, and query values are
+    hidden except `rpcids` and a few paging settings.
+- **Tests:** `server/src/storeProbe.test.ts` feeds it invented answers full of titles, IDs and an
+  email, and checks that none reaches the report.
 
 **A collector that hasn't been checked is never shown as working.** In the extension and the app,
 each store is **Checked on <date>**, **Not checked yet**, or **Not supported** (with the reason).
@@ -527,14 +576,15 @@ each store is **Checked on <date>**, **Not checked yet**, or **Not supported** (
 Tell the owner plainly, at the start of the message, when each is due (as PLAN.md §21 asks). Add
 these rows to PLAN.md §21 when the stage starts.
 
-| ID  | When                  | What the owner does (no command line)                                                                                                                                                                                                                                                                                                                          | Time             |
-| --- | --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------- |
-| A1  | Stage 0               | Say roughly how many books you own in Kindle, Google Play Books, Kobo and GlobalComix. No export requests are needed (decided 2026-11-11).                                                                                                                                                                                                                     | 2 min            |
-| A1b | Store links           | On a few store books (one per store you use), open the book page, add the link (copy it from the store's reader or book page in your browser), and click **Read in … ↗**. Say whether it opened the right book. Also say, without the ID itself, what shape the reader's address has (for example `read.amazon.com/?asin=…`), so link patterns can be checked. | 5 min            |
-| A2  | Stage 1a              | Sign in to the first store in Edge or Chrome, open its library page, and paste the script (Settings → Import store purchases → **Copy the Kindle script**) into the browser's developer console (the steps include the "allow pasting" prompt). Wait for it to finish, then paste the **title-free report** into chat. Keep the downloaded JSON file private.  | 10–15 min        |
-| A3  | Stage 1b              | In whatBooksNext: Settings → Import store purchases → choose the JSON file. Check that the preview looks right, then import. Say whether anything was wrong (no titles needed).                                                                                                                                                                                | 10 min           |
-| A4  | Stage 1c              | Install the extension by following `INSTALL.md` (download the zip, unzip, open the browser's extensions page, turn on Developer mode, Load unpacked). Run **Scan this library** on the same store, import the file, and check that nothing is duplicated.                                                                                                      | 15 min           |
-| A5  | Each new store or fix | Install the new extension version the same way (or click Reload on the extensions page after replacing the folder), run a scan, and paste the report.                                                                                                                                                                                                          | 10 min per store |
+| ID  | When                  | What the owner does (no command line)                                                                                                                                                                                                                                                                                                                          | Time                 |
+| --- | --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------- |
+| A1  | Stage 0               | Say roughly how many books you own in Kindle, Google Play Books, Kobo and GlobalComix. No export requests are needed (decided 2026-11-11).                                                                                                                                                                                                                     | 2 min                |
+| A1b | Store links           | On a few store books (one per store you use), open the book page, add the link (copy it from the store's reader or book page in your browser), and click **Read in … ↗**. Say whether it opened the right book. Also say, without the ID itself, what shape the reader's address has (for example `read.amazon.com/?asin=…`), so link patterns can be checked. | 5 min                |
+| A2  | Stage 1a              | Sign in to the first store in Edge or Chrome, open its library page, and paste the script (Settings → Import store purchases → **Copy the Kindle script**) into the browser's developer console (the steps include the "allow pasting" prompt). Wait for it to finish, then paste the **title-free report** into chat. Keep the downloaded JSON file private.  | 10–15 min            |
+| A3  | Stage 1b              | In whatBooksNext: Settings → Import store purchases → choose the JSON file. Check that the preview looks right, then import. Say whether anything was wrong (no titles needed).                                                                                                                                                                                | 10 min               |
+| A6  | Stage 2 start         | In one sitting, on each of Google Play Books, Kobo (kobo.com/us) and GlobalComix: open your library page signed in, run the look-around script (Settings → Import store purchases → pick the store → **Copy the look-around script**), scroll to the bottom, click **Finish**, and paste the report into chat. It has no titles or IDs.                        | 15 min for all three |
+| A4  | Later (extension)     | Install the extension by following `INSTALL.md` (download the zip, unzip, open the browser's extensions page, turn on Developer mode, Load unpacked). Run **Scan this library** on the same store, import the file, and check that nothing is duplicated.                                                                                                      | 15 min               |
+| A5  | Each new store or fix | Copy the store's script again from Settings (it's always the latest), run it, and paste the report. Once there's an extension: install the new version instead.                                                                                                                                                                                                | 10 min per store     |
 
 Never share in chat: the JSON file, book titles, account names, emails, or anything from the
 store's sign-in.

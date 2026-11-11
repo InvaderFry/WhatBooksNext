@@ -10,5 +10,5 @@
     "lib": ["es2023", "dom", "dom.iterable"],
     "types": []
   },
-  "include": ["core", "adapters", "console"]
+  "include": ["core", "adapters", "console", "probe"]
 }

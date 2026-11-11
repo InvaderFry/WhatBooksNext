@@ -316,6 +316,10 @@ describe('the collectors in the app', () => {
     const s = await api.get('/api/store-collectors/kindle/script');
     expect(s.body.script).toContain('kindle-library/search');
     expect((await api.get('/api/store-collectors/kobo/script')).status).toBe(404);
+    // The look-around script for stores with no collector yet.
+    expect((await api.get('/api/store-collectors/probe/script')).body.script).toContain(
+      'look-around report',
+    );
   });
 
   it('imports exactly what a collector scan produced (invented store answers)', async () => {

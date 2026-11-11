@@ -335,6 +335,8 @@ export function registerStoreRoutes(
     '/api/store-collectors/:service/script',
     route((req) => {
       const s = String(req.params.service);
+      // The look-around script: for stores with no collector yet (Stage 2). It only watches.
+      if (s === 'probe') return { script: fs.readFileSync(path.join(SCRIPTS, 'probe.js'), 'utf8') };
       const c = (COLLECTORS as Record<string, (typeof COLLECTORS)[keyof typeof COLLECTORS]>)[s];
       if (!c || c.state === 'not_built')
         throw new HttpError(404, 'There’s no collector for that store yet.');

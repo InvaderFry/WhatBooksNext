@@ -1340,7 +1340,8 @@ plainly at the start of your message, with what to do and roughly how long it ta
 | **During M1–M6, as they come up** | Check the "needs checking on the owner's machine" items on the Windows PC. For ratings Stage 1, open the CSV in Excel to check the appended scope/match columns, accents and formula text; inspect Diagnostics tier counts. For Stage 2, spot-check chosen titles/creators, page provenance and conflicting years, including Unicode and Calibre-formatted descriptions. No new accounts or keys. |
 | **End of M6** | Try installing from the README as a stranger would. The second quality session moves to after stage 3 of the [ratings and refresh plan](docs/plans/online-ratings-and-refreshes.md), so it judges the new ratings and details. |
 | **Store purchases: Stage 0** | Done: over 12 books in each store (2026-11-11). |
-| **Store purchases: Kindle** | Done 2026-11-11: A2 (complete scan, 155 found) and A3 (import). A1b (store links) works too. Next owner action is A4, once the extension is built. |
+| **Store purchases: Kindle** | Done 2026-11-11: A2 (complete scan, 155 found) and A3 (import). A1b (store links) works too. The extension is deferred (owner decision 2026-11-11). |
+| **Store purchases: look around (now)** | A6 in the [store purchases plan](docs/plans/get-store-purchase-imports.md): on Google Play Books, Kobo (kobo.com/us) and GlobalComix, run the look-around script on your library page (Settings → Import store purchases → pick the store), scroll to the bottom, click Finish and paste each report into chat. About 15 minutes for all three. |
 | **Now (after stage 4)** | The second quality session (§17.2), on the new ratings and details. Also, on the Windows PC: Settings → Online lookups → **Keeping ratings up to date** shows due books and a last batch after the app has been open 10–15 minutes; Diagnostics → Automatic refresh shows requests within the daily share. No new accounts or keys. |
 
 ### Still to confirm (not blocking)

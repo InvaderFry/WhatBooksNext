@@ -1,5 +1,5 @@
-// whatBooksNext kindle collector: paste into the browser console on the store's library
-// page while signed in. Read-only and slow. Generated from tools/store-collector by
+// whatBooksNext kindle script: paste into the browser console on the
+// store's library page while signed in. Read-only. Generated from tools/store-collector by
 // npm run build:collector; don't edit by hand.
 (function() {
 

@@ -463,6 +463,16 @@ try {
         await p.getByRole('heading', { name: 'Import store purchases' }).scrollIntoViewIfNeeded();
       },
     ],
+    [
+      // A store with no script yet: the look-around steps.
+      'settings-store-look-around',
+      '/?view=settings',
+      async (p) => {
+        await p.getByRole('radio', { name: /Google Play Books/ }).check();
+        await p.getByRole('button', { name: 'Copy the look-around script' }).waitFor();
+        await p.getByRole('heading', { name: 'Import store purchases' }).scrollIntoViewIfNeeded();
+      },
+    ],
     ...(['goodreads', 'storygraph'] as const).map(
       (source): [string, string, (p: import('playwright').Page) => Promise<void>] => [
         `settings-history-${source}`,

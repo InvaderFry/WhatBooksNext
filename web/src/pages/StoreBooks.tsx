@@ -719,6 +719,86 @@ const COLLECTOR_STATE: Record<Collector['state'], string> = {
   not_built: 'Not available yet',
 };
 
+/** Where each store's library is, for the look-around script. A starting point: the owner may
+ * need a click or two to reach the list of their own books. */
+const LIBRARY_PAGES: Record<string, { url: string; how: string }> = {
+  google_play: {
+    url: 'https://play.google.com/books',
+    how: 'Google Play Books, then “Library” (your books)',
+  },
+  kobo: { url: 'https://www.kobo.com/us/en/library', how: 'kobo.com, then My Books' },
+  globalcomix: {
+    url: 'https://globalcomix.com',
+    how: 'GlobalComix, then your library or the comics you bought',
+  },
+};
+
+/**
+ * Stores with no script yet (Stage 2): a look-around script reports the library page's structure
+ * (never titles or IDs), and the store's script is built from that report.
+ */
+function LookAroundSteps({ service }: { service: string }) {
+  const [copied, setCopied] = useState<string | null>(null);
+  const lib = LIBRARY_PAGES[service];
+  if (!lib) return null;
+  return (
+    <>
+      <p className="small">
+        There’s no script for {STORE_LABELS[service]} yet. Until there is, add its books by search,
+        by hand or with the spreadsheet above. To help build it, look around its library once:
+      </p>
+      <ol className="steps">
+        <li>
+          In Edge or Chrome, open{' '}
+          <a href={lib.url} target="_blank" rel="noopener noreferrer">
+            {lib.how}
+            <span aria-hidden="true"> ↗</span>
+            <span className="visually-hidden"> (opens in a new tab)</span>
+          </a>
+          . Sign in if asked, and go to the page that lists the books you own.
+        </li>
+        <li>
+          Copy the look-around script:{' '}
+          <button
+            type="button"
+            className="small secondary"
+            onClick={async () => {
+              try {
+                const r = await api.get<{ script: string }>('/api/store-collectors/probe/script');
+                await navigator.clipboard.writeText(r.script);
+                setCopied('Copied. Now go to the store’s tab.');
+              } catch (e) {
+                setCopied(`Couldn’t copy: ${(e as Error).message}`);
+              }
+            }}
+          >
+            Copy the look-around script
+          </button>{' '}
+          {copied && (
+            <span className="small" role="status">
+              {copied}
+            </span>
+          )}
+        </li>
+        <li>
+          Press <kbd>F12</kbd>, choose <strong>Console</strong>, paste with <kbd>Ctrl</kbd>+
+          <kbd>V</kbd> and press <kbd>Enter</kbd> (type <code>allow pasting</code> first if the
+          browser asks).
+        </li>
+        <li>
+          Scroll your library slowly to the very bottom, until no more books load (click any “Show
+          more” button). Then click <strong>Finish</strong> in the box in the corner.
+        </li>
+        <li>
+          Click <strong>Copy report</strong> and paste it into chat. It holds only the page’s
+          structure: no titles, IDs or account details. It only watches what the page loads; it
+          makes no requests of its own.
+        </li>
+      </ol>
+    </>
+  );
+}
+
 /** The steps for one store's console script. Written for someone who has never used one. */
 function KindleSteps({ page }: { page: string }) {
   const [copied, setCopied] = useState<string | null>(null);
@@ -857,12 +937,7 @@ export function StorePurchaseImport({ onChanged }: { onChanged?: () => void }) {
           </label>
         ))}
       </fieldset>
-      {chosen && chosen.state === 'not_built' && (
-        <p className="small">
-          There’s no script for {STORE_LABELS[service]} yet. Until there is, add its books by
-          search, by hand or with the spreadsheet above.
-        </p>
-      )}
+      {chosen && chosen.state === 'not_built' && <LookAroundSteps service={service} />}
       {chosen && chosen.state !== 'not_built' && service === 'kindle' && chosen.page && (
         <>
           <p className="small warn">
