@@ -28,11 +28,11 @@ export class Sources {
     this.comicvine = new ComicVine(db, () => getSecret(db, 'comicvine_key'), opts.fetcher);
   }
 
-  /** The comic sources the owner has set up: Metron first, ComicVine as its fallback. */
-  private comics(): SourceAdapter[] {
+  /** The comic sources: Metron first, ComicVine as its fallback (only those set up, unless `all`). */
+  private comics(all = false): SourceAdapter[] {
     return [
-      ...(this.metron.configured() ? [this.metron] : []),
-      ...(this.comicvine.configured() ? [this.comicvine] : []),
+      ...(all || this.metron.configured() ? [this.metron] : []),
+      ...(all || this.comicvine.configured() ? [this.comicvine] : []),
     ];
   }
 
@@ -48,15 +48,34 @@ export class Sources {
    *    unrelated novels with the series' name. With neither set up, issues aren't looked up.
    */
   forItem(kind: string | null, issue: string | null = null): SourceAdapter[] {
+    return this.plan(kind, issue, false);
+  }
+
+  /**
+   * The sources that cover this kind of item if every optional one were set up: the book page
+   * tells "not set up" apart from "doesn't cover this kind of book".
+   */
+  coveringSources(kind: string | null, issue: string | null = null): SourceName[] {
+    return this.plan(kind, issue, true).map((s) => s.name);
+  }
+
+  private plan(kind: string | null, issue: string | null, all: boolean): SourceAdapter[] {
     if (this.demo) return [this.demoSource];
-    const books: SourceAdapter[] = this.hardcover.configured()
-      ? [this.openlibrary, this.hardcover]
-      : [this.openlibrary];
+    const books: SourceAdapter[] =
+      all || this.hardcover.configured() ? [this.openlibrary, this.hardcover] : [this.openlibrary];
     if (kind === 'manga') return [this.anilist, ...books];
-    if (issue) return this.comics();
+    if (issue) return this.comics(all);
     // A collected comic volume: the book sources rate it; Metron says what it reprints (§12.5).
-    if (kind === 'comic' && this.metron.configured()) return [...books, this.metron];
+    if (kind === 'comic' && (all || this.metron.configured())) return [...books, this.metron];
     return books;
+  }
+
+  /** Whether an optional source has its key or token. Keyless sources are always set up. */
+  isConfigured(name: SourceName): boolean {
+    if (name === 'hardcover') return this.hardcover.configured();
+    if (name === 'metron') return this.metron.configured();
+    if (name === 'comicvine') return this.comicvine.configured();
+    return true;
   }
 
   /** For "Search and pick" in Needs review: every source that can answer now. */

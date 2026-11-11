@@ -1427,3 +1427,40 @@ kbd {
 #export-h ~ h3 {
   margin-top: 1.25rem;
 }
+
+/* "From each source" on the book page (plan stage 3). */
+.from-each-source {
+  margin: 0.75rem 0;
+}
+.source-list,
+.used-list {
+  list-style: none;
+  padding-left: 0;
+}
+.source-list {
+  display: grid;
+  gap: 0.6rem;
+  margin: 0.6rem 0;
+}
+.source-entry {
+  padding: 0.75rem 0.9rem;
+}
+.source-heading {
+  font-size: 1rem;
+  margin: 0 0 0.35rem;
+}
+.source-unconfirmed {
+  border-style: dashed;
+}
+.used-list {
+  margin: 0 0 0.4rem;
+}
+.used-list .badge {
+  font-size: 0.75rem;
+  padding: 0.05rem 0.4rem;
+  border-radius: 0.6rem;
+  background: var(--accent-soft);
+}
+.source-group {
+  margin: 0.8rem 0 0.2rem;
+}

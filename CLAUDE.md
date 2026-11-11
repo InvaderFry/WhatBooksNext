@@ -29,8 +29,10 @@ owner has already made. Don't reopen those decisions. Then read the latest
   gems, export evidence and Diagnostics tier counts; see the Stage 1 section of `docs/milestones/M6.md`.
 - **Details Stage 2 built:** `lib/details.ts` selects display facts per field without writing
   matching inputs. Original ranking title/creators and subject pools keep taste/topics unchanged.
-- **Next:** `docs/plans/online-ratings-and-refreshes.md`: a "From each source" book page, then automatic refresh. One pull request per
-  stage, in order. Google Books was dropped; the plan says why.
+- **Ratings plan** (`docs/plans/online-ratings-and-refreshes.md`): stages 1–3 built (rating
+  choice, best details, "From each source" in `lib/fromEachSource.ts`; notes in M6.md). **Next:**
+  stage 4, automatic refresh. The owner's second quality session (§17.2) is due after stage 3.
+  Google Books was dropped; the plan says why.
 - Series rows are rebuilt by `syncSeries` (`server/src/identify/series.ts`) from stored facts
   and owner corrections. Call it after anything that changes items' names, numbers, kinds or
   matches. Gap rules are pure, in `server/src/lib/series.ts`.

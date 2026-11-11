@@ -159,6 +159,26 @@ describe('Stage 1 rating integration', () => {
     ).toBeNull();
   });
 
+  it('lists every source on the book page, with the rating in use marked and the rest still shown', async () => {
+    const id = book();
+    save(id, [
+      rating({ count: 3 }),
+      rating({ source: 'openlibrary', sourceId: 'ol-1', count: 3000 }),
+    ]);
+    const before = db.prepare('SELECT * FROM item_matches').all();
+    const f = (await get(`/api/items/${id}/online`)).body.fromEachSource;
+    const by = Object.fromEntries(
+      f.entries.map((e: { source: string }) => [e.source, e] as const),
+    ) as Record<string, { used: { field: string }[]; rating: { count: number } | null }>;
+    expect(by.openlibrary!.used.map((u) => u.field)).toContain('rating');
+    expect(by.hardcover!.used.map((u) => u.field)).not.toContain('rating');
+    expect(by.hardcover!.rating).toMatchObject({ count: 3 });
+    expect(f.notAsked.map((n: { source: string }) => n.source)).toEqual(
+      expect.arrayContaining(['anilist', 'metron', 'comicvine']),
+    );
+    expect(db.prepare('SELECT * FROM item_matches').all()).toEqual(before);
+  });
+
   it('keeps confirmation and ISBN evidence local to their own source and excludes tied, rejected and wrong-volume ratings', async () => {
     const id = book();
     save(id, [

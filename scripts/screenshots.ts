@@ -201,6 +201,30 @@ try {
       },
     ],
     [
+      'item-from-each-source',
+      '/?view=library&q=glass',
+      async (p) => {
+        await p
+          .getByRole('link', { name: /Glass Harbor/ })
+          .first()
+          .click();
+        await p.getByText(/^From each source/).click();
+        await p.locator('.from-each-source[open] .source-entry').first().waitFor();
+      },
+    ],
+    [
+      'item-from-each-source-unconfirmed',
+      '/?view=library&q=starfall',
+      async (p) => {
+        await p
+          .getByRole('link', { name: /Starfall Academy/ })
+          .first()
+          .click();
+        await p.getByText(/^From each source/).click();
+        await p.getByRole('button', { name: 'This is the right book' }).first().waitFor();
+      },
+    ],
+    [
       'item-rating-series',
       '/?view=library&q=starfall',
       async (p) => {
