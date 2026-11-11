@@ -88,7 +88,7 @@ export const MODES: ModeInfo[] = [
     id: 'hidden_gems',
     label: 'Hidden gems',
     description:
-      'Highly rated from a trusted book or volume match, with at least 5 ratings and few ratings everywhere we looked — the bottom quarter for each source in your library. Unknown counts aren’t evidence of obscurity.',
+      'Well rated by a trusted book or volume match, with at least 3 ratings and few ratings everywhere we looked — 25 or fewer, or the bottom half for each source in your library. Unknown counts aren’t evidence of obscurity.',
     usesTime: false,
   },
   {

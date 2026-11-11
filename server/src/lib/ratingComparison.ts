@@ -1,6 +1,4 @@
 import {
-  HIDDEN_GEM_MIN_VOTES,
-  HIDDEN_GEM_VOTE_PERCENTILE,
   HIGHLY_RATED_FALLBACK,
   HIGHLY_RATED_MIN_ITEMS,
   HIGHLY_RATED_PERCENTILE,
@@ -18,6 +16,10 @@ import {
   type RatingStats,
 } from './ratings.ts';
 import type { RankItem, Situation } from './recommend.ts';
+
+// M6's Hidden gems line, frozen here so later changes to the config don't move "before".
+const OLD_GEM_VOTE_PERCENTILE = 0.25;
+const OLD_GEM_MIN_VOTES = 5;
 
 // Frozen M6 behaviour: one sample per item/source, fixed source preference, old gem predicate.
 // Used only to report what Stage 1 changed (Diagnostics and `npm run report:matches`); the
@@ -45,7 +47,7 @@ function oldStats(all: RatedFrom[]): RatingStats {
             ),
       fewVotes: percentile(
         rs.filter((r) => r.count !== null).map((r) => r.count!),
-        HIDDEN_GEM_VOTE_PERCENTILE,
+        OLD_GEM_VOTE_PERCENTILE,
       ),
     });
   }
@@ -59,7 +61,7 @@ function oldChoice(rs: RatedFrom[], stats: RatingStats): CommunityRating | null 
   const s = stats.get(r.source)!;
   const score = shrink(r, s);
   const highlyRated = score >= s.highlyRated;
-  const fewVotes = r.count !== null && r.count >= HIDDEN_GEM_MIN_VOTES && r.count <= s.fewVotes;
+  const fewVotes = r.count !== null && r.count >= OLD_GEM_MIN_VOTES && r.count <= s.fewVotes;
   return {
     source: r.source,
     sourceId: r.sourceId,
