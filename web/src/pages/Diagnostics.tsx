@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { api, formatDate } from '../api.ts';
+import { api, formatDate, type RefreshStatus } from '../api.ts';
 import { Notice } from '../components.tsx';
 
 interface DiagFolder {
@@ -46,6 +46,7 @@ interface Diag {
     whatNext: { total: number; provisional: number };
   };
   lookups: { pending: number; running: boolean };
+  refresh: RefreshStatus;
 }
 
 interface RatingChanges {
@@ -284,6 +285,7 @@ export function Diagnostics() {
                 </li>
               ))}
             </ul>
+            <RefreshDiagnostics r={diag.refresh} />
             <HardcoverCheck names={names} />
             <ComicCheck source="metron" title="Metron" names={names} />
             <ComicCheck source="comicvine" title="ComicVine" names={names} />
@@ -362,8 +364,64 @@ function toReport(d: Diag): string {
       (s) =>
         `${s.label}: ${s.configured ? s.state : 'no key'}; requests this run ${s.requests}${s.lastError ? `; last error: ${s.lastError}` : ''}`,
     ),
+    ...refreshLines(d.refresh),
   ];
   return lines.join('\n');
+}
+
+/** Automatic refresh per source: due, last answer, automatic requests today, pauses, failures. */
+function refreshLines(r: RefreshStatus): string[] {
+  return [
+    `Automatic refresh: ${r.demo ? 'off in the demo' : r.enabled ? (r.paused ? 'paused' : 'on') : 'off'}; ${r.dueBooks} books due${r.fresh ? '; looking up all books again' : ''}`,
+    ...r.sources.map(
+      (s) =>
+        `  ${s.label}: ${s.due} of ${s.books} due; last answer ${s.lastAnswerAt ?? 'never'}; automatic requests today ${s.automaticToday}${s.automaticAllowance !== null ? ` of ${s.automaticAllowance}` : ''}; failing ${s.failing}${s.pausedBecause ? `; paused: ${s.pausedBecause}` : ''}`,
+    ),
+  ];
+}
+
+function RefreshDiagnostics({ r }: { r: RefreshStatus }) {
+  return (
+    <div className="card">
+      <h3>Automatic refresh</h3>
+      <p className="small">
+        {r.demo
+          ? 'Off in the demo.'
+          : `${r.enabled ? (r.paused ? 'Paused.' : 'On.') : 'Off.'} ${r.dueBooks.toLocaleString()} books due now.${r.lastCheckAt ? ` Last check ${formatDate(r.lastCheckAt)}.` : ''}`}
+      </p>
+      {r.sources.length > 0 && (
+        <table className="table">
+          <thead>
+            <tr>
+              <th scope="col">Source</th>
+              <th scope="col">Due</th>
+              <th scope="col">Last answer</th>
+              <th scope="col">Automatic requests today</th>
+              <th scope="col">Failing</th>
+              <th scope="col">Paused</th>
+            </tr>
+          </thead>
+          <tbody>
+            {r.sources.map((s) => (
+              <tr key={s.source}>
+                <th scope="row">{s.label}</th>
+                <td>
+                  {s.due.toLocaleString()} of {s.books.toLocaleString()}
+                </td>
+                <td>{s.lastAnswerAt ? formatDate(s.lastAnswerAt) : 'never'}</td>
+                <td>
+                  {s.automaticToday.toLocaleString()}
+                  {s.automaticAllowance !== null && ` of ${s.automaticAllowance.toLocaleString()}`}
+                </td>
+                <td>{s.failing.toLocaleString()}</td>
+                <td>{s.pausedBecause ?? 'no'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
 }
 
 /**

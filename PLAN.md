@@ -727,7 +727,15 @@ keys.
   trusted match to a file ISBN, then the strongest trusted source. Descriptions are compared
   as plain text, preferring a useful Hardcover description (§20). Displayed subjects retain
   trusted/file provenance. This selection never writes matching facts; kind, taste and topic
-  inputs remain as before. The full source-by-source page and refreshes follow in stages 3–4.
+  inputs remain as before. Stage 3 shows every source's answer on the book page ("From each
+  source").
+- **Refreshes** (stage 4): while the app runs, small batches (about 25 requests, one per
+  ten-minute check) ask sources again: weekly for books in progress or shortlisted, monthly where a
+  rating source has no supported trusted rating anywhere, every three months otherwise; failures
+  retry after 1, 3 and 7 days. Automatic work uses at most a fifth of a daily allowance and never
+  runs in the demo, during a scan or a lookup run. The app remembers the match it accepted;
+  later lookups never switch it on their own (a rival goes to Needs review). **Look up again** and
+  **Look up all books again** start fresh but keep confirmations, rejections and edits.
 - Unknown rating: neutral in the blend; **fails** any "highly rated" filter.
 
 ### 12.3 Duration
@@ -1299,6 +1307,10 @@ use. Keep them in one config module, each with its reason in a comment.
 | Still reading? / snooze | 90 days / 30 days | A quarter untouched usually means stalled. |
 | Undo stack | Last 20 merges/splits | Covers a cleanup session. |
 | Published-volume catalogue | Refresh after 7 days; at most 500 positions and 100 series memberships | Weekly checks avoid repeated requests per owned volume; bounds stay below Hardcover's documented 997-row relation limit and refuse truncated answers. |
+| Refresh intervals (`REFRESH_*_DAYS`) | 7 days in progress or shortlisted; 30 days where a rating source has no supported trusted rating anywhere; 90 days otherwise; each stretched by up to 10% per book | How likely an answer has changed; the stretch stops books looked up on one day falling due together. Assumptions. |
+| Refresh retries (`REFRESH_RETRY_DAYS`) | 1, 3, 7 days, then the group's interval | A site hiccup is retried soon; a lasting problem isn't asked about daily. |
+| Refresh batch (`REFRESH_BATCH_REQUESTS`, `REFRESH_CHECK_MS`) | About 25 real requests per check (checked before each book; a source's retry can add one or two); first check 3 minutes after start, then every 10 minutes | Background work stays small; a long time closed is caught up gradually. |
+| Automatic share of a daily allowance (`REFRESH_DAILY_SHARE`) | 20% (1,000 of Hardcover's and Metron's 5,000) | Leaves most of the allowance for the owner's own lookups. |
 | Pre-migration snapshots kept | 5 | A few versions back, without filling the disk. |
 | Pre-restore snapshots kept | 3, separately | A restore must never push out the migration snapshots, or the other way round. |
 | Server port | 4818, overridable with `PORT` | Unlikely to clash with common dev tools. |
@@ -1320,6 +1332,7 @@ plainly at the start of your message, with what to do and roughly how long it ta
 | **End of M3** | First ~20-minute recommendation quality session (§17.2). |
 | **During M1–M6, as they come up** | Check the "needs checking on the owner's machine" items on the Windows PC. For ratings Stage 1, open the CSV in Excel to check the appended scope/match columns, accents and formula text; inspect Diagnostics tier counts. For Stage 2, spot-check chosen titles/creators, page provenance and conflicting years, including Unicode and Calibre-formatted descriptions. No new accounts or keys. |
 | **End of M6** | Try installing from the README as a stranger would. The second quality session moves to after stage 3 of the [ratings and refresh plan](docs/plans/online-ratings-and-refreshes.md), so it judges the new ratings and details. |
+| **Now (after stage 4)** | The second quality session (§17.2), on the new ratings and details. Also, on the Windows PC: Settings → Online lookups → **Keeping ratings up to date** shows due books and a last batch after the app has been open 10–15 minutes; Diagnostics → Automatic refresh shows requests within the daily share. No new accounts or keys. |
 
 ### Still to confirm (not blocking)
 

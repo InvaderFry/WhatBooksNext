@@ -174,6 +174,7 @@ export class SourceClient {
         this.name,
         `Reached the source’s allowance; carrying on after ${new Date(this.limitedUntil).toLocaleString()}.`,
         true,
+        true,
       );
     const wait = this.nextAt - this.now();
     if (wait > 0) await this.sleep(wait);

@@ -31,6 +31,7 @@ import { addSameMatchSuggestions } from './reconcile.ts';
 import { syncSeries } from './series.ts';
 import { publicationPending, publicationSeries, refreshPublications } from '../lib/publications.ts';
 import { suggestCoverageFromSources } from '../lib/coverage.ts';
+import { retryAt } from '../lib/refresh.ts';
 
 /**
  * Lookups (PLAN.md §12.1, §11.2): for each item, ask the sources for its kind, score the
@@ -221,7 +222,11 @@ function rejectedFor(db: DB, itemId: string): Set<string> {
   );
 }
 
-/** Stores one source's ranked candidates for an item, replacing what it had. */
+/**
+ * Stores one source's ranked candidates for an item, replacing what it had. The owner's
+ * confirmed match and the record the app remembers accepting are kept even when this search
+ * didn't return them (fresh data replaces theirs when it did): a lookup never undoes either.
+ */
 export function storeCandidates(
   db: DB,
   itemId: string,
@@ -229,21 +234,29 @@ export function storeCandidates(
   ranked: ScoredCandidate[],
   /** A record the owner picked: kept whatever its score (owner corrections win). */
   keep?: ScoredCandidate,
+  /** The record the app accepted earlier and still keeps (stage 4). */
+  remembered?: string | null,
 ): void {
   const now = nowIso();
-  // The owner's confirmed match is kept even when this search didn't return it: a lookup
-  // never undoes the owner's choice.
   const override = db
     .prepare('SELECT match_override FROM user_item WHERE item_id = ?')
     .pluck()
     .get(itemId) as string | null | undefined;
-  const confirmed = override?.startsWith(`${source}:`)
-    ? (db
-        .prepare('SELECT * FROM item_matches WHERE item_id = ? AND source = ? AND source_id = ?')
-        .get(itemId, source, override.slice(source.length + 1)) as
-        | { source_id: string; score: number; evidence: string; data: string; fetched_at: string }
-        | undefined)
-    : undefined;
+  const keepIds = [
+    override?.startsWith(`${source}:`) ? override.slice(source.length + 1) : null,
+    remembered ?? null,
+  ].filter((x, i, a): x is string => x !== null && a.indexOf(x) === i);
+  const old = db.prepare(
+    'SELECT * FROM item_matches WHERE item_id = ? AND source = ? AND source_id = ?',
+  );
+  const held = keepIds
+    .map(
+      (id) =>
+        old.get(itemId, source, id) as
+          | { source_id: string; score: number; evidence: string; data: string; fetched_at: string }
+          | undefined,
+    )
+    .filter((x) => x !== undefined);
   db.prepare('DELETE FROM item_matches WHERE item_id = ? AND source = ?').run(itemId, source);
   const ins = db.prepare(
     `INSERT OR REPLACE INTO item_matches (item_id, source, source_id, score, rank, evidence, data, fetched_at)
@@ -253,6 +266,12 @@ export function storeCandidates(
     .filter((c) => c.score >= MIN_KEPT_SCORE && c.record.sourceId !== keep?.record.sourceId)
     .slice(0, keep ? KEEP_CANDIDATES - 1 : KEEP_CANDIDATES);
   const all = keep ? [keep, ...auto] : auto;
+  // A kept record this answer did return, but below the cut: stored with its fresh data.
+  for (const id of keepIds)
+    if (!all.some((c) => c.record.sourceId === id)) {
+      const fresh = ranked.find((c) => c.record.sourceId === id);
+      if (fresh) all.push(fresh);
+    }
   all.forEach((c, i) =>
     ins.run(
       itemId,
@@ -265,17 +284,10 @@ export function storeCandidates(
       now,
     ),
   );
-  if (confirmed && !all.some((c) => c.record.sourceId === confirmed.source_id))
-    ins.run(
-      itemId,
-      source,
-      confirmed.source_id,
-      confirmed.score,
-      all.length + 1,
-      confirmed.evidence,
-      confirmed.data,
-      confirmed.fetched_at,
-    );
+  let rank = all.length;
+  for (const h of held)
+    if (!all.some((c) => c.record.sourceId === h.source_id))
+      ins.run(itemId, source, h.source_id, h.score, ++rank, h.evidence, h.data, h.fetched_at);
 }
 
 export interface MatchRow {
@@ -285,6 +297,11 @@ export interface MatchRow {
   rank: number;
   evidence: MatchEvidence;
   record: SourceRecord;
+  /**
+   * The record the app accepted for this source earlier and keeps (stage 4): its decision stays
+   * "accepted" whatever a later lookup ranks first, until "Look up again" releases it.
+   */
+  remembered?: boolean;
 }
 
 interface MatchDbRow {
@@ -295,10 +312,16 @@ interface MatchDbRow {
   rank: number;
   evidence: string;
   data: string;
+  remembered?: number | null;
 }
+
+/** item_matches with whether each row is the app's remembered choice for its source. */
+const MATCHES_SQL = `SELECT m.*, (l.accepted_source_id = m.source_id) AS remembered
+  FROM item_matches m LEFT JOIN lookup_state l ON l.item_id = m.item_id AND l.source = m.source`;
 
 function toMatchRow(r: MatchDbRow): MatchRow {
   return {
+    ...(r.remembered === 1 ? { remembered: true } : {}),
     source: r.source,
     sourceId: r.source_id,
     score: r.score,
@@ -323,7 +346,7 @@ function toMatchRow(r: MatchDbRow): MatchRow {
 export function matchesOf(db: DB, itemId: string): MatchRow[] {
   return (
     db
-      .prepare('SELECT * FROM item_matches WHERE item_id = ? ORDER BY source, rank')
+      .prepare(`${MATCHES_SQL} WHERE m.item_id = ? ORDER BY m.source, m.rank`)
       .all(itemId) as MatchDbRow[]
   ).map(toMatchRow);
 }
@@ -336,7 +359,7 @@ export function allMatchInputs(db: DB): {
 } {
   const matches = new Map<string, MatchRow[]>();
   for (const r of db
-    .prepare('SELECT * FROM item_matches ORDER BY item_id, source, rank')
+    .prepare(`${MATCHES_SQL} ORDER BY m.item_id, m.source, m.rank`)
     .all() as MatchDbRow[]) {
     if (!matches.has(r.item_id)) matches.set(r.item_id, []);
     matches.get(r.item_id)!.push(toMatchRow(r));
@@ -367,7 +390,11 @@ const DECISION_ORDER: Record<Decision, number> = {
   unidentified: 3,
 };
 
-/** Per source: the decision and the chosen candidate, honouring the owner's rejections. */
+/**
+ * Per source: the decision and the chosen candidate, honouring the owner's rejections. A record
+ * the app remembers accepting stays the accepted one (stage 4); a rival that now ranks higher
+ * is listed in Needs review instead of replacing it.
+ */
 export function decisionsFor(
   matches: MatchRow[],
   rejected: Set<string>,
@@ -380,6 +407,11 @@ export function decisionsFor(
   }
   const out = new Map<SourceName, { decision: Decision; best: MatchRow | null }>();
   for (const [source, rows] of bySource) {
+    const remembered = rows.find((r) => r.remembered);
+    if (remembered) {
+      out.set(source, { decision: 'accepted', best: remembered });
+      continue;
+    }
     const ranked = rankCandidates(
       rows.map((r) => ({ record: r.record, score: r.score, evidence: r.evidence })),
     );
@@ -603,6 +635,19 @@ export interface LookupStatus {
   estimateSeconds: number | null;
   series?: { done: number; total: number };
   error: string | null;
+  /** What kind of run: the owner's "Look up all books again", or "Refresh due books now". */
+  label?: 'fresh' | 'due';
+}
+
+export interface LookupStartOptions {
+  itemIds?: string[];
+  /** Ignore cached answers. */
+  refresh?: boolean;
+  /** Let the app choose its matches again (Look up all books again). */
+  fresh?: boolean;
+  /** Leave paused sources paused (a run the scheduler resumes, not one the owner pressed). */
+  keepBreakers?: boolean;
+  label?: LookupStatus['label'];
 }
 
 /**
@@ -640,8 +685,17 @@ export function pruneInapplicable(db: DB, sources: Sources): number {
   return touched.size;
 }
 
-/** Items that still need a lookup from at least one of their sources, most urgent first. */
-export function itemsNeedingLookup(db: DB, sources: Sources, refresh = false): string[] {
+/**
+ * Items that still need a lookup from at least one of their sources, most urgent first.
+ * `includeFailed: false` leaves out sources whose last lookup failed: automatic refresh retries
+ * those on their own schedule (1, 3, 7 days), not every few minutes.
+ */
+export function itemsNeedingLookup(
+  db: DB,
+  sources: Sources,
+  refresh = false,
+  includeFailed = true,
+): string[] {
   const rows = db
     .prepare(
       `SELECT i.id, COALESCE(u.kind_override, i.kind) AS kind, i.issue_label, u.match_override,
@@ -672,14 +726,63 @@ export function itemsNeedingLookup(db: DB, sources: Sources, refresh = false): s
     const needs = srcs.some((s) => {
       const st = state.get(r.id, s.name) as
         { version: number; query: string; outcome: string } | undefined;
-      return !st || st.version !== MATCH_VERSION || st.query !== q || st.outcome === 'failed';
+      if (!st) return true;
+      if (st.outcome === 'failed') return includeFailed;
+      return st.version !== MATCH_VERSION || st.query !== q;
     });
     if (needs) out.push(r.id);
   }
   return out;
 }
 
-/** Looks one item up in every source for its kind. Returns each source's outcome. */
+export interface LookupOptions {
+  /** Ignore cached answers: ask the sources again. */
+  refresh?: boolean;
+  /**
+   * Start fresh (the owner's "Look up again"): a source that answers lets the app choose its
+   * match again, releasing the one it remembered. Confirmed matches and rejections stay.
+   */
+  fresh?: boolean;
+  /** An automatic refresh: an empty or unclear answer keeps the previous result. */
+  background?: boolean;
+  /** Ask only these sources (automatic refresh asks the ones that are due). */
+  only?: SourceName[];
+}
+
+export interface LookupResult {
+  source: SourceName;
+  outcome: string;
+  error?: string;
+  /** The source's daily allowance ran out (not this book's fault). */
+  quota?: boolean;
+}
+
+const COMIC_SOURCES: SourceName[] = ['metron', 'comicvine'];
+
+/**
+ * The sources to ask for an item: with `only`, exactly those and no others. A caller that wants
+ * ComicVine's fallback after Metron passes both (`withComicPartners`); one that left a source
+ * out (its allowance is used up) keeps it out.
+ */
+function askedSources(
+  sources: Sources,
+  kind: string | null,
+  issue: string | null,
+  only?: SourceName[],
+): SourceAdapter[] {
+  const all = sources.forItem(kind, issue);
+  return only ? all.filter((s) => only.includes(s.name)) : all;
+}
+
+/**
+ * Metron and ComicVine are asked together (ComicVine only when Metron finds nothing), so a due
+ * comic source brings its partner, from the sources this item uses.
+ */
+export function withComicPartners(wanted: SourceName[], itemSources: SourceName[]): SourceName[] {
+  if (!wanted.some((s) => COMIC_SOURCES.includes(s))) return wanted;
+  return [...new Set([...wanted, ...itemSources.filter((s) => COMIC_SOURCES.includes(s))])];
+}
+
 /**
  * Looks one item up in every source for it. What a lookup finds can change the item's guessed
  * kind (a "book" whose subjects say graphic novel becomes a comic), and the kind changes how it
@@ -694,61 +797,98 @@ export async function lookUpItem(
   db: DB,
   sources: Sources,
   itemId: string,
-  opts: { refresh?: boolean } = {},
-): Promise<{ source: SourceName; outcome: string; error?: string }[]> {
-  let results: { source: SourceName; outcome: string; error?: string }[] = [];
+  opts: LookupOptions = {},
+): Promise<LookupResult[]> {
+  let results: LookupResult[] = [];
   for (let pass = 0; pass < MAX_PASSES; pass++) {
     results = await lookUpOnce(db, sources, itemId, opts);
     if (results.some((r) => r.outcome === 'failed')) return results;
-    if (!searchChanged(db, sources, itemId)) return results;
+    if (!searchChanged(db, sources, itemId, opts.only)) return results;
   }
   // Still changing: settle on the current search, so the next run doesn't ask again.
   const facts = matchFactsFor(db, itemId);
   if (facts) {
     const qKey = JSON.stringify(buildQuery(facts));
     const now = nowIso();
-    for (const s of sources.forItem(facts.kind, facts.issue ?? null))
+    for (const s of askedSources(sources, facts.kind, facts.issue ?? null, opts.only))
       db.prepare(
-        `INSERT INTO lookup_state (item_id, source, version, query, looked_up_at, outcome, error)
-         VALUES (?, ?, ?, ?, ?, 'none', NULL)
+        `INSERT INTO lookup_state (item_id, source, version, query, looked_up_at, outcome, error, last_answer_at)
+         VALUES (?, ?, ?, ?, ?, 'none', NULL, ?)
          ON CONFLICT (item_id, source) DO UPDATE SET version = excluded.version,
            query = excluded.query`,
-      ).run(itemId, s.name, MATCH_VERSION, qKey, now);
+      ).run(itemId, s.name, MATCH_VERSION, qKey, now, now);
   }
   return results;
 }
 
 /** Would the item be searched differently now, or by a source not asked yet? */
-function searchChanged(db: DB, sources: Sources, itemId: string): boolean {
+function searchChanged(db: DB, sources: Sources, itemId: string, only?: SourceName[]): boolean {
   const facts = matchFactsFor(db, itemId);
   if (!facts) return false;
   const qKey = JSON.stringify(buildQuery(facts));
   const state = db.prepare('SELECT query FROM lookup_state WHERE item_id = ? AND source = ?');
-  return sources.forItem(facts.kind, facts.issue ?? null).some((s) => {
+  return askedSources(sources, facts.kind, facts.issue ?? null, only).some((s) => {
     const st = state.get(itemId, s.name) as { query: string } | undefined;
     return !st || st.query !== qKey;
   });
 }
 
+/** One lookup_state row, as stored. */
+export interface LookupStateRow {
+  item_id: string;
+  source: SourceName;
+  version: number;
+  query: string;
+  looked_up_at: string;
+  outcome: string;
+  error: string | null;
+  accepted_source_id: string | null;
+  rival_source_id: string | null;
+  last_answer_at: string | null;
+  next_eligible_at: string | null;
+  failure_count: number;
+}
+
+function writeState(db: DB, row: LookupStateRow): void {
+  db.prepare(
+    `INSERT INTO lookup_state (item_id, source, version, query, looked_up_at, outcome, error,
+       accepted_source_id, rival_source_id, last_answer_at, next_eligible_at, failure_count)
+     VALUES (@item_id, @source, @version, @query, @looked_up_at, @outcome, @error,
+       @accepted_source_id, @rival_source_id, @last_answer_at, @next_eligible_at, @failure_count)
+     ON CONFLICT (item_id, source) DO UPDATE SET version = excluded.version,
+       query = excluded.query, looked_up_at = excluded.looked_up_at, outcome = excluded.outcome,
+       error = excluded.error, accepted_source_id = excluded.accepted_source_id,
+       rival_source_id = excluded.rival_source_id, last_answer_at = excluded.last_answer_at,
+       next_eligible_at = excluded.next_eligible_at, failure_count = excluded.failure_count`,
+  ).run(row);
+}
+
+/** The next local midnight: a source whose daily allowance ran out is asked again then. */
+export function nextLocalDay(now = new Date()): string {
+  const d = new Date(now);
+  d.setHours(24, 0, 0, 0);
+  return d.toISOString();
+}
+
+export const KEPT_PREVIOUS =
+  'The latest answer didn’t clearly find this book, so the previous result is kept.';
+
 async function lookUpOnce(
   db: DB,
   sources: Sources,
   itemId: string,
-  opts: { refresh?: boolean },
-): Promise<{ source: SourceName; outcome: string; error?: string }[]> {
+  opts: LookupOptions,
+): Promise<LookupResult[]> {
   const facts = matchFactsFor(db, itemId);
   if (!facts) return [];
   if (facts.issue) facts.runs = runHintsFor(db, itemId);
   const query = buildQuery(facts);
   const qKey = JSON.stringify(query);
-  const results: { source: SourceName; outcome: string; error?: string }[] = [];
-  const saveState = db.prepare(
-    `INSERT INTO lookup_state (item_id, source, version, query, looked_up_at, outcome, error)
-     VALUES (?, ?, ?, ?, ?, ?, ?)
-     ON CONFLICT (item_id, source) DO UPDATE SET version = excluded.version, query = excluded.query,
-       looked_up_at = excluded.looked_up_at, outcome = excluded.outcome, error = excluded.error`,
-  );
-  const all = sources.forItem(facts.kind, facts.issue ?? null);
+  const results: LookupResult[] = [];
+  const all = askedSources(sources, facts.kind, facts.issue ?? null, opts.only);
+  // Real requests per source before asking: an answer counts as "the source answered" only
+  // when a request went out (a re-read of the cache is not news from the source).
+  const before = new Map(all.map((s) => [s.name, sources.requestCount(s.name)]));
   const ask = (list: SourceAdapter[]) =>
     Promise.allSettled(
       list.map(async (s: SourceAdapter) => {
@@ -775,31 +915,182 @@ async function lookUpOnce(
   // may also change its search. Discard the old result; the next pass can use current facts.
   const currentFacts = matchFactsFor(db, itemId);
   if (!currentFacts || JSON.stringify(buildQuery(currentFacts)) !== qKey) return [];
+  const state = db.prepare('SELECT * FROM lookup_state WHERE item_id = ? AND source = ?');
   db.transaction(() => {
+    const now = nowIso();
+    const rejected = rejectedFor(db, itemId);
+    const stored = matchesOf(db, itemId);
+    const present = new Set(stored.map((m) => `${m.source}:${m.sourceId}`));
+    // What each source's stored candidates still give, whatever the last lookup's outcome (a
+    // failed lookup keeps them, so "failed" can sit on top of a good match).
+    const held = decisionsFor(stored, rejected);
+    const blank = (source: SourceName): LookupStateRow => ({
+      item_id: itemId,
+      source,
+      version: MATCH_VERSION,
+      query: qKey,
+      looked_up_at: now,
+      outcome: 'none',
+      error: null,
+      accepted_source_id: null,
+      rival_source_id: null,
+      last_answer_at: null,
+      next_eligible_at: null,
+      failure_count: 0,
+    });
+    // A remembered choice belongs to the search that made it: once the search changes (the owner
+    // corrected the title, say), it is released even when this source didn't answer, or a later
+    // retry with the same new search would keep the old book.
+    const sameSearch = (prev: LookupStateRow | undefined) =>
+      prev?.query === qKey ? {} : { accepted_source_id: null, rival_source_id: null };
     for (const r of settled) {
       if (r.status === 'rejected') {
         const e = r.reason as Error;
         const source = e instanceof SourceError ? e.source : 'openlibrary';
-        // Keep the candidates we had: a failure never erases good data.
-        saveState.run(itemId, source, MATCH_VERSION, qKey, nowIso(), 'failed', e.message);
-        results.push({ source, outcome: 'failed', error: e.message });
+        const quota = e instanceof SourceError && e.quota;
+        const prev = state.get(itemId, source) as LookupStateRow | undefined;
+        // Keep the candidates (and the remembered choice) we had: a failure never erases good
+        // data. Retries back off; a used-up allowance waits for the next day instead.
+        const failures = (prev?.failure_count ?? 0) + (quota ? 0 : 1);
+        writeState(db, {
+          ...blank(source),
+          ...(prev ?? {}),
+          ...sameSearch(prev),
+          version: MATCH_VERSION,
+          query: qKey,
+          looked_up_at: now,
+          outcome: 'failed',
+          error: e.message,
+          failure_count: failures,
+          next_eligible_at: quota ? nextLocalDay() : retryAt(itemId, source, failures, now),
+        });
+        results.push({ source, outcome: 'failed', error: e.message, quota });
         continue;
       }
       const { s, records } = r.value;
-      const d = decide(facts, records, rejectedFor(db, itemId));
-      storeCandidates(db, itemId, s.name, d.ranked);
-      const outcome =
-        d.decision === 'accepted' ? 'matched' : d.decision === 'unidentified' ? 'none' : d.decision;
-      saveState.run(itemId, s.name, MATCH_VERSION, qKey, nowIso(), outcome, null);
+      const prev = state.get(itemId, s.name) as LookupStateRow | undefined;
+      const answered = sources.demo || sources.requestCount(s.name) > (before.get(s.name) ?? 0);
+      const answerAt = answered ? now : (prev?.last_answer_at ?? now);
+      const d = decide(facts, records, rejected);
+      // An automatic refresh that no longer finds the book clearly keeps what it had, and
+      // tries again sooner (a site hiccup shouldn't take a book's rating away).
+      const had = held.get(s.name)?.decision;
+      if (
+        opts.background &&
+        prev &&
+        (d.decision === 'unidentified' || d.decision === 'tie') &&
+        (had === 'accepted' || had === 'provisional')
+      ) {
+        const failures = prev.failure_count + 1;
+        const outcome = had === 'accepted' ? 'matched' : 'provisional';
+        writeState(db, {
+          ...prev,
+          looked_up_at: now,
+          outcome,
+          error: KEPT_PREVIOUS,
+          last_answer_at: answerAt,
+          failure_count: failures,
+          next_eligible_at: retryAt(itemId, s.name, failures, now),
+        });
+        results.push({ source: s.name, outcome, error: KEPT_PREVIOUS });
+        continue;
+      }
+      // The app's earlier choice stays unless the owner asked to start fresh, the search itself
+      // changed (the owner corrected the title, say), or the owner rejected it.
+      const was = prev?.accepted_source_id ?? null;
+      const kept =
+        was &&
+        !opts.fresh &&
+        prev?.query === qKey &&
+        !rejected.has(`${s.name}:${was}`) &&
+        present.has(`${s.name}:${was}`)
+          ? was
+          : null;
+      let accepted = kept;
+      let rival: string | null = null;
+      if (d.decision === 'accepted' && d.best) {
+        if (!accepted) accepted = d.best.record.sourceId;
+        else if (d.best.record.sourceId !== accepted) rival = d.best.record.sourceId;
+      }
+      storeCandidates(db, itemId, s.name, d.ranked, undefined, accepted);
+      const outcome = accepted
+        ? 'matched'
+        : d.decision === 'unidentified'
+          ? 'none'
+          : d.decision === 'accepted'
+            ? 'matched'
+            : d.decision;
+      writeState(db, {
+        ...blank(s.name),
+        outcome,
+        accepted_source_id: accepted,
+        rival_source_id: rival,
+        last_answer_at: answerAt,
+      });
       results.push({ source: s.name, outcome });
     }
     for (const s of skipped) {
-      saveState.run(itemId, s.name, MATCH_VERSION, qKey, nowIso(), 'skipped', null);
+      const prev = state.get(itemId, s.name) as LookupStateRow | undefined;
+      writeState(db, {
+        ...blank(s.name),
+        ...(prev ?? {}),
+        ...sameSearch(prev),
+        version: MATCH_VERSION,
+        query: qKey,
+        looked_up_at: now,
+        outcome: 'skipped',
+        error: null,
+        last_answer_at: prev?.last_answer_at ?? now,
+        next_eligible_at: null,
+        failure_count: 0,
+      });
       results.push({ source: s.name, outcome: 'skipped' });
     }
     applyIdentity(db, itemId);
   })();
   return results;
+}
+
+/**
+ * Fills the stage-4 columns for lookups made before them: when the source last answered (taken
+ * from when it was last looked up) and the record the app accepted then, so a later refresh
+ * keeps it. Only rows never written by the new code are touched, so this is safe to run at
+ * every start and after a restore.
+ */
+export function prepareRefreshState(db: DB): number {
+  // A failed latest lookup keeps the candidates from before it, so its row may still hold an
+  // accepted match to remember; it has no known answer time, though, so that stays empty.
+  const rows = db
+    .prepare(
+      `SELECT item_id, source, outcome FROM lookup_state
+       WHERE last_answer_at IS NULL AND accepted_source_id IS NULL`,
+    )
+    .all() as { item_id: string; source: SourceName; outcome: string }[];
+  if (rows.length === 0) return 0;
+  const byItem = new Map<string, typeof rows>();
+  for (const r of rows) {
+    if (!byItem.has(r.item_id)) byItem.set(r.item_id, []);
+    byItem.get(r.item_id)!.push(r);
+  }
+  const setAnswer = db.prepare(
+    'UPDATE lookup_state SET last_answer_at = looked_up_at WHERE item_id = ? AND source = ?',
+  );
+  const setAccepted = db.prepare(
+    `UPDATE lookup_state SET accepted_source_id = ?
+     WHERE item_id = ? AND source = ? AND accepted_source_id IS NULL`,
+  );
+  db.transaction(() => {
+    for (const [itemId, rs] of byItem) {
+      const decisions = decisionsFor(matchesOf(db, itemId), rejectedFor(db, itemId));
+      for (const r of rs) {
+        if (r.outcome !== 'failed') setAnswer.run(itemId, r.source);
+        const d = decisions.get(r.source);
+        if (d?.decision === 'accepted' && d.best)
+          setAccepted.run(d.best.sourceId, itemId, r.source);
+      }
+    }
+  })();
+  return rows.length;
 }
 
 /** One lookup run at a time; cancellable; progress saved per item (§9.6). */
@@ -810,6 +1101,10 @@ export class LookupManager {
   private readonly db: DB;
   private readonly sources: Sources;
   private pendingCache: { n: number; series: number; at: number } | null = null;
+  /** Stops background refresh work and waits for it, before a run starts. */
+  private stopBackground: (() => Promise<void>) | null = null;
+  /** Called when a run ends (the scheduler keeps "Look up all books again" going). */
+  afterRun: ((s: LookupStatus) => void) | null = null;
 
   constructor(db: DB, sources: Sources) {
     this.db = db;
@@ -853,10 +1148,15 @@ export class LookupManager {
     this.pendingCache = null;
   }
 
-  start(opts: { itemIds?: string[]; refresh?: boolean } = {}): LookupStatus {
+  /** Background refresh registers how to stop it: a lookup run never overlaps a batch. */
+  setBackgroundStop(stop: () => Promise<void>): void {
+    this.stopBackground = stop;
+  }
+
+  start(opts: LookupStartOptions = {}): LookupStatus {
     if (this.isRunning()) throw new HttpError(409, 'Lookups are already running.');
-    // A new run starts with every source un-paused: the connection may be back.
-    this.sources.resetBreakers();
+    // A new run the owner started begins with every source un-paused: the connection may be back.
+    if (!opts.keepBreakers) this.sources.resetBreakers();
     this.db.transaction(() => {
       pruneInapplicable(this.db, this.sources);
       // Kind rules may have changed since the books were looked up; re-derive them (no requests).
@@ -878,13 +1178,18 @@ export class LookupManager {
       errors: [],
       estimateSeconds: null,
       error: null,
+      ...(opts.label ? { label: opts.label } : {}),
     };
     this.db
       .prepare("INSERT INTO enrich_runs (id, status, started_at) VALUES (?, 'running', ?)")
       .run(status.runId, status.startedAt);
     this.current = status;
     this.cancelled = false;
-    this.running = this.run(ids, status, Boolean(opts.refresh));
+    const stop = this.stopBackground;
+    this.running = (async () => {
+      if (stop) await stop();
+      await this.run(ids, status, { refresh: Boolean(opts.refresh), fresh: Boolean(opts.fresh) });
+    })();
     return status;
   }
 
@@ -904,7 +1209,12 @@ export class LookupManager {
     await this.running;
   }
 
-  private async run(ids: string[], status: LookupStatus, refresh: boolean): Promise<void> {
+  private async run(
+    ids: string[],
+    status: LookupStatus,
+    opts: { refresh: boolean; fresh: boolean },
+  ): Promise<void> {
+    const refresh = opts.refresh;
     const started = Date.now();
     let failedInARow = 0;
     try {
@@ -919,7 +1229,7 @@ export class LookupManager {
           status.done++;
           continue;
         }
-        const results = await lookUpItem(this.db, this.sources, id, { refresh });
+        const results = await lookUpItem(this.db, this.sources, id, opts);
         failedInARow =
           results.length > 0 && results.every((r) => r.outcome === 'failed') ? failedInARow + 1 : 0;
         for (const r of results) {
@@ -985,6 +1295,11 @@ export class LookupManager {
         .run(status.status, status.finishedAt, JSON.stringify(status), status.runId);
       this.current = null;
       this.pendingCache = null;
+      try {
+        this.afterRun?.(status);
+      } catch (err) {
+        console.error(err);
+      }
     }
   }
 }

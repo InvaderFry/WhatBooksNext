@@ -443,6 +443,63 @@ try {
     ['health', '/?view=health', async () => {}],
     ['settings', '/?view=settings', async () => {}],
     ['diagnostics', '/?view=diagnostics', async () => {}],
+    // Ratings plan stage 4: the demo never refreshes, so Settings shows an invented status here.
+    // Behaviour is covered by app.refresh.test.ts.
+    [
+      'settings-refresh',
+      '/?view=settings',
+      async (p) => {
+        await p.route('**/api/refresh', (route) =>
+          route.fulfill({
+            json: {
+              enabled: true,
+              demo: false,
+              paused: false,
+              running: false,
+              lastCheckAt: '2026-11-11T10:20:00.000Z',
+              lastBatch: {
+                at: '2026-11-11T10:20:00.000Z',
+                books: 9,
+                requests: 24,
+                bySource: { openlibrary: 9, hardcover: 15 },
+                stopped: null,
+              },
+              dueBooks: 41,
+              fresh: null,
+              sources: [],
+              intervals: { active: 7, open: 30, settled: 90 },
+            },
+          }),
+        );
+        await p.route('**/api/lookups/fresh', (route) =>
+          route.fulfill({
+            json: {
+              estimate: { books: 3214, requests: 9642, hours: 2.1, days: 2 },
+              snapshot: true,
+            },
+          }),
+        );
+        await p.reload();
+        await p.waitForLoadState('networkidle');
+        await p.getByRole('button', { name: 'Look up all books again…' }).click();
+        await p.getByText(/^Look up all 3,214 books again/).waitFor();
+        await p.locator('.refresh-settings').scrollIntoViewIfNeeded();
+        await p.unroute('**/api/refresh');
+        await p.unroute('**/api/lookups/fresh');
+      },
+    ],
+    [
+      'item-look-up-again',
+      '/?view=library&q=glass',
+      async (p) => {
+        await p
+          .getByRole('link', { name: /^Glass Harbor$/ })
+          .first()
+          .click();
+        await p.getByRole('button', { name: 'Look up again' }).click();
+        await p.getByText(/^Looked up again/).waitFor();
+      },
+    ],
     // M6: Stats, the export section with a full snapshot taken.
     ['stats', '/?view=stats', async () => {}],
     [

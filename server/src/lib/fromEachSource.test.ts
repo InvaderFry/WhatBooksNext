@@ -116,6 +116,27 @@ describe('From each source (plan stage 3)', () => {
     );
   });
 
+  it('shows the latest lookup’s error beside a match it kept from before', () => {
+    const r = build({
+      matches: [row(record('openlibrary', 'ol-1'))],
+      asked: ['openlibrary'],
+      covering: ['openlibrary'],
+      lookups: [
+        {
+          source: 'openlibrary',
+          outcome: 'failed',
+          looked_up_at: '2026-11-01T00:00:00Z',
+          error: 'The source refused the request (401). Check the API key in Settings.',
+        },
+      ],
+    });
+    const ol = r.entries.find((e) => e.source === 'openlibrary')!;
+    expect(ol.statusText).toBe('Matched');
+    expect(ol.problem).toBe(
+      'The last lookup failed (The source refused the request (401). Check the API key in Settings.); showing the earlier answer. It will be tried again.',
+    );
+  });
+
   it('names sources that do not cover this kind of book apart from those not set up', () => {
     const r = build({
       matches: [],

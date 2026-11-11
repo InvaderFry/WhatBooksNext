@@ -37,6 +37,7 @@ const KIND_TITLES: Record<ReviewRow['kind'], string> = {
   wrong_match: 'You said this was the wrong book',
   unidentified: 'Not found online',
   provisional: 'Unconfirmed match',
+  check_match: 'Check this match',
 };
 
 export function Review({ onChanged }: { onChanged: () => void }) {

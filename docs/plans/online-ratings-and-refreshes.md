@@ -1,6 +1,6 @@
 # Online ratings, best details and automatic refreshes
 
-Status: Stages 1–2 implemented; stages 3–4 remain planned. Researched 2026-11-10 and revised the
+Status: All four stages implemented (stage 4 on 2026-11-11; notes in `docs/milestones/M6.md`). Researched 2026-11-10 and revised the
 same day: against `main` after M6, to drop Google Books (see the end), and after two independent
 reviews whose corrections are folded in.
 
@@ -334,6 +334,29 @@ winner adds a Needs review entry; both "Look up again" actions release app choic
 but keep confirmed and rejected decisions; a cancelled full refresh leaves untouched books as
 they were; everything survives a backup and restore without becoming due at once.
 
+### As built (2026-11-11)
+
+Built as above, with these choices made during the work:
+
+- **A changed search also releases the remembered match.** When the owner corrects a title or
+  author (or a scan changes the facts matching reads), the app's earlier choice was made for a
+  different search, so the next lookup chooses again. Background refresh and `MATCH_VERSION`
+  re-scoring keep it, as planned. Rejecting the remembered record releases it at once.
+- **`last_answer_at` is backfilled from `looked_up_at` only.** `source_cache` keys are per query,
+  not per book, so they can't say which book an answer was for. Spreading comes from the 10%
+  per-book stretch of each interval and from catching up one batch per check.
+- **Pause** lasts until Resume or a restart; **off** is the saved setting.
+- **Refresh due books now** runs an ordinary lookup run over the due books (all their sources,
+  cached answers ignored), shown in the lookup banner.
+- New books (never looked up, or with a changed search) go first in each batch, as a manual run
+  would look them up, when "Look up new books automatically after each scan" is on.
+- **Look up all books again** keeps going across restarts and days: a run interrupted by closing
+  the app resumes at the first check after the next start; books a used-up allowance or a failure
+  left out are retried the next day; it stops when a pass gets no further (a key that no longer
+  works) or the owner cancels it.
+- A daily-allowance error is marked on the error itself (`SourceError.quota`), sets the source's
+  `next_eligible_at` to the next local midnight, and doesn't count as the book's failure.
+
 ## Documentation for every stage
 
 Update PLAN.md (§12 sources and ratings, §20 values, §21 owner actions), README source coverage,
@@ -346,9 +369,13 @@ matches), with `npm run screenshots` inspected for UI changes.
 
 ## Owner actions
 
-- **After stage 3:** the second quality session (§17.2), on the new ratings and details. Note how
-  many picks rest on unconfirmed matches (Diagnostics) and confirm any that matter. No new
-  accounts or keys are needed for this plan.
+- **After stage 3 (due now):** the second quality session (§17.2), on the new ratings and details.
+  Note how many picks rest on unconfirmed matches (Diagnostics) and confirm any that matter. No
+  new accounts or keys are needed for this plan.
+- **After stage 4:** with the app open for 10–15 minutes on the Windows PC, check Settings →
+  Online lookups → Keeping ratings up to date (a last batch, due books going down) and Diagnostics
+  → Automatic refresh (requests within the daily share). Answer any "Check this match" rows in
+  Needs review.
 
 ## Not in this plan
 

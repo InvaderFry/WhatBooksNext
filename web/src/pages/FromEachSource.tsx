@@ -48,6 +48,7 @@ function Entry({
       <h3 id={headingId} className="source-heading">
         {e.label} <span className="muted small">— {e.statusText}</span>
       </h3>
+      {e.problem && <p className="small warn">{e.problem}</p>}
       {e.used.length > 0 && (
         <ul className="plain used-list" aria-label={`Used from ${e.label}`}>
           {e.used.map((u) => (
@@ -115,7 +116,14 @@ function Entry({
           </>
         )}
       </div>
-      {e.lookedUpAt && <p className="muted small">Last looked up {formatDate(e.lookedUpAt)}</p>}
+      {e.lookedUpAt && (
+        <p className="muted small">
+          Last looked up {formatDate(e.lookedUpAt)}
+          {e.lastAnswerAt &&
+            e.lastAnswerAt !== e.lookedUpAt &&
+            ` · last answered ${formatDate(e.lastAnswerAt)}`}
+        </p>
+      )}
     </li>
   );
 }

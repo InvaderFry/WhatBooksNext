@@ -1119,6 +1119,24 @@ kbd {
   align-items: center;
   flex-wrap: wrap;
 }
+/* Settings → Keeping ratings up to date (ratings plan stage 4). */
+.refresh-settings {
+  margin-top: 1rem;
+}
+.refresh-settings h4 {
+  margin: 1rem 0 0.3rem;
+}
+.confirm-box {
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--warn);
+  background: var(--warn-bg);
+  border-radius: var(--radius);
+  padding: 0.6rem 0.8rem;
+}
+.confirm-box ul {
+  margin: 0.4rem 0;
+  padding-left: 1.2rem;
+}
 @media (max-width: 30rem) {
   .pick,
   .triage-card {

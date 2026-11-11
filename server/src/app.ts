@@ -35,7 +35,9 @@ import {
 } from './scan/folders.ts';
 import { ScanManager } from './scan/scanManager.ts';
 import { requestGuard, securityHeaders } from './security.ts';
-import { LookupManager } from './identify/lookups.ts';
+import { LookupManager, prepareRefreshState } from './identify/lookups.ts';
+import { RefreshScheduler } from './identify/refresher.ts';
+import { registerRefreshRoutes } from './routes/refresh.ts';
 import { registerModeRoutes } from './routes/modes.ts';
 import { getSetting, registerReadingRoutes } from './routes/reading.ts';
 import { route } from './routes/route.ts';
@@ -70,6 +72,10 @@ export interface AppContext {
   fetcher?: Fetcher;
   /** Look new books up after each scan (default: the owner's setting). Tests of other things turn it off. */
   autoLookups?: boolean;
+  /** The clock automatic refresh decides what is due by (tests move it forward). */
+  clock?: () => number;
+  /** Requests in one automatic batch (tests use fewer, as Open Library is asked once a second). */
+  refreshBatch?: number;
 }
 
 /** Folder reachability, refreshed at most every few seconds (a check asks the platform). */
@@ -108,6 +114,8 @@ export function createApp(ctx: AppContext) {
   // Series rows are rebuilt from stored facts (§12.5). Doing it at start brings a database
   // that predates them (or a rule change) up to date without a scan.
   syncSeries(db);
+  // Lookups made before automatic refresh existed: when they answered, and what was accepted.
+  prepareRefreshState(db);
   const scans = new ScanManager(db, platform, {
     runner: ctx.runner,
     coversDir,
@@ -119,6 +127,11 @@ export function createApp(ctx: AppContext) {
       if (!getSetting<boolean>(db, 'lookupsAfterScan', true)) return;
       if (lookups.pending() > 0 || lookups.pendingSeries() > 0) lookups.start();
     },
+  });
+  const refresher = new RefreshScheduler(db, sources, lookups, scans, {
+    demo: ctx.demo,
+    now: ctx.clock,
+    batchRequests: ctx.refreshBatch,
   });
   const reach = new Reachability(ctx);
   const app = express();
@@ -171,6 +184,7 @@ export function createApp(ctx: AppContext) {
     db,
     sources,
     lookups,
+    refresher,
     scans,
     reach: () => reach.get(),
     itemIdOr404,
@@ -180,6 +194,7 @@ export function createApp(ctx: AppContext) {
   registerOperationRoutes(app, { db, scans, itemIdOr404 });
   registerStoreRoutes(app, { db, sources, itemIdOr404 });
   registerHistoryImportRoutes(app, db);
+  registerRefreshRoutes(app, { db, refresher, lookups, snapshotDir: ctx.snapshotDir });
   registerCalibreRoutes(app, { db, platform, scans, dataDir: ctx.dataDir });
   registerStatsRoutes(app, {
     db,
@@ -674,7 +689,10 @@ export function createApp(ctx: AppContext) {
         throw new HttpError(400, 'Restoring replaces all app data; confirm first.');
       const backup = validateBackup(db, req.body?.backup);
       try {
-        const r = await restoreBackup(db, backup, ctx.snapshotDir);
+        // No automatic refresh writes into the data while it is replaced.
+        const r = await refresher.hold(() => restoreBackup(db, backup, ctx.snapshotDir));
+        // A backup from before automatic refresh: fill in when its lookups answered.
+        prepareRefreshState(db);
         reach.invalidate();
         lookups.invalidate();
         return { ok: true, snapshotPath: r.snapshotPath };
@@ -779,6 +797,7 @@ export function createApp(ctx: AppContext) {
           note: x.note,
         })),
         lookups: { pending: lookups.pending(), running: lookups.isRunning() },
+        refresh: refresher.status(),
       };
     }),
   );
@@ -831,7 +850,10 @@ export function createApp(ctx: AppContext) {
     scans,
     lookups,
     sources,
+    refresher,
     close: async () => {
+      // First, so a lookup run cancelled by closing resumes at the next start.
+      await refresher.close();
       await lookups.close();
       await scans.close();
       await platform.close();

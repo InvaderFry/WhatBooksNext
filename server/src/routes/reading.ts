@@ -36,11 +36,13 @@ import { tasteOn } from '../lib/taste.ts';
 import { loadStrength, loadTopics, loadWeights, tasteFrom } from '../lib/tune.ts';
 import { bulkReview } from '../lib/review.ts';
 import type { ScanManager } from '../scan/scanManager.ts';
+import { loadRefreshRows, type RefreshScheduler } from '../identify/refresher.ts';
+import { dueAt } from '../lib/refresh.ts';
 import { COMICVINE_KEY_URL } from '../sources/comicvine.ts';
 import { HARDCOVER_NEW_TOKEN_URL, normaliseToken } from '../sources/hardcover.ts';
 import { METRON_SITE } from '../sources/metron.ts';
 import { getSecret, maskSecret, setSecret, type Sources } from '../sources/index.ts';
-import { SourceError, SOURCE_LABELS } from '../sources/types.ts';
+import { SourceError, SOURCE_LABELS, type SourceName } from '../sources/types.ts';
 import { HttpError, newId, nowIso, parseJson, todayLocal } from '../util.ts';
 import { route } from './route.ts';
 
@@ -56,6 +58,7 @@ export interface ReadingDeps {
   db: DB;
   sources: Sources;
   lookups: LookupManager;
+  refresher: RefreshScheduler;
   scans: ScanManager;
   reach: () => Promise<FolderReachability>;
   itemIdOr404: (raw: string) => string;
@@ -300,7 +303,11 @@ export function registerReadingRoutes(app: Express, d: ReadingDeps): void {
   );
   app.post(
     '/api/lookups/cancel',
-    route(() => ({ cancelled: lookups.requestCancel() })),
+    route(() => {
+      // Cancelling "Look up all books again" ends it: it doesn't resume later.
+      if (lookups.status()?.label === 'fresh') d.refresher.cancelFresh();
+      return { cancelled: lookups.requestCancel() };
+    }),
   );
   app.patch(
     '/api/settings/lookups',
@@ -501,6 +508,24 @@ export function registerReadingRoutes(app: Express, d: ReadingDeps): void {
     }),
   );
 
+  /** What "Look up again" may change, to say afterwards what did. */
+  const lookupSnapshot = async (id: string): Promise<LookupSnapshot> => {
+    const data = loadRankData(db, await d.reach());
+    const c = data.ratings.get(id)?.chosen ?? null;
+    const m = db
+      .prepare(
+        `SELECT i.match_source AS source, json_extract(m.data, '$.title') AS title FROM items i
+         LEFT JOIN item_matches m ON m.item_id = i.id AND m.source = i.match_source
+           AND m.source_id = i.match_source_id
+         WHERE i.id = ?`,
+      )
+      .get(id) as { source: SourceName | null; title: string | null } | undefined;
+    return {
+      rating: c ? { source: c.source, votes: c.votes, raw: c.raw, scale: c.scale } : null,
+      match: m?.source ? { source: m.source, title: m.title ?? '' } : null,
+    };
+  };
+
   // ---- One item's online identity (§11.4) ----------------------------------------------------
   app.get(
     '/api/items/:id/online',
@@ -539,6 +564,22 @@ export function registerReadingRoutes(app: Express, d: ReadingDeps): void {
         description: details?.description?.value ?? null,
         subjects: details?.subjects.map((s) => s.value) ?? [],
         lookupAvailable: sources.forItem(kind, issue).length > 0,
+        // "Refresh due" and "Refresh failed; showing the previous result" (stage 4).
+        refresh: (() => {
+          const rows = loadRefreshRows(db, sources, id);
+          const now = Date.now();
+          return {
+            due: rows
+              .filter((r) => {
+                const at = dueAt(r);
+                return at !== null && at <= now;
+              })
+              .map((r) => SOURCE_LABELS[r.source]),
+            failed: rows
+              .filter((r) => r.failureCount > 0 || r.outcome === 'failed')
+              .map((r) => SOURCE_LABELS[r.source]),
+          };
+        })(),
         // Every source asked about this book, what it said and what of it is used (stage 3).
         fromEachSource: fromEachSource({
           demo: sources.demo,
@@ -585,8 +626,17 @@ export function registerReadingRoutes(app: Express, d: ReadingDeps): void {
       const id = d.itemIdOr404(String(req.params.id));
       if (lookups.isRunning())
         throw new HttpError(409, 'Lookups are running; this book will be included.');
-      const r = await lookUpItem(db, sources, id, { refresh: true });
-      return { results: r.map((x) => ({ ...x, sourceLabel: SOURCE_LABELS[x.source] })) };
+      // Asks every source again and lets the app choose this book's matches afresh; confirmed
+      // matches, rejections and the owner's edits stay. No automatic batch runs alongside.
+      const before = await lookupSnapshot(id);
+      const r = await d.refresher.hold(() =>
+        lookUpItem(db, sources, id, { refresh: true, fresh: true }),
+      );
+      const after = await lookupSnapshot(id);
+      return {
+        results: r.map((x) => ({ ...x, sourceLabel: SOURCE_LABELS[x.source] })),
+        changes: lookupChanges(before, after),
+      };
     }),
   );
   // Search and pick: a POST because it may call online sources, though it changes nothing here.
@@ -657,4 +707,31 @@ export function registerReadingRoutes(app: Express, d: ReadingDeps): void {
       coverage: coverageByKind(loadRankData(db, await d.reach()).items),
     })),
   );
+}
+
+interface LookupSnapshot {
+  rating: { source: SourceName; votes: number | null; raw: number; scale: number } | null;
+  match: { source: SourceName; title: string } | null;
+}
+
+const fmtVotes = (n: number | null) =>
+  n === null
+    ? 'number of ratings unknown'
+    : `${n.toLocaleString('en-US')} rating${n === 1 ? '' : 's'}`;
+
+/** Plain sentences about what "Look up again" changed ("Rating now from Open Library, …"). */
+export function lookupChanges(before: LookupSnapshot, after: LookupSnapshot): string[] {
+  const out: string[] = [];
+  const a = after.match;
+  const b = before.match;
+  if (a && (!b || a.source !== b.source || a.title !== b.title))
+    out.push(`Now matched to “${a.title}” on ${SOURCE_LABELS[a.source]}.`);
+  else if (!a && b) out.push('No longer matched to an online record.');
+  const ra = after.rating;
+  const rb = before.rating;
+  if (ra && (!rb || ra.source !== rb.source || ra.votes !== rb.votes || ra.raw !== rb.raw))
+    out.push(`Rating now from ${SOURCE_LABELS[ra.source]}, ${fmtVotes(ra.votes)}.`);
+  else if (!ra && rb) out.push('No online rating now.');
+  if (out.length === 0) out.push('Nothing changed.');
+  return out;
 }

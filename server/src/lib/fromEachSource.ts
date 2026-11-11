@@ -31,6 +31,8 @@ export interface SourceEntry {
   statusText: string;
   /** When the app last asked this source about the book (stage 4 adds the last real answer). */
   lookedUpAt: string | null;
+  /** When the source last actually answered over the network (stage 4); null if unknown. */
+  lastAnswerAt: string | null;
   record: {
     sourceId: string;
     title: string;
@@ -46,6 +48,11 @@ export interface SourceEntry {
   /** Why there is no rating, in plain words, when the source has a record but no rating. */
   ratingNote: string | null;
   used: { field: UsedField; reason: string }[];
+  /**
+   * The latest lookup's problem when an earlier answer is still shown (a failed lookup keeps the
+   * match it had): the error matters, an expired key above all. Null when the status says it.
+   */
+  problem: string | null;
 }
 
 export interface FromEachSource {
@@ -61,7 +68,13 @@ export interface FromEachSourceInput {
   /** Sources that would cover this kind of item if all were set up. */
   covering: SourceName[];
   configured: (s: SourceName) => boolean;
-  lookups: { source: SourceName; outcome: string; looked_up_at: string; error: string | null }[];
+  lookups: {
+    source: SourceName;
+    outcome: string;
+    looked_up_at: string;
+    error: string | null;
+    last_answer_at?: string | null;
+  }[];
   matches: MatchRow[];
   rejected: Set<string>;
   override: string | null;
@@ -201,6 +214,7 @@ export function fromEachSource(input: FromEachSourceInput): FromEachSource {
       status,
       statusText: statusText(status, label, l?.error ?? null),
       lookedUpAt: l?.looked_up_at ?? null,
+      lastAnswerAt: l?.last_answer_at ?? null,
       record: r
         ? {
             sourceId: r.sourceId,
@@ -224,6 +238,12 @@ export function fromEachSource(input: FromEachSourceInput): FromEachSource {
         : null,
       ratingNote: r && !r.rating ? `${label} has no rating for this book` : null,
       used,
+      problem:
+        status === 'failed' || !l?.error
+          ? null
+          : l.outcome === 'failed'
+            ? `The last lookup failed (${l.error}); showing the earlier answer. It will be tried again.`
+            : l.error,
     };
   });
 

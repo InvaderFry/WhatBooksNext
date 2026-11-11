@@ -95,7 +95,7 @@ export function LookupBanner({
             <span className="spinner" aria-hidden="true" />{' '}
             {s.series
               ? `Checking published volumes: ${s.series.done} of ${s.series.total} series`
-              : `Looking up books online: ${s.done} of ${s.total}`}
+              : `${s.label === 'fresh' ? 'Looking up all books again' : s.label === 'due' ? 'Refreshing due books' : 'Looking up books online'}: ${s.done} of ${s.total}`}
             {s.estimateSeconds !== null && ` · ${formatDuration(s.estimateSeconds)} left`}.
             <span className="muted"> Picks improve as it goes; you can keep using the app.</span>
           </p>
