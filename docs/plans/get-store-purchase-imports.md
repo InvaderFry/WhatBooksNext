@@ -5,7 +5,7 @@ Status: **Stage 0 decided** (all four stores get a collector). **Store links bui
 **deferred** to a nice-to-have (owner decision, 2026-11-11). **Stage 2:**
 
 - **Google Play Books** and **Kobo** are checked (2026-11-11).
-- **GlobalComix** is built from the fourth look-around and waits on A2/A3.
+- **GlobalComix** version 1 was refused (HTTP 400). **Version 2** reads the page's own answers and waits on A2/A3.
 
 Written 2026-11-11. This revises a first draft from 2026-11-10 ("console scripts, then one
 extension") after a review. The review kept the draft's rules and its order of proving extraction
@@ -772,10 +772,22 @@ Built for A6b:
   - **Also read:** the ISBN; comic or manga from `comic_type`; the purchase date (day precision)
     as `acquiredAt`; reading status (`is_complete` → finished, otherwise in progress when
     progress is above 0) and the percentage; and `read_url` as the reader link.
-  - **Not yet known:** whether the purchases API accepts the page's cookies from the console. The
-    site may sign its requests another way. If it doesn't, the first run stops at once with
-    "signed out" or "refused" and nothing else happens. The next version would then read the
-    page's own answers instead of asking.
+  - **Version 1's first run (A2):** its own request got **HTTP 400** at once. It stopped with
+    nothing read and didn't retry. The site adds something of its own to its requests. Copying that
+    would mean handling the site's sign-in, which "Account safety" rules out.
+- **GlobalComix version 2: it makes no requests.**
+  - The owner opens the home page fresh, pastes the script, and goes to My Shelf → Purchases with
+    the site's own menu.
+  - The script wraps the page's `fetch` and `XMLHttpRequest`, as the look-around does. It keeps
+    the answers from `api.globalcomix.com/v1/account/digital-purchases`, and puts everything back
+    when it ends.
+  - The new core function `collectAnswers` (pure) reads them with the same parser.
+  - It's complete only when the answers cover every page, from 1 to one that is the last (by
+    `pagination`, else a page shorter than `per_page` / `filters.perpage`). It finishes by itself
+    then, or when the owner clicks Finish. In that case a list not fully seen is partial ("pages
+    seen: …"). Nothing seen fails, with the steps.
+  - `checkPage` refuses to start on `/my-shelf`, because there the list has already loaded.
+  - `WatchAdapter` joins `Adapter` and `CardAdapter` as the third kind of collector.
 - **The same title twice** and **imports start lookups:** see "Google Play Books checked" above.
 
 **A collector that hasn't been checked is never shown as working.** In the extension and the app,

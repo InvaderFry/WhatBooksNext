@@ -6,7 +6,7 @@ import { googlePlay } from '../../tools/store-collector/adapters/googlePlay.ts';
 import { globalcomix } from '../../tools/store-collector/adapters/globalcomix.ts';
 import { kindle } from '../../tools/store-collector/adapters/kindle.ts';
 import { kobo } from '../../tools/store-collector/adapters/kobo.ts';
-import { scan, scanCards } from '../../tools/store-collector/core/scan.ts';
+import { collectAnswers, scan, scanCards } from '../../tools/store-collector/core/scan.ts';
 import { createApp } from './app.ts';
 import type { DB } from './db/database.ts';
 import { makeEpub } from './testing/fixtures.ts';
@@ -328,7 +328,7 @@ describe('the collectors in the app', () => {
         service: 'globalcomix',
         state: 'not_checked',
         checkedOn: null,
-        page: 'https://globalcomix.com/my-shelf/purchases',
+        page: 'https://globalcomix.com',
       },
     ]);
     const s = await api.get('/api/store-collectors/kindle/script');
@@ -502,17 +502,14 @@ describe('the collectors in the app', () => {
 
   it('imports what the GlobalComix collector read: comics with series, numbers and dates', async () => {
     const dir = path.join(import.meta.dirname, '..', '..', 'fixtures', 'stores', 'globalcomix');
-    const result = await scan(globalcomix, {
-      page: new URL('https://globalcomix.com/my-shelf/purchases'),
-      fetch: async (url) =>
-        new Response(
-          fs.readFileSync(path.join(dir, `page-${new URL(url).searchParams.get('p')}.json`)),
-          { headers: { 'content-type': 'application/json' } },
-        ),
-      sleep: async () => {},
-      now: () => new Date('2026-11-11T12:00:00Z'),
-      signal: new AbortController().signal,
-    });
+    const page = (n: number) =>
+      JSON.parse(fs.readFileSync(path.join(dir, `page-${n}.json`), 'utf8'));
+    const result = collectAnswers(
+      globalcomix,
+      [page(1), page(2)],
+      { ended: 'whole_list', region: 'globalcomix.com' },
+      new Date('2026-11-11T12:00:00Z'),
+    );
     const text = JSON.stringify(result.envelope);
     const p = await preview(text);
     expect(p).toMatchObject({ service: 'globalcomix', problems: [], counts: { included: 4 } });

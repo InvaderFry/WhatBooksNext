@@ -814,9 +814,10 @@ const SCRIPT_STEPS: Record<string, { where: string; shown: string; pace: string;
     file: 'whatbooksnext-kobo-…json',
   },
   globalcomix: {
-    where: 'your GlobalComix purchases',
-    shown: 'globalcomix.com/my-shelf/purchases',
-    pace: 'it reads your purchases list a page at a time (30 comics every 2 seconds); you can leave the page as it is',
+    where: 'GlobalComix’s home page',
+    shown:
+      'globalcomix.com, not your purchases yet: start here so the page loads your list while the script watches',
+    pace: 'now use the site’s own menu to go to My Shelf → Purchases, and scroll to the bottom. The script makes no requests of its own: it reads the list the page loads, and finishes by itself once it has all of it (or click Finish)',
     file: 'whatbooksnext-globalcomix-…json',
   },
   google_play: {

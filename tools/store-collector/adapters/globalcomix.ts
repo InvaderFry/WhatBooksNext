@@ -1,25 +1,26 @@
-import { LayoutChanged, type Adapter, type ParsedPage } from '../core/adapter.ts';
+import { LayoutChanged, type ParsedPage, type WatchAdapter } from '../core/adapter.ts';
 import type { StoreRecord } from '../core/format.ts';
 
 /**
- * GlobalComix (store purchases plan, Stage 2). It runs on the owner's purchases page,
- * https://globalcomix.com/my-shelf/purchases, and asks for the same list that page loads:
- * `GET https://api.globalcomix.com/v1/account/digital-purchases?p=N` (30 per page). It reads and
- * changes nothing. Only purchases are in this list: Gold subscription reading isn't.
+ * GlobalComix (store purchases plan, Stage 2). The owner's purchases page loads its list from
+ * `https://api.globalcomix.com/v1/account/digital-purchases?p=N` (30 per page). Version 1 asked for
+ * that list itself and the service answered HTTP 400 (2026-11-11): the site adds something of its
+ * own to its requests. Copying that would mean handling the site's sign-in, which the plan rules
+ * out. So version 2 **makes no requests**: the owner starts on the home page, pastes the script,
+ * and goes to My Shelf → Purchases with the site's menu; the script reads the list answers the
+ * page itself receives, like the look-around did.
  *
  * From the owner's fourth look-around report (2026-11-11): `payload.results` is a list of purchase
  * records (`id`, `release_id`, `net_price`, `is_downloadable`, `create_time`), each with its
  * `release`: `id`, `title`, `comic_name`, `chapter`, `release_type_name` ("Volume"), `isbn`,
  * `read_url`, `comic_type.name`, and `user_read_status` (`is_complete`,
- * `read_progress_percentage`). Other list answers on the site carry `pagination` (`page`,
- * `total_pages`); this one's wasn't seen, so either way works. NOT CHECKED YET as a scan (A2).
+ * `read_progress_percentage`). Other list answers carry `pagination` (`page`, `per_page`,
+ * `total_pages`) and `filters.perpage`. Only purchases are in this list: Gold reading isn't.
  */
 
-export const GLOBALCOMIX_VERSION = '1';
+export const GLOBALCOMIX_VERSION = '2';
 
-const API = 'https://api.globalcomix.com/v1/account/digital-purchases';
-
-export const globalcomix: Adapter = {
+export const globalcomix: WatchAdapter = {
   service: 'globalcomix',
   version: GLOBALCOMIX_VERSION,
   label: 'GlobalComix',
@@ -28,24 +29,18 @@ export const globalcomix: Adapter = {
       return {
         ok: false,
         message:
-          'This isn’t GlobalComix. Open https://globalcomix.com/my-shelf/purchases in this tab, sign in if asked, then run the script again.',
+          'This isn’t GlobalComix. Open https://globalcomix.com (the home page), sign in if asked, then run the script there.',
       };
-    if (!url.pathname.startsWith('/my-shelf/purchases'))
+    if (url.pathname.startsWith('/my-shelf'))
       return {
         ok: false,
         message:
-          'Open your purchases: go to https://globalcomix.com/my-shelf/purchases in this tab, then run the script again.',
+          'Start on the home page: open https://globalcomix.com in this tab (type it in, so the page loads fresh), paste the script there, then go to My Shelf → Purchases with the site’s menu.',
       };
     return { ok: true, region: 'globalcomix.com' };
   },
-  firstCursor: '1',
-  request(cursor) {
-    const u = new URL(API);
-    u.searchParams.set('p', cursor);
-    return { url: u.href, init: { method: 'GET', headers: { accept: 'application/json' } } };
-  },
-  // A page past the end may come back empty or repeat: either way the list has ended.
-  endsWhenNothingNew: true,
+  matches: (url) =>
+    url.hostname === 'api.globalcomix.com' && url.pathname === '/v1/account/digital-purchases',
   parse: parseGlobalComixPage,
 };
 
@@ -123,16 +118,31 @@ export function parseGlobalComixPage(body: unknown): ParsedPage {
     records.push(rec);
     labelFor[`release:${id}`] = `${type}${free ? ' (free)' : ''}`;
   }
-  const pg = b.payload.pagination;
+  // Which page this is, and whether it's the last: from `pagination`, else from the page size.
+  const pg = (b.payload.pagination ?? null) as {
+    page?: unknown;
+    per_page?: unknown;
+    total_pages?: unknown;
+  } | null;
+  const filters = ((b.payload as { filters?: unknown }).filters ?? null) as {
+    perpage?: unknown;
+  } | null;
   const page = Number(pg?.page ?? b.meta?.params?.p ?? NaN);
   const pages = Number(pg?.total_pages ?? NaN);
-  const next =
-    Number.isFinite(page) && Number.isFinite(pages)
-      ? page < pages
-        ? String(page + 1)
-        : null
-      : b.payload.results.length > 0 && Number.isFinite(page)
-        ? String(page + 1)
-        : null;
-  return { records, excluded: [], next, fields: [...fields].sort(), labels: [], labelFor };
+  const perPage = Number(pg?.per_page ?? filters?.perpage ?? NaN);
+  const n = b.payload.results.length;
+  const lastPage = Number.isFinite(pages)
+    ? page >= pages
+    : n === 0 || (Number.isFinite(perPage) && n < perPage);
+  const next = Number.isFinite(page) && !lastPage ? String(page + 1) : null;
+  return {
+    records,
+    excluded: [],
+    // Unknown page number: never claims to be the end of the list.
+    next: Number.isFinite(page) ? next : '?',
+    fields: [...fields].sort(),
+    labels: [],
+    labelFor,
+    ...(Number.isFinite(page) ? { page } : {}),
+  };
 }

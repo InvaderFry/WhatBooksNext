@@ -1,4 +1,10 @@
-import { LayoutChanged, type Adapter, type CardAdapter, type ParsedPage } from './adapter.ts';
+import {
+  LayoutChanged,
+  type Adapter,
+  type CardAdapter,
+  type ParsedPage,
+  type WatchAdapter,
+} from './adapter.ts';
 import {
   FORMAT,
   FORMAT_VERSION,
@@ -276,6 +282,49 @@ export async function scanCards(adapter: CardAdapter, d: CardScanDeps): Promise<
     c.stop(e);
   }
   return c.result(adapter, d.now());
+}
+
+/**
+ * Reads the library answers the store's own page received while the owner browsed to it
+ * (`WatchAdapter`). Makes no requests. Complete only when the answers seen cover every page from
+ * the first to one that says it's the last; otherwise partial, with what was found.
+ */
+export function collectAnswers(
+  adapter: WatchAdapter,
+  answers: unknown[],
+  how: { ended: 'owner' | 'cancelled' | 'whole_list'; region: string },
+  now: Date,
+): ScanResult {
+  const c = new Collected();
+  c.region = how.region;
+  try {
+    const pages = new Set<number>();
+    let last: number | null = null;
+    for (const body of answers) {
+      c.steps++;
+      const page = c.read(() => adapter.parse(body));
+      if (page.page !== undefined) pages.add(page.page);
+      if (page.next === null && page.page !== undefined) last = page.page;
+    }
+    if (answers.length === 0)
+      throw new Stop(
+        'error',
+        'The page didn’t load your library while the script watched. Start on the store’s home page, paste the script, then go to your library with the site’s own menu.',
+      );
+    const whole =
+      last !== null && Array.from({ length: last }, (_, i) => i + 1).every((n) => pages.has(n));
+    if (!whole)
+      throw new Stop(
+        'cancelled',
+        how.ended === 'cancelled'
+          ? 'You cancelled the scan.'
+          : `Finished before the whole list had loaded (pages seen: ${[...pages].sort((a, b) => a - b).join(', ') || 'none'}). Scroll to the bottom of your library before finishing.`,
+      );
+    emptyIsLayout(c);
+  } catch (e) {
+    c.stop(e);
+  }
+  return c.result(adapter, now);
 }
 
 /**

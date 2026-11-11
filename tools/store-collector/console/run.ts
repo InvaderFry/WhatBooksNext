@@ -22,6 +22,10 @@ export interface PageDeps {
   now: () => Date;
   signal: AbortSignal;
   onProgress: (p: { requests: number; records: number; waiting: boolean }) => void;
+  /** Aborted when the owner clicks Finish (only with `{ finish: true }`). */
+  finished: AbortSignal;
+  /** Replaces the panel's status line. */
+  say: (text: string) => void;
 }
 
 /** A store whose page asks its server for the library (Kindle). */
@@ -32,6 +36,7 @@ export function runRequestScan(adapter: Adapter): Promise<void> {
 export async function runInPage(
   adapter: Pick<CardAdapter, 'checkPage' | 'label' | 'service' | 'version'>,
   go: (d: PageDeps) => Promise<ScanResult>,
+  opts: { finish?: boolean; first?: string } = {},
 ): Promise<void> {
   const page = new URL(location.href);
   const where = adapter.checkPage(page);
@@ -52,11 +57,16 @@ export async function runInPage(
   const status = document.createElement('p');
   status.style.margin = '0 0 8px';
   status.setAttribute('aria-live', 'polite');
-  status.textContent = `Reading your ${adapter.label} library…`;
+  status.textContent = opts.first ?? `Reading your ${adapter.label} library…`;
   const cancel = document.createElement('button');
   cancel.textContent = 'Cancel';
   cancel.onclick = () => ctrl.abort();
-  panel.append(status, cancel);
+  const done = new AbortController();
+  const finish = document.createElement('button');
+  finish.textContent = 'Finish';
+  finish.style.marginRight = '8px';
+  finish.onclick = () => done.abort();
+  panel.append(status, ...(opts.finish ? [finish] : []), cancel);
   document.body.append(panel);
 
   const result = await go({
@@ -71,6 +81,8 @@ export async function runInPage(
       }),
     now: () => new Date(),
     signal: ctrl.signal,
+    finished: done.signal,
+    say: (t) => (status.textContent = t),
     onProgress: (p) => {
       status.textContent = `${p.records} books so far, ${p.requests} steps${
         p.waiting ? ' (a longer pause, to go easy on the store)' : ''
@@ -91,6 +103,7 @@ export async function runInPage(
   const text = report(adapter, result, navigator.userAgent);
   console.log(text);
   cancel.remove();
+  finish.remove();
   status.textContent =
     e.completion.status === 'complete'
       ? `Done: ${e.counts.included + e.counts.uncertain} books. The file is in your Downloads folder; keep it private.`

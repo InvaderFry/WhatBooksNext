@@ -169,7 +169,7 @@
 			`Collector: ${adapter.service} version ${e.adapterVersion}`,
 			`Browser: ${browser}`,
 			`Date: ${e.collectedAt}`,
-			`Requests: ${r.stats.requests}`,
+			`Steps (requests, pages or answers read): ${r.stats.requests}`,
 			`Found: ${e.counts.seen}${r.stats.storeTotal !== void 0 ? ` (the store's own count: ${r.stats.storeTotal})` : ""}`,
 			`Included: ${e.counts.included} (purchases ${acquired.purchase}, free ${acquired.free})`,
 			`Uncertain: ${e.counts.uncertain}`,
@@ -414,7 +414,7 @@
 			fetch: (u, i) => fetch(u, i)
 		}));
 	}
-	async function runInPage(adapter, go) {
+	async function runInPage(adapter, go, opts = {}) {
 		const page = new URL(location.href);
 		const where = adapter.checkPage(page);
 		if (!where.ok) {
@@ -430,11 +430,16 @@
 		const status = document.createElement("p");
 		status.style.margin = "0 0 8px";
 		status.setAttribute("aria-live", "polite");
-		status.textContent = `Reading your ${adapter.label} library…`;
+		status.textContent = opts.first ?? `Reading your ${adapter.label} library…`;
 		const cancel = document.createElement("button");
 		cancel.textContent = "Cancel";
 		cancel.onclick = () => ctrl.abort();
-		panel.append(status, cancel);
+		const done = new AbortController();
+		const finish = document.createElement("button");
+		finish.textContent = "Finish";
+		finish.style.marginRight = "8px";
+		finish.onclick = () => done.abort();
+		panel.append(status, ...opts.finish ? [finish] : [], cancel);
 		document.body.append(panel);
 		const result = await go({
 			page,
@@ -447,6 +452,8 @@
 			}),
 			now: () => /* @__PURE__ */ new Date(),
 			signal: ctrl.signal,
+			finished: done.signal,
+			say: (t) => status.textContent = t,
 			onProgress: (p) => {
 				status.textContent = `${p.records} books so far, ${p.requests} steps${p.waiting ? " (a longer pause, to go easy on the store)" : ""}…`;
 			}
@@ -463,6 +470,7 @@
 		const text = report(adapter, result, navigator.userAgent);
 		console.log(text);
 		cancel.remove();
+		finish.remove();
 		status.textContent = e.completion.status === "complete" ? `Done: ${e.counts.included + e.counts.uncertain} books. The file is in your Downloads folder; keep it private.` : `Stopped (${e.completion.status}): ${e.completion.text} The file has what was found so far.`;
 		const box = document.createElement("textarea");
 		box.readOnly = true;

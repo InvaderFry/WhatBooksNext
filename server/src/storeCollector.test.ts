@@ -15,6 +15,7 @@ import { kindle, parseKindlePage } from '../../tools/store-collector/adapters/ki
 import { kobo, parseKoboPage } from '../../tools/store-collector/adapters/kobo.ts';
 import { report } from '../../tools/store-collector/core/report.ts';
 import {
+  collectAnswers,
   scan,
   scanCards,
   type CardScanDeps,
@@ -630,36 +631,65 @@ describe('reading GlobalComix purchases', () => {
     expect(() => parseGlobalComixPage({ payload: { results: [{ id: 1 }] } })).toThrow(/release/);
   });
 
-  it('only runs on the purchases page', () => {
-    expect(globalcomix.checkPage(new URL('https://globalcomix.com/my-shelf/purchases')).ok).toBe(
-      true,
+  it('starts on the home page, never on the purchases page (its list has already loaded there)', () => {
+    expect(globalcomix.checkPage(new URL('https://globalcomix.com/')).ok).toBe(true);
+    const shelf = globalcomix.checkPage(new URL('https://globalcomix.com/my-shelf/purchases'));
+    expect(!shelf.ok && shelf.message).toMatch(/Start on the home page/);
+    expect(
+      globalcomix.matches(new URL('https://api.globalcomix.com/v1/account/digital-purchases?p=2')),
+    ).toBe(true);
+    expect(globalcomix.matches(new URL('https://api.globalcomix.com/v1/account/library?p=1'))).toBe(
+      false,
     );
-    const home = globalcomix.checkPage(new URL('https://globalcomix.com/'));
-    expect(!home.ok && home.message).toMatch(/my-shelf\/purchases/);
   });
 
-  it('scans page after page to the end and imports-ready counts add up', async () => {
-    const asked: string[] = [];
-    const r = await scan(
+  const at = new Date('2026-11-11T12:00:00Z');
+  const how = (ended: 'owner' | 'cancelled' | 'whole_list') => ({
+    ended,
+    region: 'globalcomix.com',
+  });
+
+  it('is complete once the page’s own answers cover every page, and makes no requests', () => {
+    const r = collectAnswers(
       globalcomix,
-      deps(
-        async (url) => {
-          const u = new URL(url);
-          expect(`${u.origin}${u.pathname}`).toBe(
-            'https://api.globalcomix.com/v1/account/digital-purchases',
-          );
-          asked.push(u.searchParams.get('p')!);
-          return json(gcPage(Number(u.searchParams.get('p'))));
-        },
-        { page: new URL('https://globalcomix.com/my-shelf/purchases') },
-      ).d,
+      [JSON.parse(gcPage(1)), JSON.parse(gcPage(2))],
+      how('whole_list'),
+      at,
     );
-    expect(asked).toEqual(['1', '2']);
     expect(r.envelope).toMatchObject({
       service: 'globalcomix',
+      adapterVersion: '2',
       completion: { status: 'complete', reason: 'finished' },
       counts: { seen: 4, included: 4, uncertain: 0 },
     });
+    expect(r.stats.requests).toBe(2);
+  });
+
+  it('is partial when finished before the last page, and failed when nothing was seen', () => {
+    const early = collectAnswers(globalcomix, [JSON.parse(gcPage(1))], how('owner'), at);
+    expect(early.envelope.completion).toMatchObject({ status: 'partial', reason: 'cancelled' });
+    expect(early.envelope.completion.text).toMatch(/pages seen: 1\)/);
+    expect(early.envelope.records).toHaveLength(3);
+    const none = collectAnswers(globalcomix, [], how('owner'), at);
+    expect(none.envelope.completion).toMatchObject({ status: 'failed', reason: 'error' });
+    expect(none.envelope.completion.text).toMatch(/home page/);
+    const cancelled = collectAnswers(globalcomix, [JSON.parse(gcPage(1))], how('cancelled'), at);
+    expect(cancelled.envelope.completion.text).toBe('You cancelled the scan.');
+  });
+
+  it('ends a one-page list by its size when the answer has no pagination', () => {
+    const page = JSON.parse(gcPage(1));
+    delete page.payload.pagination;
+    page.payload.filters = { perpage: 30 };
+    const r = collectAnswers(globalcomix, [page], how('whole_list'), at);
+    expect(r.envelope.completion.status).toBe('complete');
+    page.payload.filters = {};
+    expect(parseGlobalComixPage(page).next).toBe('2');
+  });
+
+  it('stops at an answer that looks different', () => {
+    const r = collectAnswers(globalcomix, [{ data: [] }], how('owner'), at);
+    expect(r.envelope.completion).toMatchObject({ status: 'failed', reason: 'layout_changed' });
   });
 });
 

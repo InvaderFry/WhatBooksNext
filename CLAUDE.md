@@ -45,7 +45,8 @@ owner has already made. Don't reopen those decisions. Then read the latest
   adapter from that report, never from guesses. **Google Play Books checked**
   (`adapters/googlePlay.ts`, card-reading `scanCards`, no requests). **Kobo checked**
   (`adapters/kobo.ts`, library HTML pages read page-side). **GlobalComix built**
-  (`adapters/globalcomix.ts`, the site's `account/digital-purchases` list; waiting on A2/A3).
+  (`adapters/globalcomix.ts` v2, a `WatchAdapter`: reads the page's own `account/digital-purchases`
+  answers via `collectAnswers`, no requests; v1's own request got HTTP 400; waiting on A2/A3).
   Findings per store are in the plan.
 - Automatic refresh: due rules are pure in `lib/refresh.ts`; `identify/refresher.ts` runs batches
   through `lookUpItem` (never a second lookup engine). `lookup_state.accepted_source_id` remembers

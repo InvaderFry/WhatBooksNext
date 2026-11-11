@@ -26,7 +26,7 @@ export function report(
     `Collector: ${adapter.service} version ${e.adapterVersion}`,
     `Browser: ${browser}`,
     `Date: ${e.collectedAt}`,
-    `Requests: ${r.stats.requests}`,
+    `Steps (requests, pages or answers read): ${r.stats.requests}`,
     `Found: ${e.counts.seen}${r.stats.storeTotal !== undefined ? ` (the store's own count: ${r.stats.storeTotal})` : ''}`,
     `Included: ${e.counts.included} (purchases ${acquired.purchase}, free ${acquired.free})`,
     `Uncertain: ${e.counts.uncertain}`,

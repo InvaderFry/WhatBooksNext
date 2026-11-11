@@ -45,6 +45,21 @@ export interface CardAdapter {
   parse(cards: unknown): ParsedPage;
 }
 
+/**
+ * A store whose service won't answer a script's own request (GlobalComix): the collector makes no
+ * requests at all and reads the answers the store's own page receives while the owner browses to
+ * the library. `matches` says which answers are the library list.
+ */
+export interface WatchAdapter {
+  service: Service;
+  version: string;
+  label: string;
+  /** Where the owner starts (a page that hasn't loaded the library yet). */
+  checkPage(url: URL): { ok: true; region: string } | { ok: false; message: string };
+  matches(url: URL): boolean;
+  parse(body: unknown): ParsedPage;
+}
+
 export interface ParsedPage {
   records: StoreRecord[];
   excluded: { id: string; reason: ExcludedReason }[];
@@ -61,6 +76,8 @@ export interface ParsedPage {
   labelFor?: Record<string, string>;
   /** The store's own count of the library, when the page shows one: for the report only. */
   storeTotal?: number;
+  /** Which page of the list this answer is (1-based), when the answer says. */
+  page?: number;
 }
 
 /** The store's page or answer no longer looks like what the adapter knows: stop, never guess. */

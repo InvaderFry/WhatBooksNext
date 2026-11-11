@@ -14,51 +14,41 @@
 
 // tools/store-collector/adapters/globalcomix.ts
 /**
-	* GlobalComix (store purchases plan, Stage 2). It runs on the owner's purchases page,
-	* https://globalcomix.com/my-shelf/purchases, and asks for the same list that page loads:
-	* `GET https://api.globalcomix.com/v1/account/digital-purchases?p=N` (30 per page). It reads and
-	* changes nothing. Only purchases are in this list: Gold subscription reading isn't.
+	* GlobalComix (store purchases plan, Stage 2). The owner's purchases page loads its list from
+	* `https://api.globalcomix.com/v1/account/digital-purchases?p=N` (30 per page). Version 1 asked for
+	* that list itself and the service answered HTTP 400 (2026-11-11): the site adds something of its
+	* own to its requests. Copying that would mean handling the site's sign-in, which the plan rules
+	* out. So version 2 **makes no requests**: the owner starts on the home page, pastes the script,
+	* and goes to My Shelf → Purchases with the site's menu; the script reads the list answers the
+	* page itself receives, like the look-around did.
 	*
 	* From the owner's fourth look-around report (2026-11-11): `payload.results` is a list of purchase
 	* records (`id`, `release_id`, `net_price`, `is_downloadable`, `create_time`), each with its
 	* `release`: `id`, `title`, `comic_name`, `chapter`, `release_type_name` ("Volume"), `isbn`,
 	* `read_url`, `comic_type.name`, and `user_read_status` (`is_complete`,
-	* `read_progress_percentage`). Other list answers on the site carry `pagination` (`page`,
-	* `total_pages`); this one's wasn't seen, so either way works. NOT CHECKED YET as a scan (A2).
+	* `read_progress_percentage`). Other list answers carry `pagination` (`page`, `per_page`,
+	* `total_pages`) and `filters.perpage`. Only purchases are in this list: Gold reading isn't.
 	*/
-	const GLOBALCOMIX_VERSION = "1";
-	const API = "https://api.globalcomix.com/v1/account/digital-purchases";
+	const GLOBALCOMIX_VERSION = "2";
 	const globalcomix = {
 		service: "globalcomix",
-		version: "1",
+		version: "2",
 		label: "GlobalComix",
 		checkPage(url) {
 			if (url.protocol !== "https:" || !/^(www\.)?globalcomix\.com$/.test(url.hostname)) return {
 				ok: false,
-				message: "This isn’t GlobalComix. Open https://globalcomix.com/my-shelf/purchases in this tab, sign in if asked, then run the script again."
+				message: "This isn’t GlobalComix. Open https://globalcomix.com (the home page), sign in if asked, then run the script there."
 			};
-			if (!url.pathname.startsWith("/my-shelf/purchases")) return {
+			if (url.pathname.startsWith("/my-shelf")) return {
 				ok: false,
-				message: "Open your purchases: go to https://globalcomix.com/my-shelf/purchases in this tab, then run the script again."
+				message: "Start on the home page: open https://globalcomix.com in this tab (type it in, so the page loads fresh), paste the script there, then go to My Shelf → Purchases with the site’s menu."
 			};
 			return {
 				ok: true,
 				region: "globalcomix.com"
 			};
 		},
-		firstCursor: "1",
-		request(cursor) {
-			const u = new URL(API);
-			u.searchParams.set("p", cursor);
-			return {
-				url: u.href,
-				init: {
-					method: "GET",
-					headers: { accept: "application/json" }
-				}
-			};
-		},
-		endsWhenNothingNew: true,
+		matches: (url) => url.hostname === "api.globalcomix.com" && url.pathname === "/v1/account/digital-purchases",
 		parse: parseGlobalComixPage
 	};
 	const str = (v) => typeof v === "string" ? v.trim() : typeof v === "number" ? String(v) : "";
@@ -126,50 +116,23 @@
 			records.push(rec);
 			labelFor[`release:${id}`] = `${type}${free ? " (free)" : ""}`;
 		}
-		const pg = b.payload.pagination;
+		const pg = b.payload.pagination ?? null;
+		const filters = b.payload.filters ?? null;
 		const page = Number(pg?.page ?? b.meta?.params?.p ?? NaN);
 		const pages = Number(pg?.total_pages ?? NaN);
+		const perPage = Number(pg?.per_page ?? filters?.perpage ?? NaN);
+		const n = b.payload.results.length;
+		const lastPage = Number.isFinite(pages) ? page >= pages : n === 0 || Number.isFinite(perPage) && n < perPage;
+		const next = Number.isFinite(page) && !lastPage ? String(page + 1) : null;
 		return {
 			records,
 			excluded: [],
-			next: Number.isFinite(page) && Number.isFinite(pages) ? page < pages ? String(page + 1) : null : b.payload.results.length > 0 && Number.isFinite(page) ? String(page + 1) : null,
+			next: Number.isFinite(page) ? next : "?",
 			fields: [...fields].sort(),
 			labels: [],
-			labelFor
+			labelFor,
+			...Number.isFinite(page) ? { page } : {}
 		};
-	}
-
-// tools/store-collector/core/report.ts
-/**
-	* The title-free report the owner pastes into chat (store purchases plan, "1a"): counts, labels
-	* and field names only. Never titles, IDs, account names or emails.
-	*/
-	function report(adapter, r, browser) {
-		const e = r.envelope;
-		const excluded = Object.entries(e.counts.excluded).map(([k, v]) => `${k.replace(/_/g, " ")} ${v}`).join(", ");
-		const acquired = {
-			purchase: e.records.filter((x) => x.acquisition.type === "purchase").length,
-			free: e.records.filter((x) => x.acquisition.type === "free_claim").length
-		};
-		const has = (k) => e.records.filter((x) => x[k] !== void 0).length;
-		return [
-			"whatBooksNext store collector report (no titles)",
-			`Store: ${adapter.label} (${e.region ?? "region unknown"})`,
-			`Collector: ${adapter.service} version ${e.adapterVersion}`,
-			`Browser: ${browser}`,
-			`Date: ${e.collectedAt}`,
-			`Requests: ${r.stats.requests}`,
-			`Found: ${e.counts.seen}${r.stats.storeTotal !== void 0 ? ` (the store's own count: ${r.stats.storeTotal})` : ""}`,
-			`Included: ${e.counts.included} (purchases ${acquired.purchase}, free ${acquired.free})`,
-			`Uncertain: ${e.counts.uncertain}`,
-			`Excluded: ${excluded || "none"}`,
-			`How acquired (store's labels): ${Object.entries(r.stats.labels).sort().map(([k, v]) => `${k} ${v}`).join(", ") || "none"}`,
-			`With a reader link: ${has("readUrl")}, a page link: ${has("pageUrl")}, an ISBN: ${has("isbn")}, progress: ${has("progressPercent")}`,
-			`Fields on the store's items: ${r.stats.fields.join(", ") || "none"}`,
-			`Completeness: ${e.completion.status} (${e.completion.reason}): ${e.completion.text}`,
-			`Layout check: ${r.stats.fingerprint}`,
-			`Errors: ${r.stats.errors.length ? r.stats.errors.join(" | ") : "none"}`
-		].join("\n");
 	}
 
 // tools/store-collector/core/format.ts
@@ -179,17 +142,6 @@
 	* Titles stay in this file, which is the owner's own and never goes in the repo.
 	*/
 	const FORMAT = "whatBooksNext-store-purchases";
-
-// tools/store-collector/core/limits.ts
-/**
-	* Account safety limits for every collector (store purchases plan, "Account safety"; PLAN.md
-	* §20 assumptions). They keep a scan close to the owner scrolling their own library. Change them
-	* only with a reason, here and in PLAN.md §20.
-	*/
-	/** At least this long between two page loads or library requests: about a person's pace. */
-	const MIN_GAP_MS = 2e3;
-	/** The longer pause. */
-	const PAUSE_MS = 3e4;
 
 // tools/store-collector/core/scan.ts
 	var Stop = class extends Error {
@@ -291,64 +243,6 @@
 			};
 		}
 	};
-	const limitsOf = (d) => ({
-		minGapMs: MIN_GAP_MS,
-		pauseEvery: 50,
-		pauseMs: PAUSE_MS,
-		maxRequests: 300,
-		maxStalled: 2,
-		...d.limits
-	});
-	/** Before every step but the first: the usual gap, or the longer pause; and the cancel check. */
-	async function pace(c, d, lim) {
-		if (d.signal.aborted) throw new Stop("cancelled", "You cancelled the scan.");
-		if (c.steps >= lim.maxRequests) throw new Stop("limit_reached", `Stopped at the safety limit of ${lim.maxRequests} steps in one scan.`);
-		if (c.steps > 0) {
-			const wait = c.steps % lim.pauseEvery === 0 ? lim.pauseMs : lim.minGapMs;
-			d.onProgress?.({
-				requests: c.steps,
-				records: c.records.size,
-				waiting: wait > lim.minGapMs
-			});
-			await d.sleep(wait, d.signal);
-			if (d.signal.aborted) throw new Stop("cancelled", "You cancelled the scan.");
-		}
-	}
-	async function scan(adapter, d) {
-		const lim = limitsOf(d);
-		const c = new Collected();
-		try {
-			const where = adapter.checkPage(d.page);
-			if (!where.ok) throw new Stop("error", where.message);
-			c.region = where.region;
-			const cursors = /* @__PURE__ */ new Set();
-			let cursor = adapter.firstCursor;
-			let stalled = 0;
-			while (cursor !== null) {
-				await pace(c, d, lim);
-				cursors.add(cursor);
-				const { url, init } = adapter.request(cursor, d.page);
-				c.steps++;
-				const body = await send(d, url, init, adapter.answer ?? "json");
-				const data = adapter.answer === "html" ? d.fromHtml(body, url) : body;
-				const page = c.read(() => adapter.parse(data));
-				d.onProgress?.({
-					requests: c.steps,
-					records: c.records.size,
-					waiting: false
-				});
-				if (page.next !== null && cursors.has(page.next)) throw new Stop("error", "The store sent the same page twice; stopped instead of looping.");
-				if (adapter.endsWhenNothingNew && page.added === 0 && c.steps > 1) break;
-				stalled = page.added === 0 && page.next !== null ? stalled + 1 : 0;
-				if (stalled >= lim.maxStalled) throw new Stop("error", "The store kept sending no new books; stopped instead of looping.");
-				cursor = page.next;
-			}
-			emptyIsLayout(c);
-		} catch (e) {
-			c.stop(e);
-		}
-		return c.result(adapter, d.now());
-	}
 	/** An empty list never counts as an empty library: the page probably looks different. */
 	function emptyIsLayout(c) {
 		if (c.records.size + c.excluded.size > 0) return;
@@ -356,37 +250,62 @@
 		throw new Stop("layout_changed", "No books were found. If your library isn’t empty, the store’s page has changed.");
 	}
 	/**
-	* Sends one request in the owner's own signed-in tab. Stops at the first sign of trouble: a
-	* sign-in page, 401/403/429, an unexpected redirect, or an answer that isn't the library's.
+	* Reads the library answers the store's own page received while the owner browsed to it
+	* (`WatchAdapter`). Makes no requests. Complete only when the answers seen cover every page from
+	* the first to one that says it's the last; otherwise partial, with what was found.
 	*/
-	async function send(d, url, init, answer) {
-		let res;
+	function collectAnswers(adapter, answers, how, now) {
+		const c = new Collected();
+		c.region = how.region;
 		try {
-			res = await d.fetch(url, {
-				credentials: "include",
-				...init,
-				signal: d.signal
-			});
+			const pages = /* @__PURE__ */ new Set();
+			let last = null;
+			for (const body of answers) {
+				c.steps++;
+				const page = c.read(() => adapter.parse(body));
+				if (page.page !== void 0) pages.add(page.page);
+				if (page.next === null && page.page !== void 0) last = page.page;
+			}
+			if (answers.length === 0) throw new Stop("error", "The page didn’t load your library while the script watched. Start on the store’s home page, paste the script, then go to your library with the site’s own menu.");
+			if (!(last !== null && Array.from({ length: last }, (_, i) => i + 1).every((n) => pages.has(n)))) throw new Stop("cancelled", how.ended === "cancelled" ? "You cancelled the scan." : `Finished before the whole list had loaded (pages seen: ${[...pages].sort((a, b) => a - b).join(", ") || "none"}). Scroll to the bottom of your library before finishing.`);
+			emptyIsLayout(c);
 		} catch (e) {
-			if (d.signal.aborted) throw new Stop("cancelled", "You cancelled the scan.");
-			throw new Stop("error", `The request failed: ${e.message}`);
+			c.stop(e);
 		}
-		const final = res.url ? new URL(res.url) : new URL(url);
-		if (/\/ap\/(signin|mfa|cvf)|signin|login/i.test(final.pathname)) throw new Stop("signed_out", "The store asked you to sign in. Sign in, then run it again.");
-		if (res.status === 401) throw new Stop("signed_out", "The store says you’re signed out. Sign in, then run it again.");
-		if (res.status === 403 || res.status === 429) throw new Stop("blocked", `The store refused the request (HTTP ${res.status}). Stopped; don’t run it again today.`);
-		if (res.redirected && final.host !== new URL(url).host) throw new Stop("blocked", `The store sent the request somewhere else (${final.host}).`);
-		if (!res.ok) throw new Stop("error", `The store answered HTTP ${res.status}.`);
-		if (answer === "html") {
-			if (!/html/i.test(res.headers.get("content-type") ?? "")) throw new Stop("blocked", "The store answered with something other than a library page. Stopped.");
-			return await res.text();
-		}
-		if (!/json/i.test(res.headers.get("content-type") ?? "")) throw new Stop("blocked", "The store answered with a page instead of the library list (maybe a check that you’re a person). Stopped.");
-		try {
-			return await res.json();
-		} catch {
-			throw new Stop("layout_changed", "The store’s answer couldn’t be read.");
-		}
+		return c.result(adapter, now);
+	}
+
+// tools/store-collector/core/report.ts
+/**
+	* The title-free report the owner pastes into chat (store purchases plan, "1a"): counts, labels
+	* and field names only. Never titles, IDs, account names or emails.
+	*/
+	function report(adapter, r, browser) {
+		const e = r.envelope;
+		const excluded = Object.entries(e.counts.excluded).map(([k, v]) => `${k.replace(/_/g, " ")} ${v}`).join(", ");
+		const acquired = {
+			purchase: e.records.filter((x) => x.acquisition.type === "purchase").length,
+			free: e.records.filter((x) => x.acquisition.type === "free_claim").length
+		};
+		const has = (k) => e.records.filter((x) => x[k] !== void 0).length;
+		return [
+			"whatBooksNext store collector report (no titles)",
+			`Store: ${adapter.label} (${e.region ?? "region unknown"})`,
+			`Collector: ${adapter.service} version ${e.adapterVersion}`,
+			`Browser: ${browser}`,
+			`Date: ${e.collectedAt}`,
+			`Steps (requests, pages or answers read): ${r.stats.requests}`,
+			`Found: ${e.counts.seen}${r.stats.storeTotal !== void 0 ? ` (the store's own count: ${r.stats.storeTotal})` : ""}`,
+			`Included: ${e.counts.included} (purchases ${acquired.purchase}, free ${acquired.free})`,
+			`Uncertain: ${e.counts.uncertain}`,
+			`Excluded: ${excluded || "none"}`,
+			`How acquired (store's labels): ${Object.entries(r.stats.labels).sort().map(([k, v]) => `${k} ${v}`).join(", ") || "none"}`,
+			`With a reader link: ${has("readUrl")}, a page link: ${has("pageUrl")}, an ISBN: ${has("isbn")}, progress: ${has("progressPercent")}`,
+			`Fields on the store's items: ${r.stats.fields.join(", ") || "none"}`,
+			`Completeness: ${e.completion.status} (${e.completion.reason}): ${e.completion.text}`,
+			`Layout check: ${r.stats.fingerprint}`,
+			`Errors: ${r.stats.errors.length ? r.stats.errors.join(" | ") : "none"}`
+		].join("\n");
 	}
 
 // tools/store-collector/console/run.ts
@@ -396,14 +315,7 @@
 	* to the store's page it runs on, never to whatBooksNext.
 	*/
 	const RISK = "whatBooksNext will now read your library list on this page, slowly and read-only.\n\nAutomated reading of a store page may break the store’s terms of use, and a store could challenge or restrict an account that does unusual things. This script goes at about a person’s pace and stops at the first warning or sign-in check.\n\nContinue? (Cancel to stop; you can add books by spreadsheet or by hand instead.)";
-	/** A store whose page asks its server for the library (Kindle). */
-	function runRequestScan(adapter) {
-		return runInPage(adapter, (d) => scan(adapter, {
-			...d,
-			fetch: (u, i) => fetch(u, i)
-		}));
-	}
-	async function runInPage(adapter, go) {
+	async function runInPage(adapter, go, opts = {}) {
 		const page = new URL(location.href);
 		const where = adapter.checkPage(page);
 		if (!where.ok) {
@@ -419,11 +331,16 @@
 		const status = document.createElement("p");
 		status.style.margin = "0 0 8px";
 		status.setAttribute("aria-live", "polite");
-		status.textContent = `Reading your ${adapter.label} library…`;
+		status.textContent = opts.first ?? `Reading your ${adapter.label} library…`;
 		const cancel = document.createElement("button");
 		cancel.textContent = "Cancel";
 		cancel.onclick = () => ctrl.abort();
-		panel.append(status, cancel);
+		const done = new AbortController();
+		const finish = document.createElement("button");
+		finish.textContent = "Finish";
+		finish.style.marginRight = "8px";
+		finish.onclick = () => done.abort();
+		panel.append(status, ...opts.finish ? [finish] : [], cancel);
 		document.body.append(panel);
 		const result = await go({
 			page,
@@ -436,6 +353,8 @@
 			}),
 			now: () => /* @__PURE__ */ new Date(),
 			signal: ctrl.signal,
+			finished: done.signal,
+			say: (t) => status.textContent = t,
 			onProgress: (p) => {
 				status.textContent = `${p.records} books so far, ${p.requests} steps${p.waiting ? " (a longer pause, to go easy on the store)" : ""}…`;
 			}
@@ -452,6 +371,7 @@
 		const text = report(adapter, result, navigator.userAgent);
 		console.log(text);
 		cancel.remove();
+		finish.remove();
 		status.textContent = e.completion.status === "complete" ? `Done: ${e.counts.included + e.counts.uncertain} books. The file is in your Downloads folder; keep it private.` : `Stopped (${e.completion.status}): ${e.completion.text} The file has what was found so far.`;
 		const box = document.createElement("textarea");
 		box.readOnly = true;
@@ -477,6 +397,78 @@
 	}
 
 // tools/store-collector/console/globalcomix.ts
-	runRequestScan(globalcomix);
+	runInPage(globalcomix, (d) => new Promise((resolve) => {
+		const answers = [];
+		const pagesSeen = /* @__PURE__ */ new Set();
+		let lastPage = null;
+		const origFetch = window.fetch;
+		const origOpen = XMLHttpRequest.prototype.open;
+		const origSend = XMLHttpRequest.prototype.send;
+		const meta = /* @__PURE__ */ new WeakMap();
+		const end = (ended) => {
+			window.fetch = origFetch;
+			XMLHttpRequest.prototype.open = origOpen;
+			XMLHttpRequest.prototype.send = origSend;
+			resolve(collectAnswers(globalcomix, answers, {
+				ended,
+				region: "globalcomix.com"
+			}, d.now()));
+		};
+		const take = (url, text) => {
+			let u;
+			try {
+				u = new URL(url, location.href);
+			} catch {
+				return;
+			}
+			if (!globalcomix.matches(u)) return;
+			let body;
+			try {
+				body = JSON.parse(text);
+			} catch {
+				return;
+			}
+			answers.push(body);
+			try {
+				const p = globalcomix.parse(body);
+				if (p.page !== void 0) pagesSeen.add(p.page);
+				if (p.next === null && p.page !== void 0) lastPage = p.page;
+				const count = answers.length;
+				d.say(`Read ${count} page${count === 1 ? "" : "s"} of your purchases. Keep scrolling to the bottom; it finishes by itself once it has the whole list.`);
+				if (lastPage !== null && Array.from({ length: lastPage }, (_, i) => i + 1).every((n) => pagesSeen.has(n))) end("whole_list");
+			} catch {
+				end("owner");
+			}
+		};
+		window.fetch = async function(...args) {
+			const res = await origFetch.apply(this, args);
+			try {
+				const req = args[0];
+				const url = typeof req === "string" ? req : req instanceof URL ? req.href : req.url;
+				if (globalcomix.matches(new URL(url, location.href))) res.clone().text().then((t) => take(url, t)).catch(() => {});
+			} catch {}
+			return res;
+		};
+		XMLHttpRequest.prototype.open = function(...args) {
+			meta.set(this, String(args[1]));
+			return origOpen.apply(this, args);
+		};
+		XMLHttpRequest.prototype.send = function(...args) {
+			this.addEventListener("loadend", () => {
+				try {
+					const url = meta.get(this);
+					if (!url) return;
+					const text = this.responseType === "" || this.responseType === "text" ? this.responseText : this.responseType === "json" ? JSON.stringify(this.response) : null;
+					if (text !== null) take(url, text);
+				} catch {}
+			});
+			return origSend.apply(this, args);
+		};
+		d.signal.addEventListener("abort", () => end("cancelled"));
+		d.finished.addEventListener("abort", () => end("owner"));
+	}), {
+		finish: true,
+		first: "Watching. Now use GlobalComix’s menu to go to My Shelf → Purchases, then scroll to the bottom of your purchases. It finishes by itself once it has the whole list (or click Finish)."
+	});
 
 })();
