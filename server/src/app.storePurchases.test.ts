@@ -3,6 +3,7 @@ import path from 'node:path';
 import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { googlePlay } from '../../tools/store-collector/adapters/googlePlay.ts';
+import { globalcomix } from '../../tools/store-collector/adapters/globalcomix.ts';
 import { kindle } from '../../tools/store-collector/adapters/kindle.ts';
 import { kobo } from '../../tools/store-collector/adapters/kobo.ts';
 import { scan, scanCards } from '../../tools/store-collector/core/scan.ts';
@@ -319,18 +320,26 @@ describe('the collectors in the app', () => {
       },
       {
         service: 'kobo',
-        state: 'not_checked',
-        checkedOn: null,
+        state: 'checked',
+        checkedOn: '2026-11-11',
         page: 'https://www.kobo.com/us/en/library/books',
       },
-      { service: 'globalcomix', state: 'not_built', checkedOn: null, page: null },
+      {
+        service: 'globalcomix',
+        state: 'not_checked',
+        checkedOn: null,
+        page: 'https://globalcomix.com/my-shelf/purchases',
+      },
     ]);
     const s = await api.get('/api/store-collectors/kindle/script');
     expect(s.body.script).toContain('kindle-library/search');
     expect((await api.get('/api/store-collectors/kobo/script')).body.script).toContain(
       'library/books',
     );
-    expect((await api.get('/api/store-collectors/globalcomix/script')).status).toBe(404);
+    expect((await api.get('/api/store-collectors/globalcomix/script')).body.script).toContain(
+      'digital-purchases',
+    );
+    expect((await api.get('/api/store-collectors/apple_books/script')).status).toBe(404);
     // The look-around script for stores with no collector yet.
     expect((await api.get('/api/store-collectors/probe/script')).body.script).toContain(
       'look-around report',
@@ -489,5 +498,41 @@ describe('the collectors in the app', () => {
         host: 'readnow.kobo.com',
       },
     ]);
+  });
+
+  it('imports what the GlobalComix collector read: comics with series, numbers and dates', async () => {
+    const dir = path.join(import.meta.dirname, '..', '..', 'fixtures', 'stores', 'globalcomix');
+    const result = await scan(globalcomix, {
+      page: new URL('https://globalcomix.com/my-shelf/purchases'),
+      fetch: async (url) =>
+        new Response(
+          fs.readFileSync(path.join(dir, `page-${new URL(url).searchParams.get('p')}.json`)),
+          { headers: { 'content-type': 'application/json' } },
+        ),
+      sleep: async () => {},
+      now: () => new Date('2026-11-11T12:00:00Z'),
+      signal: new AbortController().signal,
+    });
+    const text = JSON.stringify(result.envelope);
+    const p = await preview(text);
+    expect(p).toMatchObject({ service: 'globalcomix', problems: [], counts: { included: 4 } });
+    expect(await importFile(text)).toMatchObject({ added: 4, links: 4 });
+    expect(
+      db
+        .prepare(
+          "SELECT unit, acquisition, acquired_at, acquired_precision FROM store_purchases WHERE store_record_id = '9200002'",
+        )
+        .get(),
+    ).toEqual({
+      unit: 'issue',
+      acquisition: 'free_claim',
+      acquired_at: '2025-06-12',
+      acquired_precision: 'day',
+    });
+    const vol = one("SELECT id FROM items WHERE title = 'Starfall Academy, Volume 1'") as string;
+    const item = (await api.get(`/api/items/${vol}`)).body;
+    expect(item.user.progress).toBe('finished');
+    expect(item.availability.storeLinks[0]).toMatchObject({ store: 'globalcomix', kind: 'read' });
+    expect(one('SELECT series_hint FROM items WHERE id = ?', vol)).toBe('Starfall Academy');
   });
 });

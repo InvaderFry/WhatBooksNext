@@ -4,9 +4,8 @@ Status: **Stage 0 decided** (all four stores get a collector). **Store links bui
 (A1b). **Stage 1 done for Kindle on amazon.com** (A2 and A3, 2026-11-11). The extension (1c) is
 **deferred** to a nice-to-have (owner decision, 2026-11-11). **Stage 2:**
 
-- **Google Play Books** is checked (version 2, 2026-11-11).
-- **Kobo** is built from the third look-around and waits on A2/A3.
-- **GlobalComix** waits on one more look-around (A6d), started on the home page.
+- **Google Play Books** and **Kobo** are checked (2026-11-11).
+- **GlobalComix** is built from the fourth look-around and waits on A2/A3.
 
 Written 2026-11-11. This revises a first draft from 2026-11-10 ("console scripts, then one
 extension") after a review. The review kept the draft's rules and its order of proving extraction
@@ -731,6 +730,53 @@ Built for A6b:
     `digital-purchases` and the like) are shown. For GlobalComix, the steps now start on the home
     page and reach Purchases through the site's own menu, so the list request happens while the
     script watches (A6d).
+
+### Kobo checked; GlobalComix built (2026-11-11)
+
+- **Kobo:** the owner ran the Kobo script and imported ("seems to work").
+  - The report wasn't shared, so its counts and labels (including whether any preview or Kobo
+    Plus marks appeared) aren't recorded.
+  - `COLLECTORS.kobo` is **Checked on 2026-11-11**.
+  - **Still open:** confirm on a later run that the found count matches the store's own count, and
+    note any labels other than `book`.
+- **Fourth look-around (A6d):** started on the home page and reached through the menu, with the
+  owner's uBlock extension on (it didn't get in the way).
+  - The purchases list is `GET api.globalcomix.com/v1/account/digital-purchases?p=N`: one page
+    of 30 (about 680 KB). Its `payload.results` are purchase records: `id`, `token`, `release_id`,
+    `net_price`, `is_downloadable`, `create_time`.
+  - Each record holds its `release`: `id`, `title`, `comic_name`, `chapter`, `release_type_name`
+    ("Volume"), `isbn`, `read_url`, `comic_type`, the publisher's channel as `artist`, and
+    `user_read_status` (`is_complete`, `read_progress_percentage`, last read date). It has no
+    contributor list: authors aren't in this answer.
+  - The answer's `pagination` was past the report's cut; other list answers on the site carry
+    `page` and `total_pages`.
+  - Other requests seen: the site's home sections, `account/library?p=` (the reading library,
+    empty for this owner), and per-comic `releases`, `similar` and `read` answers.
+- **GlobalComix collector** (`adapters/globalcomix.ts` version 1, `console/globalcomix.ts`,
+  `console-scripts/globalcomix.js`):
+  - It runs only on `globalcomix.com/my-shelf/purchases` and asks for the same
+    `digital-purchases?p=1, 2, …` list as the page, with the browser's own sign-in (cookies). It
+    changes nothing. It follows `pagination` when present, otherwise it stops at a page that is
+    empty or brings nothing new.
+  - **Ownership:** every record is in the store's own list of digital purchases. A `net_price` of
+    0 is a free unlock (`free_claim`); anything else is a purchase. Gold subscription reading isn't
+    in this list, so nothing is excluded.
+  - **Unit** from `release_type_name`:
+    - Volume → `volume`
+    - Issue, Chapter or Episode → `issue`
+    - Collection, Omnibus, Compendium, Trade, TPB or Bundle → `collection`
+    - anything else → `book`
+      The report's labels line shows the types seen.
+  - **Title:** the release title. When that's only a number ("Volume 1", "#3"), it becomes
+    "Series, Volume 1". The series is `comic_name`, and the number is `chapter` when numeric.
+  - **Also read:** the ISBN; comic or manga from `comic_type`; the purchase date (day precision)
+    as `acquiredAt`; reading status (`is_complete` → finished, otherwise in progress when
+    progress is above 0) and the percentage; and `read_url` as the reader link.
+  - **Not yet known:** whether the purchases API accepts the page's cookies from the console. The
+    site may sign its requests another way. If it doesn't, the first run stops at once with
+    "signed out" or "refused" and nothing else happens. The next version would then read the
+    page's own answers instead of asking.
+- **The same title twice** and **imports start lookups:** see "Google Play Books checked" above.
 
 **A collector that hasn't been checked is never shown as working.** In the extension and the app,
 each store is **Checked on <date>**, **Not checked yet**, or **Not supported** (with the reason).

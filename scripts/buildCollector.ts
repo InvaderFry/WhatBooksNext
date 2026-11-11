@@ -7,7 +7,7 @@ import path from 'node:path';
 import { build } from 'rolldown';
 
 const ROOT = path.join(import.meta.dirname, '..', 'tools', 'store-collector');
-export const COLLECTOR_SCRIPTS = ['kindle', 'google_play', 'kobo', 'probe'] as const;
+export const COLLECTOR_SCRIPTS = ['kindle', 'google_play', 'kobo', 'globalcomix', 'probe'] as const;
 export const scriptPath = (name: string) => path.join(ROOT, 'console-scripts', `${name}.js`);
 
 const HEADER = (name: string) =>

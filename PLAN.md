@@ -1343,8 +1343,8 @@ plainly at the start of your message, with what to do and roughly how long it ta
 | **Store purchases: Kindle** | Done 2026-11-11: A2 (complete scan, 155 found) and A3 (import). A1b (store links) works too. The extension is deferred (owner decision 2026-11-11). |
 | **Store purchases: look around** | Done 2026-11-11 (A6) for Google Play Books, Kobo and GlobalComix. |
 | **Store purchases: Google Play Books** | Done 2026-11-11 (version 2: 23 found, imported). |
-| **Store purchases: Kobo (now)** | A2 and A3 for Kobo: open kobo.com/us/en/library/books, run the Kobo script from Settings → Import store purchases, paste the report (no titles), then import the file. |
-| **Store purchases: GlobalComix (now)** | A6d: open GlobalComix's home page, paste the look-around script, go to My Shelf → Purchases with the site's menu, scroll to the bottom, Finish, and paste the report. |
+| **Store purchases: Kobo** | Done 2026-11-11 (script run and imported). |
+| **Store purchases: GlobalComix (now)** | A2 and A3 for GlobalComix: open globalcomix.com/my-shelf/purchases, run the GlobalComix script from Settings → Import store purchases, paste the report (no titles), then import the file. |
 | **Now (after stage 4)** | The second quality session (§17.2), on the new ratings and details. Also, on the Windows PC: Settings → Online lookups → **Keeping ratings up to date** shows due books and a last batch after the app has been open 10–15 minutes; Diagnostics → Automatic refresh shows requests within the daily share. No new accounts or keys. |
 
 ### Still to confirm (not blocking)

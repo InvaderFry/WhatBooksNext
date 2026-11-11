@@ -813,6 +813,12 @@ const SCRIPT_STEPS: Record<string, { where: string; shown: string; pace: string;
     pace: 'it reads your library a page at a time, slowly (one page of 24 books every 2 seconds); you can leave the page as it is',
     file: 'whatbooksnext-kobo-…json',
   },
+  globalcomix: {
+    where: 'your GlobalComix purchases',
+    shown: 'globalcomix.com/my-shelf/purchases',
+    pace: 'it reads your purchases list a page at a time (30 comics every 2 seconds); you can leave the page as it is',
+    file: 'whatbooksnext-globalcomix-…json',
+  },
   google_play: {
     where: 'your Google Play Books purchases',
     shown: 'play.google.com/books?source=purchases, so your own uploads stay out',
@@ -953,7 +959,7 @@ export function StorePurchaseImport({ onChanged }: { onChanged?: () => void }) {
               checked={service === c.service}
               onChange={() => setService(c.service)}
             />
-            {STORE_LABELS[c.service]}{' '}
+            <span className="store-name">{STORE_LABELS[c.service]}</span>{' '}
             <span className="muted small">
               (
               {c.state === 'checked' && c.checkedOn

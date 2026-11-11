@@ -7,6 +7,10 @@ import {
   parsePlayCards,
   type PlayCard,
 } from '../../tools/store-collector/adapters/googlePlay.ts';
+import {
+  globalcomix,
+  parseGlobalComixPage,
+} from '../../tools/store-collector/adapters/globalcomix.ts';
 import { kindle, parseKindlePage } from '../../tools/store-collector/adapters/kindle.ts';
 import { kobo, parseKoboPage } from '../../tools/store-collector/adapters/kobo.ts';
 import { report } from '../../tools/store-collector/core/report.ts';
@@ -578,6 +582,84 @@ describe('scanning Kobo', () => {
     expect(signedOut.envelope.completion).toMatchObject({ status: 'failed', reason: 'signed_out' });
     const empty = await scan(kobo, koboStore({}).deps());
     expect(empty.envelope.completion).toMatchObject({ status: 'failed', reason: 'layout_changed' });
+  });
+});
+
+const GC_DIR = path.join(import.meta.dirname, '..', '..', 'fixtures', 'stores', 'globalcomix');
+const gcPage = (n: number) => fs.readFileSync(path.join(GC_DIR, `page-${n}.json`), 'utf8');
+
+describe('reading GlobalComix purchases', () => {
+  it('reads each purchase: release, unit, series and number, ISBN, free unlocks, date, status and link', () => {
+    const one = parseGlobalComixPage(JSON.parse(gcPage(1)));
+    expect(one.next).toBe('2');
+    expect(one.records[0]).toEqual({
+      storeRecordId: '9200001',
+      idKind: 'release',
+      title: 'Starfall Academy, Volume 1',
+      unit: 'volume',
+      acquisition: { type: 'purchase', evidence: 'GlobalComix digital purchase' },
+      series: 'Starfall Academy',
+      seriesIndex: '1',
+      isbn: '9780000000024',
+      kind: 'comic',
+      acquiredAt: { value: '2025-03-04', precision: 'day' },
+      readingStatus: 'finished',
+      progressPercent: 100,
+      readUrl: 'https://globalcomix.com/read/inv-9200001/starfall-academy-volume-1',
+    });
+    expect(one.records[1]).toMatchObject({
+      title: 'Night Over the Harbour',
+      unit: 'issue',
+      series: 'The Lantern Keepers',
+      seriesIndex: '3',
+      kind: 'manga',
+      acquisition: { type: 'free_claim', evidence: 'GlobalComix digital purchase, at no charge' },
+      readingStatus: 'in_progress',
+      progressPercent: 40,
+    });
+    expect(one.records[1]!.isbn).toBeUndefined();
+    expect(one.records[2]).toMatchObject({ unit: 'collection', series: 'Glass Harbor' });
+    expect(one.records[2]!.seriesIndex).toBeUndefined();
+    expect(one.records[2]!.readingStatus).toBeUndefined();
+    expect(Object.values(one.labelFor!)).toEqual(['Volume', 'Issue (free)', 'Compendium']);
+    expect(parseGlobalComixPage(JSON.parse(gcPage(2))).next).toBeNull();
+  });
+
+  it('refuses an answer that looks different', () => {
+    expect(() => parseGlobalComixPage({ results: [] })).toThrow(/payload\.results/);
+    expect(() => parseGlobalComixPage({ payload: { results: [{ id: 1 }] } })).toThrow(/release/);
+  });
+
+  it('only runs on the purchases page', () => {
+    expect(globalcomix.checkPage(new URL('https://globalcomix.com/my-shelf/purchases')).ok).toBe(
+      true,
+    );
+    const home = globalcomix.checkPage(new URL('https://globalcomix.com/'));
+    expect(!home.ok && home.message).toMatch(/my-shelf\/purchases/);
+  });
+
+  it('scans page after page to the end and imports-ready counts add up', async () => {
+    const asked: string[] = [];
+    const r = await scan(
+      globalcomix,
+      deps(
+        async (url) => {
+          const u = new URL(url);
+          expect(`${u.origin}${u.pathname}`).toBe(
+            'https://api.globalcomix.com/v1/account/digital-purchases',
+          );
+          asked.push(u.searchParams.get('p')!);
+          return json(gcPage(Number(u.searchParams.get('p'))));
+        },
+        { page: new URL('https://globalcomix.com/my-shelf/purchases') },
+      ).d,
+    );
+    expect(asked).toEqual(['1', '2']);
+    expect(r.envelope).toMatchObject({
+      service: 'globalcomix',
+      completion: { status: 'complete', reason: 'finished' },
+      counts: { seen: 4, included: 4, uncertain: 0 },
+    });
   });
 });
 

@@ -1495,3 +1495,8 @@ kbd {
 .source-group {
   margin: 0.8rem 0 0.2rem;
 }
+
+/* Store names in the import picker never break mid-word on a phone. */
+.store-name {
+  white-space: nowrap;
+}

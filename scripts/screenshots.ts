@@ -464,16 +464,6 @@ try {
       },
     ],
     [
-      // A store with no script yet: the look-around steps.
-      'settings-store-look-around',
-      '/?view=settings',
-      async (p) => {
-        await p.getByRole('radio', { name: /GlobalComix/ }).check();
-        await p.getByRole('button', { name: 'Copy the look-around script' }).waitFor();
-        await p.getByRole('heading', { name: 'Import store purchases' }).scrollIntoViewIfNeeded();
-      },
-    ],
-    [
       // Google Play Books: its own script and steps (purchases only).
       'settings-store-google',
       '/?view=settings',

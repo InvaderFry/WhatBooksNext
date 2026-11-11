@@ -61,13 +61,18 @@ export const COLLECTORS: Record<
     checkedOn: '2026-11-11',
     page: 'https://play.google.com/books?source=purchases',
   },
-  // Built 2026-11-11 from the owner's look-around reports; not yet run on their account (A2).
+  // Checked on the owner's account 2026-11-11 (A2/A3: "seems to work"; report not shared).
   kobo: {
-    state: 'not_checked',
-    checkedOn: null,
+    state: 'checked',
+    checkedOn: '2026-11-11',
     page: 'https://www.kobo.com/us/en/library/books',
   },
-  globalcomix: { state: 'not_built', checkedOn: null, page: null },
+  // Built 2026-11-11 from the owner's fourth look-around report; not yet run on their account (A2).
+  globalcomix: {
+    state: 'not_checked',
+    checkedOn: null,
+    page: 'https://globalcomix.com/my-shelf/purchases',
+  },
 };
 
 const ACQUISITIONS = ['purchase', 'free_claim', 'uncertain'] as const;
