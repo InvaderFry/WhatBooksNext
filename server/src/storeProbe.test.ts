@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { describeString, maskUrl, safeKey } from '../../tools/store-collector/probe/mask.ts';
+import { outline, type OutlineNode } from '../../tools/store-collector/probe/outline.ts';
 import { Probe } from '../../tools/store-collector/probe/report.ts';
 import { parseBody, render, shapeOf } from '../../tools/store-collector/probe/skeleton.ts';
 
@@ -118,5 +119,61 @@ describe('the look-around script’s privacy rules', () => {
     expect(text).toContain('<id-like keys>');
     expect(text).toContain('div.book-card ×155');
     for (const s of SECRETS) expect(text).not.toContain(s);
+  });
+
+  it('outlines one card: classes, attribute shapes and label words, never titles or IDs', () => {
+    const el = (
+      tag: string,
+      classes: string[],
+      attrs: Record<string, string> = {},
+      text = '',
+      children: OutlineNode[] = [],
+    ): OutlineNode => ({
+      tag,
+      classes,
+      attrs: Object.entries(attrs).map(([name, value]) => ({ name, value })),
+      text,
+      children,
+    });
+    const card = el(
+      'li',
+      ['item-wrapper', 'book'],
+      {
+        'data-track-info': JSON.stringify({
+          productId: 'inv3nted-0001-0002',
+          title: 'The Ember Orchard',
+          isPreview: false,
+          productType: 'BOOK_PURCHASED',
+        }),
+      },
+      '',
+      [
+        el(
+          'a',
+          ['title'],
+          { href: 'https://www.kobo.com/us/en/ebook/the-ember-orchard' },
+          'The Ember Orchard',
+        ),
+        el('span', ['badge'], {}, 'Preview'),
+        el('span', ['progress'], {}, '45%'),
+        el('a', ['author'], { 'aria-label': 'Nell Varga' }, 'Nell Varga'),
+      ],
+    );
+    const text = outline(card, ['kobo.com']);
+    expect(text).toContain('li.item-wrapper.book');
+    expect(text).toContain('data-track-info (JSON):');
+    expect(text).toContain('isPreview: true/false');
+    expect(text).toContain('"BOOK_PURCHASED"');
+    expect(text).toContain('href=www.kobo.com/us/en/ebook/:slug');
+    expect(text).toContain('text: "Preview"');
+    expect(text).toContain('text: percent text');
+    for (const s of SECRETS) expect(text).not.toContain(s);
+    expect(text).not.toContain('the-ember-orchard');
+  });
+
+  it('never lists the same shape twice when answers repeat', () => {
+    const many = Array.from({ length: 12 }, () => ({ path: JSON.stringify([{ x: 1, y: 2 }]) }));
+    const text = render(shapeOf(many, OWN));
+    expect(text.match(/json text:/g)).toHaveLength(1);
   });
 });

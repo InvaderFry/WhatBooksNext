@@ -53,7 +53,12 @@ export const COLLECTORS: Record<
     checkedOn: '2026-11-11',
     page: 'https://read.amazon.com/kindle-library',
   },
-  google_play: { state: 'not_built', checkedOn: null, page: null },
+  // Built 2026-11-11 from the owner's look-around report; not yet run on their account (A2).
+  google_play: {
+    state: 'not_checked',
+    checkedOn: null,
+    page: 'https://play.google.com/books?source=purchases',
+  },
   kobo: { state: 'not_built', checkedOn: null, page: null },
   globalcomix: { state: 'not_built', checkedOn: null, page: null },
 };

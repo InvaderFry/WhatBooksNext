@@ -34,6 +34,9 @@ export interface DomSignature {
 export class Probe {
   private groups = new Map<string, Group>();
   private embedded: { name: string; shape: Shape }[] = [];
+  private sections: { title: string; text: string }[] = [];
+  /** HTML pages the store's page fetched (Kobo loads library pages this way), for outlining. */
+  html: { key: string; body: string }[] = [];
   private own: string[];
   constructor(own: string[]) {
     this.own = own;
@@ -50,6 +53,8 @@ export class Probe {
       bytes: 0,
     };
     g.count++;
+    if (r.body !== null && /html/i.test(r.contentType) && this.html.length < 3)
+      this.html.push({ key, body: r.body });
     g.statuses.add(r.status);
     g.types.add((r.contentType.split(';')[0] ?? '').trim() || 'unknown');
     if (r.body !== null) {
@@ -64,6 +69,11 @@ export class Probe {
 
   addEmbedded(name: string, data: unknown): void {
     this.embedded.push({ name, shape: shapeOf(data, this.own) });
+  }
+
+  /** Extra report sections (card outlines), already title-free. */
+  addSection(title: string, text: string): void {
+    this.sections.push({ title, text });
   }
 
   report(head: {
@@ -88,7 +98,7 @@ export class Probe {
       out.push(
         `-- ${g.key}  ×${g.count}  status ${[...g.statuses].join('/')}  ${[...g.types].join('/')}  ${Math.round(g.bytes / 1024)} KB`,
       );
-      if (g.shape) out.push(render(g.shape, 1, 150));
+      if (g.shape) out.push(render(g.shape, 1, 250));
     }
     if (groups.length > 15) out.push(`(${groups.length - 15} more kinds left out)`);
     out.push('', `== Requests made before the script started (${head.earlier.length}) ==`);
@@ -96,13 +106,14 @@ export class Probe {
     out.push('', `== Data built into the page (${this.embedded.length}) ==`);
     for (const e of this.embedded.slice(0, 12)) {
       out.push(`-- ${e.name}`);
-      out.push(render(e.shape, 1, 150));
+      out.push(render(e.shape, 1, 400));
     }
     out.push('', '== Repeated page elements (likely book cards) ==');
     for (const d of head.dom)
       out.push(
         `- ${d.sig} ×${d.count}; attributes: ${d.attrs.join(', ') || 'none'}; link: ${d.link ?? 'none'}; image: ${d.hasImage ? 'yes' : 'no'}`,
       );
+    for (const s of this.sections) out.push('', `== ${s.title} ==`, s.text);
     return out.join('\n');
   }
 }

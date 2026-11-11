@@ -2,9 +2,19 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { bundleCollector, COLLECTOR_SCRIPTS, scriptPath } from '../../scripts/buildCollector.ts';
+import {
+  googlePlay,
+  parsePlayCards,
+  type PlayCard,
+} from '../../tools/store-collector/adapters/googlePlay.ts';
 import { kindle, parseKindlePage } from '../../tools/store-collector/adapters/kindle.ts';
 import { report } from '../../tools/store-collector/core/report.ts';
-import { scan, type ScanDeps } from '../../tools/store-collector/core/scan.ts';
+import {
+  scan,
+  scanCards,
+  type CardScanDeps,
+  type ScanDeps,
+} from '../../tools/store-collector/core/scan.ts';
 
 /**
  * The store collector core and the Kindle adapter (store purchases plan, Stage 1a), on invented
@@ -260,6 +270,131 @@ describe('scanning a library', () => {
       expect(text).not.toContain(x.storeRecordId);
     }
     expect(text).not.toMatch(/https?:/);
+  });
+});
+
+const CARDS = JSON.parse(
+  fs.readFileSync(
+    path.join(import.meta.dirname, '..', '..', 'fixtures', 'stores', 'google_play', 'cards.json'),
+    'utf8',
+  ),
+) as PlayCard[];
+const PLAY = new URL('https://play.google.com/books?source=purchases');
+
+/**
+ * A fake Google Play Books page: a scrolling list that shows `window` cards at a time (and drops
+ * the ones scrolled past, as long lists do), ending after the last card.
+ */
+function playPage(cards: PlayCard[], window = 2, extra: Partial<CardScanDeps> = {}) {
+  let top = 0;
+  let url = PLAY;
+  const d: CardScanDeps = {
+    page: PLAY,
+    currentUrl: () => url,
+    readCards: () => cards.slice(top, top + window),
+    scroll: () => {
+      top = Math.min(top + window, Math.max(0, cards.length - window));
+      return { atBottom: top + window >= cards.length };
+    },
+    sleep: async () => {},
+    now: () => new Date('2026-11-11T12:00:00Z'),
+    signal: new AbortController().signal,
+    ...extra,
+  };
+  return { d, goTo: (u: string) => (url = new URL(u)) };
+}
+
+describe('reading Google Play Books cards', () => {
+  it('reads ebook cards as purchases with their volume ID and reader link, and asks about the rest', () => {
+    const page = parsePlayCards(CARDS);
+    expect(page.records.map((r) => [r.storeRecordId, r.acquisition.type])).toEqual([
+      ['invEmberOrch01', 'purchase'],
+      ['invTidewright02', 'purchase'],
+      ['invLanterns003', 'purchase'],
+      ['invQuietMach04', 'uncertain'],
+      ['invOrchardLed05', 'purchase'],
+    ]);
+    expect(page.records[2]).toEqual({
+      storeRecordId: 'invLanterns003',
+      idKind: 'volume',
+      title: 'Lanterns Over Harrowgate',
+      unit: 'book',
+      acquisition: { type: 'purchase', evidence: 'listed under Purchases; card type ebook' },
+      readUrl: 'https://play.google.com/books/reader?id=invLanterns003',
+      creators: [
+        { name: 'Pell Inchcape', role: 'author' },
+        { name: 'Wenna Holloway', role: 'author' },
+      ],
+    });
+    expect(page.records[3]!.acquisition.evidence).toBe(
+      'listed under Purchases; card type audiobook',
+    );
+    expect(page.records[4]!.creators).toBeUndefined();
+    expect(page.labels).toEqual(['ebook', 'ebook', 'ebook', 'audiobook', 'ebook']);
+  });
+
+  it('refuses cards that look different (the layout fingerprint)', () => {
+    expect(() => parsePlayCards({})).toThrow(/list of book cards/);
+    expect(() => parsePlayCards([{ ...CARDS[0], href: 'https://play.google.com/store' }])).toThrow(
+      /reader link/,
+    );
+    expect(() => parsePlayCards([{ ...CARDS[0], title: ' ' }])).toThrow(/title/);
+  });
+
+  it('only runs on the purchases page, so uploads stay out', () => {
+    expect(googlePlay.checkPage(PLAY).ok).toBe(true);
+    const all = googlePlay.checkPage(new URL('https://play.google.com/books'));
+    expect(!all.ok && all.message).toMatch(/source=purchases/);
+    expect(googlePlay.checkPage(new URL('https://www.amazon.com/')).ok).toBe(false);
+  });
+});
+
+describe('scanning a page of cards', () => {
+  it('scrolls to the end, keeps every card seen, and ends complete', async () => {
+    const r = await scanCards(googlePlay, playPage(CARDS).d);
+    expect(r.envelope.records.map((x) => x.storeRecordId)).toEqual(
+      CARDS.map((c) => new URL(c.href!).searchParams.get('id')),
+    );
+    expect(r.envelope).toMatchObject({
+      service: 'google_play',
+      adapterVersion: '1',
+      completion: { status: 'complete', reason: 'finished' },
+      counts: { seen: 5, included: 4, uncertain: 1 },
+    });
+    expect(r.stats.fingerprint).toBe('passed');
+  });
+
+  it('never reports an empty page as an empty library', async () => {
+    const r = await scanCards(googlePlay, playPage([]).d);
+    expect(r.envelope.completion).toMatchObject({ status: 'failed', reason: 'layout_changed' });
+  });
+
+  it('stops when the tab goes to a sign-in page', async () => {
+    const p = playPage(CARDS);
+    let steps = 0;
+    p.d.sleep = async () => {
+      if (++steps === 2) p.goTo('https://accounts.google.com/signin');
+    };
+    const r = await scanCards(googlePlay, p.d);
+    expect(r.envelope.completion).toMatchObject({ status: 'partial', reason: 'signed_out' });
+    expect(r.envelope.records.length).toBeGreaterThan(0);
+  });
+
+  it('stops as partial when cancelled, and at the safety limit', async () => {
+    const ctrl = new AbortController();
+    const cancelled = await scanCards(
+      googlePlay,
+      playPage(CARDS, 2, { signal: ctrl.signal, sleep: async () => ctrl.abort() }).d,
+    );
+    expect(cancelled.envelope.completion).toMatchObject({ status: 'partial', reason: 'cancelled' });
+    const limited = await scanCards(
+      googlePlay,
+      playPage(CARDS, 1, { limits: { maxRequests: 2 } }).d,
+    );
+    expect(limited.envelope.completion).toMatchObject({
+      status: 'partial',
+      reason: 'limit_reached',
+    });
   });
 });
 

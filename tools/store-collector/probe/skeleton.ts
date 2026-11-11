@@ -109,8 +109,16 @@ export function merge(a: Shape, b: Shape): Shape {
         ),
       };
     }
-    case 'mixed':
-      return merge({ t: 'null' }, { t: 'mixed', of: [...a.of, ...(b as typeof a).of] });
+    case 'mixed': {
+      // Fold each kind into the one already there, so a shape is never listed twice.
+      const of = [...a.of];
+      for (const x of (b as typeof a).of) {
+        const i = of.findIndex((y) => y.t === x.t);
+        if (i >= 0) of[i] = merge(of[i]!, x);
+        else of.push(x);
+      }
+      return { t: 'mixed', of };
+    }
     default:
       return a;
   }

@@ -468,8 +468,18 @@ try {
       'settings-store-look-around',
       '/?view=settings',
       async (p) => {
-        await p.getByRole('radio', { name: /Google Play Books/ }).check();
+        await p.getByRole('radio', { name: /Kobo/ }).check();
         await p.getByRole('button', { name: 'Copy the look-around script' }).waitFor();
+        await p.getByRole('heading', { name: 'Import store purchases' }).scrollIntoViewIfNeeded();
+      },
+    ],
+    [
+      // Google Play Books: its own script and steps (purchases only).
+      'settings-store-google',
+      '/?view=settings',
+      async (p) => {
+        await p.getByRole('radio', { name: /Google Play Books/ }).check();
+        await p.getByRole('button', { name: 'Copy the Google Play Books script' }).waitFor();
         await p.getByRole('heading', { name: 'Import store purchases' }).scrollIntoViewIfNeeded();
       },
     ],

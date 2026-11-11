@@ -786,8 +786,10 @@ function LookAroundSteps({ service }: { service: string }) {
           browser asks).
         </li>
         <li>
-          Scroll your library slowly to the very bottom, until no more books load (click any “Show
-          more” button). Then click <strong>Finish</strong> in the box in the corner.
+          If the page has tabs or filters, click away and back to your books once, so the page loads
+          its list again while the script watches. Then scroll your library slowly to the very
+          bottom, until no more books load (click any “Show more” button), and click{' '}
+          <strong>Finish</strong> in the box in the corner.
         </li>
         <li>
           Click <strong>Copy report</strong> and paste it into chat. It holds only the page’s
@@ -799,19 +801,38 @@ function LookAroundSteps({ service }: { service: string }) {
   );
 }
 
+/** What differs between stores' script steps. */
+const SCRIPT_STEPS: Record<string, { where: string; shown: string; pace: string; file: string }> = {
+  kindle: {
+    where: 'your Kindle library',
+    shown: 'read.amazon.com/kindle-library',
+    pace: 'it goes slowly on purpose (about 50 books every 2 seconds)',
+    file: 'whatbooksnext-kindle-…json',
+  },
+  google_play: {
+    where: 'your Google Play Books purchases',
+    shown: 'play.google.com/books?source=purchases, so your own uploads stay out',
+    pace: 'it scrolls the page itself, slowly, and reads the book cards; don’t scroll or switch tabs while it runs',
+    file: 'whatbooksnext-google_play-…json',
+  },
+};
+
 /** The steps for one store's console script. Written for someone who has never used one. */
-function KindleSteps({ page }: { page: string }) {
+function ScriptSteps({ service, page }: { service: string; page: string }) {
   const [copied, setCopied] = useState<string | null>(null);
+  const label = STORE_LABELS[service] ?? service;
+  const t = SCRIPT_STEPS[service];
+  if (!t) return null;
   return (
     <ol className="steps">
       <li>
         In Edge or Chrome, open{' '}
         <a href={page} target="_blank" rel="noopener noreferrer">
-          your Kindle library
+          {t.where}
           <span aria-hidden="true"> ↗</span>
           <span className="visually-hidden"> (opens in a new tab)</span>
         </a>{' '}
-        (read.amazon.com/kindle-library) and sign in if Amazon asks.
+        ({t.shown}) and sign in if asked.
       </li>
       <li>
         Copy the script:{' '}
@@ -820,15 +841,17 @@ function KindleSteps({ page }: { page: string }) {
           className="small secondary"
           onClick={async () => {
             try {
-              const r = await api.get<{ script: string }>('/api/store-collectors/kindle/script');
+              const r = await api.get<{ script: string }>(
+                `/api/store-collectors/${service}/script`,
+              );
               await navigator.clipboard.writeText(r.script);
-              setCopied('Copied. Now go to the Kindle tab.');
+              setCopied(`Copied. Now go to the ${label} tab.`);
             } catch (e) {
               setCopied(`Couldn’t copy: ${(e as Error).message}`);
             }
           }}
         >
-          Copy the Kindle script
+          Copy the {label} script
         </button>{' '}
         {copied && (
           <span className="small" role="status">
@@ -837,7 +860,7 @@ function KindleSteps({ page }: { page: string }) {
         )}
       </li>
       <li>
-        On the Kindle tab, press <kbd>F12</kbd> (or <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>J</kbd>)
+        On the {label} tab, press <kbd>F12</kbd> (or <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>J</kbd>)
         and choose the <strong>Console</strong> tab.
       </li>
       <li>
@@ -845,13 +868,13 @@ function KindleSteps({ page }: { page: string }) {
         about pasting, type <code>allow pasting</code>, press <kbd>Enter</kbd>, then paste again.
       </li>
       <li>
-        Read the notice and click <strong>OK</strong>. Leave the tab open: it goes slowly on purpose
-        (about 50 books every 2 seconds) and shows its progress in the corner.
+        Read the notice and click <strong>OK</strong>. Leave the tab open: {t.pace}. It shows its
+        progress in the corner.
       </li>
       <li>
-        When it’s done, a file called <code>whatbooksnext-kindle-…json</code> is in your Downloads
-        folder. Keep it private. If you’re asked for the report, click{' '}
-        <strong>Copy report (no titles)</strong> and paste it into chat.
+        When it’s done, a file called <code>{t.file}</code> is in your Downloads folder. Keep it
+        private. If you’re asked for the report, click <strong>Copy report (no titles)</strong> and
+        paste it into chat.
       </li>
       <li>Choose that file below.</li>
     </ol>
@@ -938,7 +961,7 @@ export function StorePurchaseImport({ onChanged }: { onChanged?: () => void }) {
         ))}
       </fieldset>
       {chosen && chosen.state === 'not_built' && <LookAroundSteps service={service} />}
-      {chosen && chosen.state !== 'not_built' && service === 'kindle' && chosen.page && (
+      {chosen && chosen.state !== 'not_built' && chosen.page && (
         <>
           <p className="small warn">
             Reading a store page with a script may break the store’s terms of use, and a store could
@@ -946,7 +969,7 @@ export function StorePurchaseImport({ onChanged }: { onChanged?: () => void }) {
             person scrolling their own library. If you’d rather not, use the spreadsheet or add
             books by hand.
           </p>
-          <KindleSteps page={chosen.page} />
+          <ScriptSteps service={service} page={chosen.page} />
         </>
       )}
       {chosen && chosen.state !== 'not_built' && (

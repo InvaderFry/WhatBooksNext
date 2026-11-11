@@ -86,6 +86,7 @@ describe('which links a store copy may carry', () => {
     expect(checkStoreLink('kobo', 'https://www.kobo.com/ww/en/ebook/invented-book').kind).toBe(
       'page',
     );
+    expect(checkStoreLink('kobo', 'https://readnow.kobo.com/inv-book-0001').kind).toBe('read');
     expect(checkStoreLink('globalcomix', 'https://globalcomix.com/c/invented-comic').kind).toBe(
       'page',
     );

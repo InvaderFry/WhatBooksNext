@@ -2,8 +2,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { googlePlay } from '../../tools/store-collector/adapters/googlePlay.ts';
 import { kindle } from '../../tools/store-collector/adapters/kindle.ts';
-import { scan } from '../../tools/store-collector/core/scan.ts';
+import { scan, scanCards } from '../../tools/store-collector/core/scan.ts';
 import { createApp } from './app.ts';
 import type { DB } from './db/database.ts';
 import { makeEpub } from './testing/fixtures.ts';
@@ -309,7 +310,12 @@ describe('the collectors in the app', () => {
         checkedOn: '2026-11-11',
         page: 'https://read.amazon.com/kindle-library',
       },
-      { service: 'google_play', state: 'not_built', checkedOn: null, page: null },
+      {
+        service: 'google_play',
+        state: 'not_checked',
+        checkedOn: null,
+        page: 'https://play.google.com/books?source=purchases',
+      },
       { service: 'kobo', state: 'not_built', checkedOn: null, page: null },
       { service: 'globalcomix', state: 'not_built', checkedOn: null, page: null },
     ]);
@@ -347,5 +353,50 @@ describe('the collectors in the app', () => {
       attached: 1,
       skipped: 1,
     });
+  });
+
+  it('imports what the Google Play Books collector read, as Google Play store copies with links', async () => {
+    const cards = JSON.parse(
+      fs.readFileSync(
+        path.join(
+          import.meta.dirname,
+          '..',
+          '..',
+          'fixtures',
+          'stores',
+          'google_play',
+          'cards.json',
+        ),
+        'utf8',
+      ),
+    );
+    const result = await scanCards(googlePlay, {
+      page: new URL('https://play.google.com/books?source=purchases'),
+      currentUrl: () => new URL('https://play.google.com/books?source=purchases'),
+      readCards: () => cards,
+      scroll: () => ({ atBottom: true }),
+      sleep: async () => {},
+      now: () => new Date('2026-11-11T12:00:00Z'),
+      signal: new AbortController().signal,
+    });
+    const text = JSON.stringify(result.envelope);
+    const p = await preview(text);
+    expect(p).toMatchObject({ service: 'google_play', label: 'Google Play Books', problems: [] });
+    expect(p.rows.find((r: { key: string }) => r.key === 'volume:invQuietMach04').acquisition).toBe(
+      'uncertain',
+    );
+    const r = await importFile(text, {
+      attach: ['volume:invEmberOrch01', 'volume:invTidewright02'],
+    });
+    expect(r).toMatchObject({ added: 2, attached: 2, skipped: 1, links: 4 });
+    const ledger = one("SELECT id FROM items WHERE title = 'The Orchard Ledger'") as string;
+    expect((await api.get(`/api/items/${ledger}`)).body.availability.storeLinks).toEqual([
+      {
+        store: 'google_play',
+        url: 'https://play.google.com/books/reader?id=invOrchardLed05',
+        kind: 'read',
+        host: 'play.google.com',
+      },
+    ]);
   });
 });

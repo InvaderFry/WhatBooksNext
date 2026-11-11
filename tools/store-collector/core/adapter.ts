@@ -21,6 +21,20 @@ export interface Adapter {
   parse(body: unknown): ParsedPage;
 }
 
+/**
+ * A store whose library page shows every book as a card (store purchases plan, Stage 2): the
+ * collector scrolls the page and reads the cards, making no requests of its own. `parse` is pure:
+ * the page side hands it plain objects it read from the cards.
+ */
+export interface CardAdapter {
+  service: Service;
+  version: string;
+  label: string;
+  checkPage(url: URL): { ok: true; region: string } | { ok: false; message: string };
+  /** Reads the cards shown now. `next` is unused. Throws LayoutChanged when they look different. */
+  parse(cards: unknown): ParsedPage;
+}
+
 export interface ParsedPage {
   records: StoreRecord[];
   excluded: { id: string; reason: ExcludedReason }[];

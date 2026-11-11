@@ -44,7 +44,20 @@
 		"unread",
 		"read",
 		"true",
-		"false"
+		"false",
+		"plus",
+		"kobo plus",
+		"unlimited",
+		"kindle unlimited",
+		"prime reading",
+		"free sample",
+		"downloaded",
+		"returned",
+		"expired",
+		"subscribed",
+		"unlocked",
+		"locked",
+		"premium"
 	].map((w) => w.toLowerCase()));
 	/**
 	* A string value as it may appear in the report: a known label word, or an UPPER_SNAKE label
@@ -58,6 +71,7 @@
 		if (/^\d{4}-\d{2}-\d{2}(T|$)/.test(t)) return "date text";
 		if (/^\d{10,13}$/.test(t)) return `digits(${t.length})`;
 		if (/^-?\d+(\.\d+)?$/.test(t)) return "number text";
+		if (/^\d{1,3}(\.\d+)?\s?%$/.test(t)) return "percent text";
 		if (/^[A-Za-z0-9_-]{8,}$/.test(t) && /\d/.test(t)) return `id-like(${t.length})`;
 		return `text(${t.length < 10 ? "<10" : t.length < 50 ? "10–50" : t.length < 200 ? "50–200" : "200+"})`;
 	}
@@ -220,10 +234,18 @@
 					items: Array.from({ length: len }, (_, i) => a.items[i] && bb.items[i] ? merge(a.items[i], bb.items[i]) : a.items[i] ?? bb.items[i])
 				};
 			}
-			case "mixed": return merge({ t: "null" }, {
-				t: "mixed",
-				of: [...a.of, ...b.of]
-			});
+			case "mixed": {
+				const of = [...a.of];
+				for (const x of b.of) {
+					const i = of.findIndex((y) => y.t === x.t);
+					if (i >= 0) of[i] = merge(of[i], x);
+					else of.push(x);
+				}
+				return {
+					t: "mixed",
+					of
+				};
+			}
 			default: return a;
 		}
 	}
@@ -293,10 +315,46 @@
 		return out;
 	}
 
+// tools/store-collector/probe/outline.ts
+	const SHOWN_ATTRS = /^(data-[a-z0-9-]{1,40}|aria-label|title|href|src|alt|role|type|name)$/;
+	function outline(n, own, maxLines = 80) {
+		const lines = [];
+		const walk = (x, d) => {
+			if (lines.length >= maxLines) return;
+			const pad = "  ".repeat(d);
+			const cls = x.classes.map((c) => /\d{3,}/.test(c) ? null : c.replace(/\d+/g, "#")).filter(Boolean).slice(0, 6);
+			const parts = [`${pad}${x.tag}${cls.length ? "." + cls.join(".") : ""}`];
+			const nested = [];
+			for (const a of x.attrs) {
+				if (!SHOWN_ATTRS.test(a.name)) continue;
+				const v = a.value.trim();
+				if (a.name === "href" || a.name === "src") {
+					parts.push(`${a.name}=${maskUrl(v, own)}`);
+					continue;
+				}
+				if (v.startsWith("{") || v.startsWith("[")) try {
+					nested.push(`${pad}  ${a.name} (JSON):`, render(shapeOf(JSON.parse(v), own), d + 2, 40));
+					continue;
+				} catch {}
+				parts.push(`${a.name}=${v ? describeString(v, own) : "(empty)"}`);
+			}
+			if (x.text.trim()) parts.push(`text: ${describeString(x.text, own)}`);
+			lines.push(parts.join(" "), ...nested);
+			for (const c of x.children.slice(0, 12)) walk(c, d + 1);
+			if (x.children.length > 12) lines.push(`${pad}  … ${x.children.length - 12} more children`);
+		};
+		walk(n, 0);
+		if (lines.length >= maxLines) lines.push(`… (cut at ${maxLines} lines)`);
+		return lines.join("\n");
+	}
+
 // tools/store-collector/probe/report.ts
 	var Probe = class {
 		groups = /* @__PURE__ */ new Map();
 		embedded = [];
+		sections = [];
+		/** HTML pages the store's page fetched (Kobo loads library pages this way), for outlining. */
+		html = [];
 		own;
 		constructor(own) {
 			this.own = own;
@@ -312,6 +370,10 @@
 				bytes: 0
 			};
 			g.count++;
+			if (r.body !== null && /html/i.test(r.contentType) && this.html.length < 3) this.html.push({
+				key,
+				body: r.body
+			});
 			g.statuses.add(r.status);
 			g.types.add((r.contentType.split(";")[0] ?? "").trim() || "unknown");
 			if (r.body !== null) {
@@ -329,6 +391,13 @@
 				shape: shapeOf(data, this.own)
 			});
 		}
+		/** Extra report sections (card outlines), already title-free. */
+		addSection(title, text) {
+			this.sections.push({
+				title,
+				text
+			});
+		}
 		report(head) {
 			const groups = [...this.groups.values()].sort((a, b) => Number(!!b.shape) - Number(!!a.shape) || b.bytes - a.bytes);
 			const out = [
@@ -341,7 +410,7 @@
 			];
 			for (const g of groups.slice(0, 15)) {
 				out.push(`-- ${g.key}  ×${g.count}  status ${[...g.statuses].join("/")}  ${[...g.types].join("/")}  ${Math.round(g.bytes / 1024)} KB`);
-				if (g.shape) out.push(render(g.shape, 1, 150));
+				if (g.shape) out.push(render(g.shape, 1, 250));
 			}
 			if (groups.length > 15) out.push(`(${groups.length - 15} more kinds left out)`);
 			out.push("", `== Requests made before the script started (${head.earlier.length}) ==`);
@@ -349,10 +418,11 @@
 			out.push("", `== Data built into the page (${this.embedded.length}) ==`);
 			for (const e of this.embedded.slice(0, 12)) {
 				out.push(`-- ${e.name}`);
-				out.push(render(e.shape, 1, 150));
+				out.push(render(e.shape, 1, 400));
 			}
 			out.push("", "== Repeated page elements (likely book cards) ==");
 			for (const d of head.dom) out.push(`- ${d.sig} ×${d.count}; attributes: ${d.attrs.join(", ") || "none"}; link: ${d.link ?? "none"}; image: ${d.hasImage ? "yes" : "no"}`);
+			for (const s of this.sections) out.push("", `== ${s.title} ==`, s.text);
 			return out.join("\n");
 		}
 	};
@@ -371,13 +441,20 @@
 				return false;
 			}
 		};
-		const readable = (type) => /json|javascript|text\/plain|protobuf/i.test(type);
+		const readable = (type) => /json|javascript|text\/plain|protobuf|html/i.test(type);
+		const absolute = (u) => {
+			try {
+				return new URL(u, location.href).href;
+			} catch {
+				return u;
+			}
+		};
 		const origFetch = window.fetch;
 		window.fetch = async function(...args) {
 			const res = await origFetch.apply(this, args);
 			try {
 				const req = args[0];
-				const url = typeof req === "string" ? req : req instanceof URL ? req.href : req.url;
+				const url = absolute(typeof req === "string" ? req : req instanceof URL ? req.href : req.url);
 				const method = (args[1]?.method ?? (req instanceof Request ? req.method : "GET")) || "GET";
 				const type = res.headers.get("content-type") ?? "";
 				const body = isOwn(url) && readable(type) ? await res.clone().text().catch(() => null) : null;
@@ -437,9 +514,9 @@
 				"__PRELOADED_STATE__"
 			]) if (w[k] && typeof w[k] === "object") probe.addEmbedded(`window.${k}`, w[k]);
 		};
-		const domSignatures = () => {
+		const domSignatures = (root = document.body) => {
 			const counts = /* @__PURE__ */ new Map();
-			for (const el of document.body.querySelectorAll("*")) {
+			for (const el of root.querySelectorAll("*")) {
 				const cls = [...el.classList].map((c) => /\d{3,}|^[a-z0-9_-]{1,3}$/i.test(c) ? null : c.replace(/\d+/g, "#")).filter(Boolean).slice(0, 4).join(".");
 				const sig = `${el.tagName.toLowerCase()}${cls ? "." + cls : ""}`;
 				const got = counts.get(sig);
@@ -456,7 +533,22 @@
 					});
 				}
 			}
-			return [...counts.values()].filter((d) => d.count >= 5 && d.count <= 5e3 && (d.link || d.hasImage)).sort((a, b) => b.count - a.count).slice(0, 15).map(({ el: _el, ...d }) => d);
+			return [...counts.values()].filter((d) => d.count >= 5 && d.count <= 5e3 && (d.link || d.hasImage)).sort((a, b) => b.count - a.count).slice(0, 15);
+		};
+		const plain = (list) => list.map(({ el: _el, ...d }) => d);
+		const toNode = (el, depth = 0) => ({
+			tag: el.tagName.toLowerCase(),
+			classes: [...el.classList],
+			attrs: [...el.attributes].map((a) => ({
+				name: a.name,
+				value: a.value
+			})),
+			text: [...el.childNodes].filter((c) => c.nodeType === Node.TEXT_NODE).map((c) => c.textContent ?? "").join(" ").trim(),
+			children: depth < 8 ? [...el.children].map((c) => toNode(c, depth + 1)) : []
+		});
+		const cardOutlines = (list, where) => {
+			const cards = list.filter((d) => d.link && d.hasImage).sort((a, b) => b.count - a.count || a.sig.length - b.sig.length).slice(0, 2);
+			for (const c of cards) probe.addSection(`One card in detail (${where}): ${c.sig} ×${c.count}`, outline(toNode(c.el), own));
 		};
 		const panel = document.createElement("div");
 		panel.setAttribute("role", "dialog");
@@ -482,11 +574,19 @@
 		finish.onclick = () => {
 			restore();
 			readEmbedded();
+			const here = domSignatures();
+			cardOutlines(here, "this page");
+			probe.html.forEach((h, i) => {
+				const doc = new DOMParser().parseFromString(h.body, "text/html");
+				const sigs = domSignatures(doc.body ?? doc);
+				probe.addSection(`Repeated elements in fetched page ${i + 1} (${h.key})`, plain(sigs).map((d) => `- ${d.sig} ×${d.count}; attributes: ${d.attrs.join(", ") || "none"}; link: ${d.link ?? "none"}; image: ${d.hasImage ? "yes" : "no"}`).join("\n"));
+				if (i === 0) cardOutlines(sigs, `fetched page ${i + 1}`);
+			});
 			const text = probe.report({
 				page: location.href,
 				browser: navigator.userAgent,
 				date: (/* @__PURE__ */ new Date()).toISOString(),
-				dom: domSignatures(),
+				dom: plain(here),
 				earlier
 			});
 			console.log(text);

@@ -41,6 +41,19 @@ const LABEL_WORDS = new Set(
     'read',
     'true',
     'false',
+    'plus',
+    'kobo plus',
+    'unlimited',
+    'kindle unlimited',
+    'prime reading',
+    'free sample',
+    'downloaded',
+    'returned',
+    'expired',
+    'subscribed',
+    'unlocked',
+    'locked',
+    'premium',
   ].map((w) => w.toLowerCase()),
 );
 
@@ -56,6 +69,7 @@ export function describeString(s: string, ownHosts: string[]): string {
   if (/^\d{4}-\d{2}-\d{2}(T|$)/.test(t)) return 'date text';
   if (/^\d{10,13}$/.test(t)) return `digits(${t.length})`;
   if (/^-?\d+(\.\d+)?$/.test(t)) return 'number text';
+  if (/^\d{1,3}(\.\d+)?\s?%$/.test(t)) return 'percent text';
   if (/^[A-Za-z0-9_-]{8,}$/.test(t) && /\d/.test(t)) return `id-like(${t.length})`;
   return `text(${t.length < 10 ? '<10' : t.length < 50 ? '10–50' : t.length < 200 ? '50–200' : '200+'})`;
 }

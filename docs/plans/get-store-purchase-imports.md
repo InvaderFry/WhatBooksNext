@@ -2,9 +2,9 @@
 
 Status: **Stage 0 decided** (all four stores get a collector). **Store links built and checked**
 (A1b). **Stage 1 done for Kindle on amazon.com** (A2 and A3, 2026-11-11). The extension (1c) is
-**deferred** to a nice-to-have (owner decision, 2026-11-11). **Stage 2 started**: the look-around
-script is built, and it's waiting on the owner's reports for Google Play Books, Kobo (US) and
-GlobalComix (A6). Written 2026-11-11. This revises a first draft from 2026-11-10 ("console scripts, then one
+**deferred** to a nice-to-have (owner decision, 2026-11-11). **Stage 2:** the look-around reports
+for all three stores are in (A6). **Google Play Books is built** and waits on its A2/A3. Kobo and
+GlobalComix need a second, more detailed look-around (A6b) with the improved script. Written 2026-11-11. This revises a first draft from 2026-11-10 ("console scripts, then one
 extension") after a review. The review kept the draft's rules and its order of proving extraction
 before packaging it. It added: checking each store's official export before scraping anything,
 account safety limits, the owner's steps written for a non-programmer, building one store end to
@@ -251,17 +251,17 @@ they use and it opened the right book (owner action A1b). Owner edits survive a 
 
 **Hosts accepted** (https only; no user name, password or port):
 
-| Store             | Hosts                                                                                                                                                                                                                                           | Paths                                             | Reader or page                                        |
-| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------- | ----------------------------------------------------- |
-| Kindle            | `read.amazon.<x>`, `www.amazon.<x>`, `amazon.<x>` for x in com, ca, com.mx, com.br, co.uk, ie, de, fr, it, es, nl, se, pl, com.be, com.tr, ae, sa, eg, in, co.jp, com.au, sg (Amazon's country sites as known; not checked against a live list) | any                                               | `read.amazon.*` is the web reader; the rest are pages |
-| Google Play Books | `play.google.com`                                                                                                                                                                                                                               | `/books…`, `/store/books…` (Play also sells apps) | `/books/reader` is the reader                         |
-| Kobo              | `kobo.com`, `www.kobo.com`                                                                                                                                                                                                                      | any                                               | a `reader` / `web-reader` / `read` path segment reads |
-| GlobalComix       | `globalcomix.com`, `www.globalcomix.com`                                                                                                                                                                                                        | any                                               | as Kobo                                               |
-| Another app       | any real https site (not `localhost`, a bare name or an IP address), shown with its host                                                                                                                                                        | any                                               | page                                                  |
-| Apple Books       | none: no web reader                                                                                                                                                                                                                             |                                                   |                                                       |
+| Store             | Hosts                                                                                                                                                                                                                                           | Paths                                             | Reader or page                                                                            |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| Kindle            | `read.amazon.<x>`, `www.amazon.<x>`, `amazon.<x>` for x in com, ca, com.mx, com.br, co.uk, ie, de, fr, it, es, nl, se, pl, com.be, com.tr, ae, sa, eg, in, co.jp, com.au, sg (Amazon's country sites as known; not checked against a live list) | any                                               | `read.amazon.*` is the web reader; the rest are pages                                     |
+| Google Play Books | `play.google.com`                                                                                                                                                                                                                               | `/books…`, `/store/books…` (Play also sells apps) | `/books/reader` is the reader                                                             |
+| Kobo              | `kobo.com`, `www.kobo.com`, `readnow.kobo.com` (the web reader)                                                                                                                                                                                 | any                                               | `readnow.kobo.com` reads; elsewhere a `reader` / `web-reader` / `read` path segment reads |
+| GlobalComix       | `globalcomix.com`, `www.globalcomix.com`                                                                                                                                                                                                        | any                                               | as Kobo                                                                                   |
+| Another app       | any real https site (not `localhost`, a bare name or an IP address), shown with its host                                                                                                                                                        | any                                               | page                                                                                      |
+| Apple Books       | none: no web reader                                                                                                                                                                                                                             |                                                   |                                                                                           |
 
-A Kobo web-reader host (`readnow.kobo.com`) is mentioned by one third-party site but not by Kobo;
-it's left out until the owner's A1b link shows which host Kobo really uses.
+`readnow.kobo.com` is Kobo's web reader: the owner's Kobo library links every "Read now" button
+there (look-around report, 2026-11-11), so it's accepted as a Kobo reader link.
 
 **Link patterns from a store's ID: none in use yet.** Candidates, all **unchecked** on a signed-in
 account, so the code doesn't build any of them:
@@ -553,6 +553,74 @@ Settings → Import store purchases shows its steps for any store without a scri
 - **Tests:** `server/src/storeProbe.test.ts` feeds it invented answers full of titles, IDs and an
   email, and checks that none reaches the report.
 
+### What the look-around reports showed (A6, 2026-11-11)
+
+Structure and counts only; the reports themselves stay out of the repo.
+
+- **Google Play Books**, on `play.google.com/books?source=purchases`. The owner uses the
+  Purchases filter because their own uploads are in the same library.
+  - The page loads the whole library at the start, from Google's internal
+    `playbooks-pa.clients6.google.com` services (`SyncUserLibrary`, `GetLicenses`,
+    `ListFreeBooksForLicense` and others). It made no requests while scrolling.
+  - It renders one `gpb-volume-card` per book: 23, of which 22 had `div.card.ebook` and one had
+    another card type. Each card has `a.title` and `a.cover-link` to
+    `play.google.com/books/reader?id=<volume ID>`, and `a.author` to an author page.
+- **Kobo** (`kobo.com/us/en/library/books`, Firefox):
+  - The library is server-rendered HTML, paged as `?pageNumber=N`; scrolling fetched 3 more
+    pages as HTML.
+  - Cards are `li.item-wrapper.book` with a `data-track-info` attribute.
+  - Each card has a "Read now" link to `readnow.kobo.com/<id>`, "view details" to
+    `/us/en/ebook/<slug>`, and an author link.
+  - **Missing:** what tells a purchase from a preview, a free book or Kobo Plus, and what
+    `data-track-info` holds. The first look-around didn't outline cards or read HTML pages.
+- **GlobalComix** (`globalcomix.com/my-shelf/purchases`, Firefox):
+  - About 30 cards linking `/c/<comic>/r/<release>`.
+  - While scrolling, the page fetched 5 release-detail answers from
+    `api.globalcomix.com/v1/…?releaseDetails=…`. Each holds one release with `comic_name`,
+    `title`, `release_type_name` ("Volume"), `chapter`, `isbn` and per-page panel data. That's
+    about 1.7 MB for 5, too heavy to fetch per book.
+  - `window.__INITIAL_STATE__` holds react-query results. The ones shown were site settings,
+    including the reading statuses "reading" and "finished".
+  - **Missing:** the request or data that lists the purchases themselves. It was loaded before
+    the script started.
+
+### The look-around script, version 2 (2026-11-11)
+
+Built for A6b:
+
+- It outlines one book card in detail: tags, classes, attribute names, the shape of any JSON in
+  attributes such as `data-track-info`, and label words in texts like "Preview" or "Kobo Plus".
+- It reads the HTML pages the store's page fetches (Kobo) and outlines their repeated elements
+  and one card.
+- It resolves relative request addresses (Kobo's showed as `invalid.example`).
+- It no longer repeats the same shape over and over.
+- It gives longer output for data built into the page.
+- Its steps now say to click away and back to the books list once after starting, so a
+  single-page site like GlobalComix loads its list again while the script watches.
+
+### Google Play Books (built 2026-11-11, not yet checked)
+
+- `adapters/googlePlay.ts` (version 1) and `console/google_play.ts`, built into
+  `console-scripts/google_play.js`.
+- It runs only on `play.google.com/books…?source=purchases`, so uploads stay out.
+- The core gained a second loop, `scanCards`. It scrolls the page about a screen at a time
+  (same pacing and limits as Kindle) and reads the cards, keeping every card seen. **It makes no
+  requests at all.** It ends complete when the end of the list brings nothing new twice running.
+  It stops if the tab leaves the page (sign-in or anything else), and never reports an empty page
+  as an empty library.
+- **Reading:** each card gives the volume ID from its reader link, the title, the authors, and a
+  reader link reduced to `play.google.com/books/reader?id=<volume ID>`.
+  - An `ebook` card on the Purchases filter is a purchase.
+  - **Any other card type** (like the report's one non-ebook card) is uncertain, with the card
+    type as evidence, so the owner decides.
+  - No reading status, ISBN or acquisition date is shown on the card, so none is recorded.
+- **Not known yet:** whether Purchases includes free books the owner claimed (they'd come in as
+  purchases, which is what the plan wants), and what the non-ebook card is. The A2 report's
+  labels line will show the card types.
+- Settings shows Google as **Not checked yet** with its steps. Tests: `storeCollector.test.ts`
+  (cards and the scrolling loop on invented cards in `fixtures/stores/google_play/`) and
+  `app.storePurchases.test.ts` (imported end to end).
+
 **A collector that hasn't been checked is never shown as working.** In the extension and the app,
 each store is **Checked on <date>**, **Not checked yet**, or **Not supported** (with the reason).
 
@@ -576,15 +644,16 @@ each store is **Checked on <date>**, **Not checked yet**, or **Not supported** (
 Tell the owner plainly, at the start of the message, when each is due (as PLAN.md §21 asks). Add
 these rows to PLAN.md §21 when the stage starts.
 
-| ID  | When                  | What the owner does (no command line)                                                                                                                                                                                                                                                                                                                          | Time                 |
-| --- | --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------- |
-| A1  | Stage 0               | Say roughly how many books you own in Kindle, Google Play Books, Kobo and GlobalComix. No export requests are needed (decided 2026-11-11).                                                                                                                                                                                                                     | 2 min                |
-| A1b | Store links           | On a few store books (one per store you use), open the book page, add the link (copy it from the store's reader or book page in your browser), and click **Read in … ↗**. Say whether it opened the right book. Also say, without the ID itself, what shape the reader's address has (for example `read.amazon.com/?asin=…`), so link patterns can be checked. | 5 min                |
-| A2  | Stage 1a              | Sign in to the first store in Edge or Chrome, open its library page, and paste the script (Settings → Import store purchases → **Copy the Kindle script**) into the browser's developer console (the steps include the "allow pasting" prompt). Wait for it to finish, then paste the **title-free report** into chat. Keep the downloaded JSON file private.  | 10–15 min            |
-| A3  | Stage 1b              | In whatBooksNext: Settings → Import store purchases → choose the JSON file. Check that the preview looks right, then import. Say whether anything was wrong (no titles needed).                                                                                                                                                                                | 10 min               |
-| A6  | Stage 2 start         | In one sitting, on each of Google Play Books, Kobo (kobo.com/us) and GlobalComix: open your library page signed in, run the look-around script (Settings → Import store purchases → pick the store → **Copy the look-around script**), scroll to the bottom, click **Finish**, and paste the report into chat. It has no titles or IDs.                        | 15 min for all three |
-| A4  | Later (extension)     | Install the extension by following `INSTALL.md` (download the zip, unzip, open the browser's extensions page, turn on Developer mode, Load unpacked). Run **Scan this library** on the same store, import the file, and check that nothing is duplicated.                                                                                                      | 15 min               |
-| A5  | Each new store or fix | Copy the store's script again from Settings (it's always the latest), run it, and paste the report. Once there's an extension: install the new version instead.                                                                                                                                                                                                | 10 min per store     |
+| ID  | When                          | What the owner does (no command line)                                                                                                                                                                                                                                                                                                                          | Time                 |
+| --- | ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------- |
+| A1  | Stage 0                       | Say roughly how many books you own in Kindle, Google Play Books, Kobo and GlobalComix. No export requests are needed (decided 2026-11-11).                                                                                                                                                                                                                     | 2 min                |
+| A1b | Store links                   | On a few store books (one per store you use), open the book page, add the link (copy it from the store's reader or book page in your browser), and click **Read in … ↗**. Say whether it opened the right book. Also say, without the ID itself, what shape the reader's address has (for example `read.amazon.com/?asin=…`), so link patterns can be checked. | 5 min                |
+| A2  | Stage 1a                      | Sign in to the first store in Edge or Chrome, open its library page, and paste the script (Settings → Import store purchases → **Copy the Kindle script**) into the browser's developer console (the steps include the "allow pasting" prompt). Wait for it to finish, then paste the **title-free report** into chat. Keep the downloaded JSON file private.  | 10–15 min            |
+| A3  | Stage 1b                      | In whatBooksNext: Settings → Import store purchases → choose the JSON file. Check that the preview looks right, then import. Say whether anything was wrong (no titles needed).                                                                                                                                                                                | 10 min               |
+| A6  | Stage 2 start                 | In one sitting, on each of Google Play Books, Kobo (kobo.com/us) and GlobalComix: open your library page signed in, run the look-around script (Settings → Import store purchases → pick the store → **Copy the look-around script**), scroll to the bottom, click **Finish**, and paste the report into chat. It has no titles or IDs.                        | 15 min for all three |
+| A6b | Stage 2, Kobo and GlobalComix | Run the look-around again (it's improved) on Kobo's library and on GlobalComix's purchases. After starting it, click away and back to your books once, then scroll to the bottom, Finish, and paste both reports.                                                                                                                                              | 10 min               |
+| A4  | Later (extension)             | Install the extension by following `INSTALL.md` (download the zip, unzip, open the browser's extensions page, turn on Developer mode, Load unpacked). Run **Scan this library** on the same store, import the file, and check that nothing is duplicated.                                                                                                      | 15 min               |
+| A5  | Each new store or fix         | Copy the store's script again from Settings (it's always the latest), run it, and paste the report. Once there's an extension: install the new version instead.                                                                                                                                                                                                | 10 min per store     |
 
 Never share in chat: the JSON file, book titles, account names, emails, or anything from the
 store's sign-in.

@@ -4,6 +4,7 @@
 // anywhere: the report stays on screen for you to copy. See
 // docs/plans/get-store-purchase-imports.md, Stage 2.
 import { maskUrl } from '../probe/mask.ts';
+import { outline, type OutlineNode } from '../probe/outline.ts';
 import { Probe, type DomSignature } from '../probe/report.ts';
 
 void (() => {
@@ -24,7 +25,14 @@ void (() => {
       return false;
     }
   };
-  const readable = (type: string) => /json|javascript|text\/plain|protobuf/i.test(type);
+  const readable = (type: string) => /json|javascript|text\/plain|protobuf|html/i.test(type);
+  const absolute = (u: string) => {
+    try {
+      return new URL(u, location.href).href;
+    } catch {
+      return u;
+    }
+  };
 
   // Watch the page's own requests as you scroll. Nothing is sent or changed.
   const origFetch = window.fetch;
@@ -32,7 +40,7 @@ void (() => {
     const res = await origFetch.apply(this, args);
     try {
       const req = args[0];
-      const url = typeof req === 'string' ? req : req instanceof URL ? req.href : req.url;
+      const url = absolute(typeof req === 'string' ? req : req instanceof URL ? req.href : req.url);
       const method = (args[1]?.method ?? (req instanceof Request ? req.method : 'GET')) || 'GET';
       const type = res.headers.get('content-type') ?? '';
       const body =
@@ -112,9 +120,9 @@ void (() => {
   };
 
   // Repeated elements: book cards usually repeat once per book.
-  const domSignatures = (): DomSignature[] => {
+  const domSignatures = (root: ParentNode = document.body): (DomSignature & { el: Element })[] => {
     const counts = new Map<string, DomSignature & { el: Element }>();
-    for (const el of document.body.querySelectorAll('*')) {
+    for (const el of root.querySelectorAll('*')) {
       const cls = [...el.classList]
         .map((c) => (/\d{3,}|^[a-z0-9_-]{1,3}$/i.test(c) ? null : c.replace(/\d+/g, '#')))
         .filter(Boolean)
@@ -141,8 +149,33 @@ void (() => {
     return [...counts.values()]
       .filter((d) => d.count >= 5 && d.count <= 5000 && (d.link || d.hasImage))
       .sort((a, b) => b.count - a.count)
-      .slice(0, 15)
-      .map(({ el: _el, ...d }) => d);
+      .slice(0, 15);
+  };
+  const plain = (list: (DomSignature & { el: Element })[]): DomSignature[] =>
+    list.map(({ el: _el, ...d }) => d);
+
+  // One card in detail: the biggest repeated elements holding a link and an image.
+  const toNode = (el: Element, depth = 0): OutlineNode => ({
+    tag: el.tagName.toLowerCase(),
+    classes: [...el.classList],
+    attrs: [...el.attributes].map((a) => ({ name: a.name, value: a.value })),
+    text: [...el.childNodes]
+      .filter((c) => c.nodeType === Node.TEXT_NODE)
+      .map((c) => c.textContent ?? '')
+      .join(' ')
+      .trim(),
+    children: depth < 8 ? [...el.children].map((c) => toNode(c, depth + 1)) : [],
+  });
+  const cardOutlines = (list: (DomSignature & { el: Element })[], where: string) => {
+    const cards = list
+      .filter((d) => d.link && d.hasImage)
+      .sort((a, b) => b.count - a.count || a.sig.length - b.sig.length)
+      .slice(0, 2);
+    for (const c of cards)
+      probe.addSection(
+        `One card in detail (${where}): ${c.sig} ×${c.count}`,
+        outline(toNode(c.el), own),
+      );
   };
 
   const panel = document.createElement('div');
@@ -174,11 +207,28 @@ void (() => {
   finish.onclick = () => {
     restore();
     readEmbedded();
+    const here = domSignatures();
+    cardOutlines(here, 'this page');
+    // Library pages the page fetched as HTML: their repeated elements and one card.
+    probe.html.forEach((h, i) => {
+      const doc = new DOMParser().parseFromString(h.body, 'text/html');
+      const sigs = domSignatures(doc.body ?? doc);
+      probe.addSection(
+        `Repeated elements in fetched page ${i + 1} (${h.key})`,
+        plain(sigs)
+          .map(
+            (d) =>
+              `- ${d.sig} ×${d.count}; attributes: ${d.attrs.join(', ') || 'none'}; link: ${d.link ?? 'none'}; image: ${d.hasImage ? 'yes' : 'no'}`,
+          )
+          .join('\n'),
+      );
+      if (i === 0) cardOutlines(sigs, `fetched page ${i + 1}`);
+    });
     const text = probe.report({
       page: location.href,
       browser: navigator.userAgent,
       date: new Date().toISOString(),
-      dom: domSignatures(),
+      dom: plain(here),
       earlier,
     });
     console.log(text);

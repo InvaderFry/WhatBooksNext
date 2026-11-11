@@ -1,6 +1,6 @@
-import type { Adapter } from '../core/adapter.ts';
+import type { Adapter, CardAdapter } from '../core/adapter.ts';
 import { report } from '../core/report.ts';
-import { scan } from '../core/scan.ts';
+import { scan, type ScanResult } from '../core/scan.ts';
 
 /**
  * The console script's page side: a small panel on the store's page with progress and Cancel,
@@ -15,7 +15,24 @@ const RISK =
   'person’s pace and stops at the first warning or sign-in check.\n\n' +
   'Continue? (Cancel to stop; you can add books by spreadsheet or by hand instead.)';
 
-export async function runInPage(adapter: Adapter): Promise<void> {
+/** What every scan needs from the page side, whichever loop it uses. */
+export interface PageDeps {
+  page: URL;
+  sleep: (ms: number, signal: AbortSignal) => Promise<void>;
+  now: () => Date;
+  signal: AbortSignal;
+  onProgress: (p: { requests: number; records: number; waiting: boolean }) => void;
+}
+
+/** A store whose page asks its server for the library (Kindle). */
+export function runRequestScan(adapter: Adapter): Promise<void> {
+  return runInPage(adapter, (d) => scan(adapter, { ...d, fetch: (u, i) => fetch(u, i) }));
+}
+
+export async function runInPage(
+  adapter: Pick<CardAdapter, 'checkPage' | 'label' | 'service' | 'version'>,
+  go: (d: PageDeps) => Promise<ScanResult>,
+): Promise<void> {
   const page = new URL(location.href);
   const where = adapter.checkPage(page);
   if (!where.ok) {
@@ -42,9 +59,8 @@ export async function runInPage(adapter: Adapter): Promise<void> {
   panel.append(status, cancel);
   document.body.append(panel);
 
-  const result = await scan(adapter, {
+  const result = await go({
     page,
-    fetch: (u, i) => fetch(u, i),
     sleep: (ms, signal) =>
       new Promise((resolve) => {
         const t = setTimeout(resolve, ms);
@@ -56,7 +72,7 @@ export async function runInPage(adapter: Adapter): Promise<void> {
     now: () => new Date(),
     signal: ctrl.signal,
     onProgress: (p) => {
-      status.textContent = `${p.records} books so far, ${p.requests} requests${
+      status.textContent = `${p.records} books so far, ${p.requests} steps${
         p.waiting ? ' (a longer pause, to go easy on the store)' : ''
       }…`;
     },

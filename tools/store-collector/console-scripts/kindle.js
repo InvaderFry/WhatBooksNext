@@ -210,127 +210,146 @@
 			this.reason = reason;
 		}
 	};
+	/** What a scan has found so far, and the file and stats it ends with. */
+	var Collected = class {
+		records = /* @__PURE__ */ new Map();
+		excluded = /* @__PURE__ */ new Map();
+		labels = {};
+		fields = /* @__PURE__ */ new Set();
+		errors = [];
+		steps = 0;
+		fingerprint = "not reached";
+		reason = "finished";
+		text = "The store’s list ended normally.";
+		region;
+		/** Reads one answer or one look at the page; returns how many new books it brought. */
+		read(parse) {
+			let page;
+			try {
+				page = parse();
+				this.fingerprint = "passed";
+			} catch (e) {
+				if (e instanceof LayoutChanged) {
+					this.fingerprint = "failed";
+					throw new Stop("layout_changed", e.message);
+				}
+				throw e;
+			}
+			for (const f of page.fields) this.fields.add(f);
+			for (const l of page.labels) this.labels[l] = (this.labels[l] ?? 0) + 1;
+			const before = this.records.size + this.excluded.size;
+			for (const r of page.records) {
+				const key = `${r.idKind}:${r.storeRecordId}`;
+				if (!this.records.has(key) && !this.excluded.has(key)) this.records.set(key, r);
+			}
+			for (const x of page.excluded) if (!this.excluded.has(x.id)) this.excluded.set(x.id, x.reason);
+			return {
+				...page,
+				added: this.records.size + this.excluded.size - before
+			};
+		}
+		stop(e) {
+			if (e instanceof Stop) {
+				this.reason = e.reason;
+				this.text = e.message;
+			} else {
+				this.reason = "error";
+				this.text = `Something went wrong: ${e.message}`;
+			}
+			this.errors.push(this.text);
+		}
+		result(adapter, now) {
+			const list = [...this.records.values()];
+			const excludedCounts = {};
+			for (const r of this.excluded.values()) excludedCounts[r] = (excludedCounts[r] ?? 0) + 1;
+			const uncertain = list.filter((r) => r.acquisition.type === "uncertain").length;
+			const status = this.reason === "finished" ? "complete" : list.length + this.excluded.size === 0 ? "failed" : "partial";
+			return {
+				envelope: {
+					format: FORMAT,
+					formatVersion: 1,
+					service: adapter.service,
+					adapterVersion: adapter.version,
+					source: { type: "collector" },
+					collectedAt: now.toISOString(),
+					...this.region ? { region: this.region } : {},
+					completion: {
+						status,
+						reason: this.reason,
+						text: this.text
+					},
+					counts: {
+						seen: list.length + this.excluded.size,
+						included: list.length - uncertain,
+						uncertain,
+						excluded: excludedCounts
+					},
+					records: list
+				},
+				stats: {
+					requests: this.steps,
+					fingerprint: this.fingerprint,
+					fields: [...this.fields].sort(),
+					labels: this.labels,
+					errors: this.errors
+				}
+			};
+		}
+	};
+	const limitsOf = (d) => ({
+		minGapMs: MIN_GAP_MS,
+		pauseEvery: 50,
+		pauseMs: PAUSE_MS,
+		maxRequests: 300,
+		maxStalled: 2,
+		...d.limits
+	});
+	/** Before every step but the first: the usual gap, or the longer pause; and the cancel check. */
+	async function pace(c, d, lim) {
+		if (d.signal.aborted) throw new Stop("cancelled", "You cancelled the scan.");
+		if (c.steps >= lim.maxRequests) throw new Stop("limit_reached", `Stopped at the safety limit of ${lim.maxRequests} steps in one scan.`);
+		if (c.steps > 0) {
+			const wait = c.steps % lim.pauseEvery === 0 ? lim.pauseMs : lim.minGapMs;
+			d.onProgress?.({
+				requests: c.steps,
+				records: c.records.size,
+				waiting: wait > lim.minGapMs
+			});
+			await d.sleep(wait, d.signal);
+			if (d.signal.aborted) throw new Stop("cancelled", "You cancelled the scan.");
+		}
+	}
 	async function scan(adapter, d) {
-		const lim = {
-			minGapMs: MIN_GAP_MS,
-			pauseEvery: 50,
-			pauseMs: PAUSE_MS,
-			maxRequests: 300,
-			maxStalled: 2,
-			...d.limits
-		};
-		const records = /* @__PURE__ */ new Map();
-		const excluded = /* @__PURE__ */ new Map();
-		const labels = {};
-		const fields = /* @__PURE__ */ new Set();
-		const errors = [];
-		let requests = 0;
-		let fingerprint = "not reached";
-		let reason = "finished";
-		let text = "The store’s list ended normally.";
-		let region;
+		const lim = limitsOf(d);
+		const c = new Collected();
 		try {
 			const where = adapter.checkPage(d.page);
 			if (!where.ok) throw new Stop("error", where.message);
-			region = where.region;
+			c.region = where.region;
 			const cursors = /* @__PURE__ */ new Set();
 			let cursor = adapter.firstCursor;
 			let stalled = 0;
 			while (cursor !== null) {
-				if (d.signal.aborted) throw new Stop("cancelled", "You cancelled the scan.");
-				if (requests >= lim.maxRequests) throw new Stop("limit_reached", `Stopped at the safety limit of ${lim.maxRequests} requests in one scan.`);
-				if (requests > 0) {
-					const wait = requests % lim.pauseEvery === 0 ? lim.pauseMs : lim.minGapMs;
-					d.onProgress?.({
-						requests,
-						records: records.size,
-						waiting: wait > lim.minGapMs
-					});
-					await d.sleep(wait, d.signal);
-					if (d.signal.aborted) throw new Stop("cancelled", "You cancelled the scan.");
-				}
+				await pace(c, d, lim);
 				cursors.add(cursor);
 				const { url, init } = adapter.request(cursor, d.page);
-				requests++;
+				c.steps++;
 				const body = await send(d, url, init);
-				let page;
-				try {
-					page = adapter.parse(body);
-					fingerprint = "passed";
-				} catch (e) {
-					if (e instanceof LayoutChanged) {
-						fingerprint = "failed";
-						throw new Stop("layout_changed", e.message);
-					}
-					throw e;
-				}
-				for (const f of page.fields) fields.add(f);
-				for (const l of page.labels) labels[l] = (labels[l] ?? 0) + 1;
-				const before = records.size + excluded.size;
-				for (const r of page.records) {
-					const key = `${r.idKind}:${r.storeRecordId}`;
-					if (!records.has(key) && !excluded.has(key)) records.set(key, r);
-				}
-				for (const x of page.excluded) {
-					const key = `${x.id}`;
-					if (!excluded.has(key)) excluded.set(key, x.reason);
-				}
-				const added = records.size + excluded.size - before;
+				const page = c.read(() => adapter.parse(body));
 				d.onProgress?.({
-					requests,
-					records: records.size,
+					requests: c.steps,
+					records: c.records.size,
 					waiting: false
 				});
 				if (page.next !== null && cursors.has(page.next)) throw new Stop("error", "The store sent the same page twice; stopped instead of looping.");
-				stalled = added === 0 && page.next !== null ? stalled + 1 : 0;
+				stalled = page.added === 0 && page.next !== null ? stalled + 1 : 0;
 				if (stalled >= lim.maxStalled) throw new Stop("error", "The store kept sending no new books; stopped instead of looping.");
 				cursor = page.next;
 			}
 		} catch (e) {
-			if (e instanceof Stop) {
-				reason = e.reason;
-				text = e.message;
-			} else {
-				reason = "error";
-				text = `Something went wrong: ${e.message}`;
-			}
-			errors.push(text);
+			c.stop(e);
 		}
-		const list = [...records.values()];
-		const excludedCounts = {};
-		for (const r of excluded.values()) excludedCounts[r] = (excludedCounts[r] ?? 0) + 1;
-		const uncertain = list.filter((r) => r.acquisition.type === "uncertain").length;
-		const status = reason === "finished" ? "complete" : list.length + excluded.size === 0 ? "failed" : "partial";
-		return {
-			envelope: {
-				format: FORMAT,
-				formatVersion: 1,
-				service: adapter.service,
-				adapterVersion: adapter.version,
-				source: { type: "collector" },
-				collectedAt: d.now().toISOString(),
-				...region ? { region } : {},
-				completion: {
-					status,
-					reason,
-					text
-				},
-				counts: {
-					seen: list.length + excluded.size,
-					included: list.length - uncertain,
-					uncertain,
-					excluded: excludedCounts
-				},
-				records: list
-			},
-			stats: {
-				requests,
-				fingerprint,
-				fields: [...fields].sort(),
-				labels,
-				errors
-			}
-		};
+		return c.result(adapter, d.now());
 	}
 	/**
 	* Sends one request in the owner's own signed-in tab. Stops at the first sign of trouble: a
@@ -369,7 +388,14 @@
 	* to the store's page it runs on, never to whatBooksNext.
 	*/
 	const RISK = "whatBooksNext will now read your library list on this page, slowly and read-only.\n\nAutomated reading of a store page may break the store’s terms of use, and a store could challenge or restrict an account that does unusual things. This script goes at about a person’s pace and stops at the first warning or sign-in check.\n\nContinue? (Cancel to stop; you can add books by spreadsheet or by hand instead.)";
-	async function runInPage(adapter) {
+	/** A store whose page asks its server for the library (Kindle). */
+	function runRequestScan(adapter) {
+		return runInPage(adapter, (d) => scan(adapter, {
+			...d,
+			fetch: (u, i) => fetch(u, i)
+		}));
+	}
+	async function runInPage(adapter, go) {
 		const page = new URL(location.href);
 		const where = adapter.checkPage(page);
 		if (!where.ok) {
@@ -391,9 +417,8 @@
 		cancel.onclick = () => ctrl.abort();
 		panel.append(status, cancel);
 		document.body.append(panel);
-		const result = await scan(adapter, {
+		const result = await go({
 			page,
-			fetch: (u, i) => fetch(u, i),
 			sleep: (ms, signal) => new Promise((resolve) => {
 				const t = setTimeout(resolve, ms);
 				signal.addEventListener("abort", () => {
@@ -404,7 +429,7 @@
 			now: () => /* @__PURE__ */ new Date(),
 			signal: ctrl.signal,
 			onProgress: (p) => {
-				status.textContent = `${p.records} books so far, ${p.requests} requests${p.waiting ? " (a longer pause, to go easy on the store)" : ""}…`;
+				status.textContent = `${p.records} books so far, ${p.requests} steps${p.waiting ? " (a longer pause, to go easy on the store)" : ""}…`;
 			}
 		});
 		const e = result.envelope;
@@ -444,6 +469,6 @@
 	}
 
 // tools/store-collector/console/kindle.ts
-	runInPage(kindle);
+	runRequestScan(kindle);
 
 })();

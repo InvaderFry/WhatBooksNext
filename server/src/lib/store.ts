@@ -91,7 +91,9 @@ export const STORE_LINK_HOSTS: Record<Exclude<Store, 'other' | 'apple_books'>, s
   kindle: AMAZON_SUFFIXES.flatMap((x) => [`read.amazon.${x}`, `www.amazon.${x}`, `amazon.${x}`]),
   // Play also sells apps and films: only its book paths are accepted (below).
   google_play: ['play.google.com'],
-  kobo: ['www.kobo.com', 'kobo.com'],
+  // readnow.kobo.com is Kobo's web reader: the library's "Read now" links go there (seen in the
+  // owner's look-around report, 2026-11-11).
+  kobo: ['www.kobo.com', 'kobo.com', 'readnow.kobo.com'],
   globalcomix: ['globalcomix.com', 'www.globalcomix.com'],
 };
 
@@ -172,6 +174,7 @@ function linkKind(store: Store, u: URL): LinkKind {
   const host = u.hostname.toLowerCase();
   if (store === 'kindle') return host.startsWith('read.amazon.') ? 'read' : 'page';
   if (store === 'google_play') return u.pathname.startsWith('/books/reader') ? 'read' : 'page';
+  if (host === 'readnow.kobo.com') return 'read';
   return /\/(web-?reader|reader|read)(\/|$)/i.test(u.pathname) ? 'read' : 'page';
 }
 
