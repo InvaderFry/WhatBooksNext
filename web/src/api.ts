@@ -1,4 +1,6 @@
 import type { ItemDetails } from '../../server/src/lib/details.ts';
+import type { FromEachSource, SourceEntry } from '../../server/src/lib/fromEachSource.ts';
+export type { FromEachSource, SourceEntry };
 // Thin fetch wrapper. Every request that changes data is sent as JSON, which the server
 // requires: it makes the browser preflight any cross-site attempt (PLAN.md §6.3).
 
@@ -591,6 +593,8 @@ export interface Duration {
 export interface ItemOnline {
   /** Null only if the book isn't in the ranking data; the card then shows what it has. */
   details: ItemDetails | null;
+  /** Every source asked about this book and what of it is used (stage 3). */
+  fromEachSource: FromEachSource;
   identity: 'accepted' | 'provisional' | 'tie' | 'unidentified';
   matchConfirmed: boolean;
   override: string | null;

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, EFFORT_LABELS, formatRange, type Candidate, type ItemOnline } from '../api.ts';
 import { Notice } from '../components.tsx';
 import { CandidateRow } from './Review.tsx';
+import { FromEachSourceSection } from './FromEachSource.tsx';
 
 /**
  * An item's online identity and the facts that drive its ranking (PLAN.md §11.2, §12): which
@@ -149,6 +150,12 @@ export function OnlineCard({ itemId, onChanged }: { itemId: string; onChanged: (
           <p className="description">{data.description}</p>
         </details>
       )}
+      <FromEachSourceSection
+        data={data.fromEachSource}
+        busy={busy}
+        onConfirm={(source, sourceId) => void match({ action: 'confirm', source, sourceId })}
+        onReject={(source, sourceId) => void match({ action: 'reject', source, sourceId })}
+      />
       {data.eligibleBecause && (
         <p className="muted small">Not recommended right now: {data.eligibleBecause}.</p>
       )}
@@ -257,19 +264,6 @@ export function OnlineCard({ itemId, onChanged }: { itemId: string; onChanged: (
           </button>
         )}
       </div>
-      {!data.lookupAvailable && data.lookups.length === 0 && (
-        <p className="muted small">
-          Comics are looked up from Metron and ComicVine, which arrive in a later version.
-        </p>
-      )}
-      {data.lookups.some((l) => l.error) && (
-        <p className="small warn">
-          {data.lookups
-            .filter((l) => l.error)
-            .map((l) => `${l.sourceLabel}: ${l.error}`)
-            .join(' · ')}
-        </p>
-      )}
       {error && <Notice kind="error">{error}</Notice>}
     </section>
   );

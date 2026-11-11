@@ -4,6 +4,7 @@ import type { DB } from '../db/database.ts';
 import {
   lookUpItem,
   matchFactsFor,
+  matchesOf,
   resolveRunTies,
   runHintsFor,
   type LookupManager,
@@ -17,6 +18,7 @@ import {
   setReviewState,
   validateMatchAction,
 } from '../lib/identityReview.ts';
+import { fromEachSource } from '../lib/fromEachSource.ts';
 import type { FolderReachability } from '../lib/library.ts';
 import { coverageByKind, matchReport } from '../lib/matchReport.ts';
 import { applyUserPatch } from '../lib/progress.ts';
@@ -516,11 +518,15 @@ export function registerReadingRoutes(app: Express, d: ReadingDeps): void {
       };
       // Shown subjects stay short: sources such as Open Library list dozens.
       const chosen = data.details.get(id) ?? null;
+      const issue = db.prepare('SELECT issue_label FROM items WHERE id = ?').pluck().get(id) as
+        string | null;
+      const kind = i?.kind ?? null;
+      const summary = itemMatchSummary(db, id);
       const details = chosen && { ...chosen, subjects: chosen.subjects.slice(0, SUBJECTS_SHOWN) };
       return {
         identity: i?.identity ?? 'unidentified',
         matchConfirmed: i?.matchConfirmed ?? false,
-        ...itemMatchSummary(db, id),
+        ...summary,
         community: i?.community ?? null,
         duration: i?.duration ?? null,
         effort: i?.effort ?? 'unknown',
@@ -532,12 +538,26 @@ export function registerReadingRoutes(app: Express, d: ReadingDeps): void {
         details,
         description: details?.description?.value ?? null,
         subjects: details?.subjects.map((s) => s.value) ?? [],
-        lookupAvailable:
-          sources.forItem(
-            i?.kind ?? null,
-            db.prepare('SELECT issue_label FROM items WHERE id = ?').pluck().get(id) as
-              string | null,
-          ).length > 0,
+        lookupAvailable: sources.forItem(kind, issue).length > 0,
+        // Every source asked about this book, what it said and what of it is used (stage 3).
+        fromEachSource: fromEachSource({
+          demo: sources.demo,
+          asked: sources.forItem(kind, issue).map((x) => x.name),
+          covering: sources.coveringSources(kind, issue),
+          configured: (x) => sources.isConfigured(x),
+          lookups: summary.lookups,
+          matches: matchesOf(db, id),
+          rejected: new Set(
+            (
+              db
+                .prepare('SELECT source, source_id FROM candidates_rejected WHERE item_id = ?')
+                .all(id) as { source: string; source_id: string }[]
+            ).map((r) => `${r.source}:${r.source_id}`),
+          ),
+          override: summary.override,
+          rating: data.ratings.get(id) ?? null,
+          details: chosen,
+        }),
       };
     }),
   );
