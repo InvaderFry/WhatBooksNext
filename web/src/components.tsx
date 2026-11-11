@@ -115,15 +115,23 @@ export function Notice({
  */
 export function Cover({
   fileId,
+  itemId,
   kind,
   size = 'small',
 }: {
   fileId: string | null;
+  /** A book without a file cover: its own online cover, when it has one. */
+  itemId?: string | null;
   kind?: string | null;
   size?: 'small' | 'large';
 }) {
   const [failed, setFailed] = useState(false);
-  if (!fileId || failed)
+  const src = fileId
+    ? `/api/files/${encodeURIComponent(fileId)}/thumbnail`
+    : itemId
+      ? `/api/items/${encodeURIComponent(itemId)}/cover`
+      : null;
+  if (!src || failed)
     return (
       <span
         className={`cover cover-${size} cover-none`}
@@ -134,7 +142,7 @@ export function Cover({
   return (
     <img
       className={`cover cover-${size}`}
-      src={`/api/files/${encodeURIComponent(fileId)}/thumbnail`}
+      src={src}
       alt=""
       loading="lazy"
       decoding="async"

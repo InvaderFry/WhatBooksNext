@@ -120,7 +120,7 @@ export function ItemPage({
         ← Back
       </a>
       <div className="item-head">
-        <Cover fileId={item.coverFileId} kind={item.kind} size="large" />
+        <Cover fileId={item.coverFileId} itemId={item.coverItemId} kind={item.kind} size="large" />
         <div className="item-head-text">
           <TitleEditor item={item} onSave={save} />
           {item.creators.length > 0 && <p className="byline">{creatorsText(item.creators)}</p>}

@@ -8,8 +8,9 @@ import type { Fetcher, SourceAdapter, SourceQuery, SourceRecord } from './types.
  * Open Library (§12.1): keyless book search. Rules verified November 2026 at
  * openlibrary.org/developers/api: identify the app in the User-Agent, about 1 request a second
  * without a contact email, cache, use search.json rather than many single-book requests, and
- * no bulk downloading. Covers come from the files themselves, so the rate-limited covers API
- * isn't used.
+ * no bulk downloading. Covers come from the files themselves; a book without a file cover gets one
+ * by cover ID through this client (identify/covers.ts, owner decision 2026-11-11). Covers by ISBN,
+ * the rate-limited kind, aren't used.
  */
 
 const FIELDS = [

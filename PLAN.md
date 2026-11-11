@@ -295,7 +295,9 @@ send requests to `127.0.0.1`, including the route that opens files. So:
 - **Text from files and outside sources is untrusted.** Show descriptions as plain text, or clean
   them with a maintained HTML sanitizer that keeps only a small allowlist (paragraphs, line breaks,
   emphasis, lists). Never insert raw HTML.
-- Covers are served from the data folder by id only.
+- Covers are served from the data folder by id only. A book without a file cover (store books, reading history) gets one from Open Library
+  once it is matched there with confidence (owner decision 2026-11-11; `identify/covers.ts`): by cover ID
+  through the Open Library client, saved as `covers/item-<id>.jpg`, never for a provisional or rejected match.
 
 ### 6.4 Pure scoring
 

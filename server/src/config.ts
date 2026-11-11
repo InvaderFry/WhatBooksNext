@@ -471,3 +471,14 @@ export const STORE_SHRINK_WARNING = 0.2;
 
 /** At most this many books in one store purchases file: far more than a personal library. */
 export const STORE_FILE_MAX_RECORDS = 50_000;
+
+/**
+ * Covers for books without a file cover (store books, reading history), from Open Library: a book
+ * matched with confidence gets its work's first cover, by cover ID (Open Library limits covers by
+ * ISBN to about 100 per 5 minutes per address, but not by cover ID). One work record and one
+ * picture per book, at Open Library's usual pace. Owner decision 2026-11-11.
+ */
+export const COVER_MAX_BYTES = 5 * 1024 * 1024;
+
+/** A book Open Library had no cover for is asked again after this many days (covers get added). */
+export const COVER_RETRY_DAYS = 30;

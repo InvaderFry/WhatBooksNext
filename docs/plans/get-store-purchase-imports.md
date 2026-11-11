@@ -800,6 +800,34 @@ The owner ran version 2 (home page, then My Shelf → Purchases) and imported. T
 with series and numbers, reading progress, and Read in GlobalComix links ("I think that worked").
 The report wasn't shared. `COLLECTORS.globalcomix` is **Checked on 2026-11-11**.
 
+### Covers for store books (owner decision 2026-11-11)
+
+The owner noticed that imported books had no pictures. Covers came only from files, and the app
+shows only pictures it holds itself (its own CSP, `img-src 'self' data:`). Asked how to add them,
+the owner chose **covers from Open Library**, not from the stores.
+
+- **Which books:** any book without a file cover (store books and reading history alike) whose Open
+  Library match is confident. That means the owner's confirmed match (`match_override`), or the
+  app's own accepted one (`lookup_state.accepted_source_id`), and not rejected. A provisional match
+  never gets a cover: a wrong picture is worse than none.
+- **How:** the work record (`/works/OL…W.json`, cached) gives the cover IDs. The first is fetched by
+  ID (`covers.openlibrary.org/b/id/<id>-M.jpg`). Open Library rate-limits covers by ISBN, not by ID.
+  Both requests go through the Open Library client, so they share its 1-a-second pace, its
+  pause after failures and its User-Agent. Adding `cover_i` to the search fields would have changed
+  every cached search, so it wasn't done. The picture is scaled like a file cover and saved as
+  `covers/item-<id>.jpg`.
+- **What's remembered:** `item_covers` (migration 016) records ok / none / failed. "None" and
+  "failed" are asked again after 30 days (`COVER_RETRY_DAYS`). Being offline records nothing, so
+  the next run carries on. The table is left out of backups, like the pictures, and refills after
+  a restore.
+- **When:** after every lookup run, and once a minute after the app starts, only when automatic
+  lookups are allowed (not in the demo or tests). Served at `/api/items/<id>/cover`.
+  `coverItemId` travels with item summaries and cards, and the `Cover` component uses it when
+  there's no file cover.
+- **Expect:** comics are often missing on Open Library, and an unconfirmed match gets no cover until
+  the owner confirms it.
+- **Tests:** `server/src/app.covers.test.ts`.
+
 **A collector that hasn't been checked is never shown as working.** In the extension and the app,
 each store is **Checked on <date>**, **Not checked yet**, or **Not supported** (with the reason).
 

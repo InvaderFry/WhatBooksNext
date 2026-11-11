@@ -485,7 +485,7 @@ function PickCard({
 
   return (
     <li className="card pick" aria-labelledby={headingId}>
-      <Cover fileId={card.coverFileId} kind={card.kind} />
+      <Cover fileId={card.coverFileId} itemId={card.coverItemId} kind={card.kind} />
       <div className="pick-main">
         <h3 id={headingId}>
           <a
@@ -693,7 +693,7 @@ function RelevanceCard({
   };
   return (
     <li className="card pick" aria-labelledby={headingId}>
-      <Cover fileId={card.coverFileId} kind={card.kind} />
+      <Cover fileId={card.coverFileId} itemId={card.coverItemId} kind={card.kind} />
       <div className="pick-main">
         <h3 id={headingId}>
           <a

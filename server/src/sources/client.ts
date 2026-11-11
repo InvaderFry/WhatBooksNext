@@ -157,10 +157,22 @@ export class SourceClient {
     return payload;
   }
 
+  /**
+   * GET an image (a cover), with the same pacing, pause-after-failures and allowance as every
+   * other request to this source. Never cached in source_cache (the caller keeps the picture).
+   * Null when the source has no such image (404).
+   */
+  async image(url: string, maxBytes: number): Promise<Uint8Array | null> {
+    const run = this.queue.then(() => this.request(url, {}, false, { image: maxBytes }));
+    this.queue = run.catch(() => undefined);
+    return (await run) as Uint8Array | null;
+  }
+
   private async request(
     url: string,
     init: { method?: 'GET' | 'POST'; body?: unknown; headers?: Record<string, string> },
     retried = false,
+    as: { image: number } | null = null,
   ): Promise<unknown> {
     if (this.pausedUntil > this.now()) {
       throw new SourceError(
@@ -187,7 +199,7 @@ export class SourceClient {
         method: init.method ?? 'GET',
         headers: {
           'User-Agent': USER_AGENT,
-          Accept: 'application/json',
+          Accept: as ? 'image/*' : 'application/json',
           ...(init.body !== undefined ? { 'Content-Type': 'application/json' } : {}),
           ...init.headers,
         },
@@ -228,7 +240,7 @@ export class SourceClient {
     if (res.status === 429) {
       const ms = Math.min(retryAfterMs ?? 60_000, MAX_RETRY_WAIT_MS);
       this.nextAt = Math.max(this.nextAt, this.now() + ms);
-      if (!retried) return this.request(url, init, true);
+      if (!retried) return this.request(url, init, true, as);
       throw this.fail(
         new SourceError(this.name, 'Too many requests; the source asked us to wait.', true),
       );
@@ -243,6 +255,12 @@ export class SourceClient {
         ),
       );
     }
+    if (as && res.status === 404) {
+      // No such cover: an answer, not a failure.
+      this.failures = 0;
+      this.lastSuccessAt = nowIso();
+      return null;
+    }
     if (!res.ok) {
       const text = await res.text().catch(() => '');
       throw this.fail(
@@ -252,6 +270,18 @@ export class SourceClient {
           res.status >= 500,
         ),
       );
+    }
+    if (as) {
+      if (!/^image\//i.test(res.headers.get('content-type') ?? ''))
+        throw this.fail(
+          new SourceError(this.name, 'The source sent something that isn’t a picture.', false),
+        );
+      const buf = new Uint8Array(await res.arrayBuffer());
+      if (buf.byteLength > as.image)
+        throw this.fail(new SourceError(this.name, 'The picture is larger than allowed.', false));
+      this.failures = 0;
+      this.lastSuccessAt = nowIso();
+      return buf;
     }
     let payload: unknown;
     try {

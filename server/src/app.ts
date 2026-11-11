@@ -8,6 +8,7 @@ import { refreshFactsOfItems, refreshPrimary, removeOrphanItems } from './identi
 import { healthProblemCount, libraryHealth } from './lib/health.ts';
 import { actOnReview, listReview, openReviewCount } from './lib/review.ts';
 import { coverPath } from './scan/deepPass.ts';
+import { CoverFetcher, itemCoverPath } from './identify/covers.ts';
 import type { TaskRunner } from './scan/pool.ts';
 import { createBackup, previewRestore, restoreBackup, validateBackup } from './lib/backup.ts';
 import {
@@ -137,6 +138,20 @@ export function createApp(ctx: AppContext) {
     now: ctx.clock,
     batchRequests: ctx.refreshBatch,
   });
+  // Covers for books without a file cover (store books, reading history), from Open Library, after
+  // each lookup run and once shortly after the app starts: only when lookups may run on their own.
+  const covers = new CoverFetcher(db, sources, coversDir);
+  const coversAllowed = () =>
+    !ctx.demo && ctx.autoLookups !== false && getSetting<boolean>(db, 'lookupsAfterScan', true);
+  const afterLookups = lookups.afterRun;
+  lookups.afterRun = (s) => {
+    afterLookups?.(s);
+    if (coversAllowed()) covers.start();
+  };
+  const coversAtStart = setTimeout(() => {
+    if (coversAllowed() && !lookups.isRunning()) covers.start();
+  }, 60_000);
+  coversAtStart.unref?.();
   const reach = new Reachability(ctx);
   const app = express();
   app.disable('x-powered-by');
@@ -476,6 +491,21 @@ export function createApp(ctx: AppContext) {
     }
     res.setHeader('Cache-Control', 'private, max-age=300');
     // dotfiles: the data folder itself may sit under a hidden folder; the path is ours alone.
+    res.sendFile(file, { dotfiles: 'allow' });
+  });
+
+  // Online covers for books without a file cover, by item id only (the path is ours alone).
+  app.get('/api/items/:id/cover', (req, res) => {
+    const id = db
+      .prepare("SELECT item_id FROM item_covers WHERE item_id = ? AND state = 'ok'")
+      .pluck()
+      .get(String(req.params.id)) as string | undefined;
+    const file = id && coversDir ? itemCoverPath(coversDir, id) : null;
+    if (!file || !fs.existsSync(file)) {
+      res.status(404).json({ error: 'No cover.' });
+      return;
+    }
+    res.setHeader('Cache-Control', 'private, max-age=300');
     res.sendFile(file, { dotfiles: 'allow' });
   });
 
@@ -856,9 +886,12 @@ export function createApp(ctx: AppContext) {
     lookups,
     sources,
     refresher,
+    covers,
     close: async () => {
+      clearTimeout(coversAtStart);
       // First, so a lookup run cancelled by closing resumes at the next start.
       await refresher.close();
+      await covers.close();
       await lookups.close();
       await scans.close();
       await platform.close();

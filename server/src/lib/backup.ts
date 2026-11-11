@@ -83,6 +83,9 @@ export const BACKUP_EXCLUDED: Record<string, string> = {
   series_publication_problems: 'retry notes, rebuilt by the next lookup',
   // Operational log of store purchase imports (counts only, no titles), like scan_runs.
   store_import_runs: 'import history only',
+  // Which online cover each file-less book has; the pictures aren't in backups either, and both
+  // are fetched again after a restore.
+  item_covers: 'online covers, fetched again',
 };
 
 export interface Backup {

@@ -102,6 +102,11 @@ export interface ItemSummary {
   community?: LibraryRating | null;
   /** A file of this item with a thumbnail (its cover is served by this file id), or null. */
   coverFileId: string | null;
+  /**
+   * With no file cover: this item's own online cover (served at /api/items/<id>/cover), or null.
+   * From Open Library once the book is matched with confidence.
+   */
+  coverItemId?: string | null;
   formats: string[];
   fileCount: number;
   folderIds: string[];
@@ -417,6 +422,9 @@ export function loadLibrary(db: DB, reach: FolderReachability, onlyIds?: string[
     locations.get(l.item_id)!.push(l);
   }
 
+  const onlineCovers = new Set(
+    db.prepare("SELECT item_id FROM item_covers WHERE state = 'ok'").pluck().all() as string[],
+  );
   const { matches, rejected, overrides } = allMatchInputs(db);
   const details = new Map<string, ItemDetails>();
   const detailInputs = new Map<string, DetailInput>();
@@ -474,6 +482,7 @@ export function loadLibrary(db: DB, reach: FolderReachability, onlyIds?: string[
       creators: d.creators?.value ?? [],
       // The primary file's cover first (files are sorted primary-first).
       coverFileId: fs.find((f) => f.hasThumbnail)?.id ?? null,
+      coverItemId: !fs.some((f) => f.hasThumbnail) && onlineCovers.has(i.id) ? i.id : null,
       formats: [...new Set(fs.map((f) => f.format))],
       fileCount: fs.length,
       folderIds: [...new Set(fs.map((f) => f.folderId))],

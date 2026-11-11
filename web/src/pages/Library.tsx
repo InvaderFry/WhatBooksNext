@@ -281,7 +281,7 @@ export function Library({
         <ul className="item-list">
           {items.map((item) => (
             <li key={item.id} className="item-row">
-              <Cover fileId={item.coverFileId} kind={item.kind} />
+              <Cover fileId={item.coverFileId} itemId={item.coverItemId} kind={item.kind} />
               <div className="item-main">
                 <a
                   className="item-title"

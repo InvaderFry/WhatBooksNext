@@ -108,6 +108,8 @@ export interface ItemSummary {
   creators: { name: string; role?: string }[];
   /** File whose thumbnail is this item's cover; null when there is none. */
   coverFileId: string | null;
+  /** With no file cover: the book's own online cover, served at /api/items/<id>/cover. */
+  coverItemId?: string | null;
   formats: string[];
   fileCount: number;
   folderIds: string[];
@@ -423,6 +425,8 @@ export interface Card {
   kind: Kind | null;
   creators: { name: string; role?: string }[];
   coverFileId: string | null;
+  /** With no file cover: the book's own online cover, served at /api/items/<id>/cover. */
+  coverItemId?: string | null;
   formats: string[];
   availability: Availability;
   progress: Progress;
