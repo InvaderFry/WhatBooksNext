@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { describeString, maskUrl, safeKey } from '../../tools/store-collector/probe/mask.ts';
 import { outline, type OutlineNode } from '../../tools/store-collector/probe/outline.ts';
-import { Probe } from '../../tools/store-collector/probe/report.ts';
+import { Probe, queryKeyText } from '../../tools/store-collector/probe/report.ts';
 import { parseBody, render, shapeOf } from '../../tools/store-collector/probe/skeleton.ts';
 
 /**
@@ -175,5 +175,51 @@ describe('the look-around script’s privacy rules', () => {
     const many = Array.from({ length: 12 }, () => ({ path: JSON.stringify([{ x: 1, y: 2 }]) }));
     const text = render(shapeOf(many, OWN));
     expect(text.match(/json text:/g)).toHaveLength(1);
+  });
+
+  it('shows relative card links with the page’s own host', () => {
+    const text = outline(
+      {
+        tag: 'a',
+        classes: [],
+        attrs: [{ name: 'href', value: '/c/inv-comic-1234/r/98765' }],
+        text: '',
+        children: [],
+      },
+      ['globalcomix.com'],
+      80,
+      'https://globalcomix.com/my-shelf/purchases',
+    );
+    expect(text).toBe('a href=globalcomix.com/c/:id/r/:id');
+  });
+
+  it('lists each saved query of a page separately, with only plain words of its key', () => {
+    expect(queryKeyText(['account', 'purchases', { page: 1, sort: 'recent' }])).toBe(
+      '["account", "purchases", {page, sort}]',
+    );
+    expect(queryKeyText(['comic', 'the-ember-orchard', 'INVENTED0001'])).toBe(
+      '["comic", text(17), text(12)]',
+    );
+    const p = new Probe(['globalcomix.com']);
+    p.addEmbedded('window.__INITIAL_STATE__', {
+      mutations: [],
+      queries: [
+        { queryKey: ['app', 'init'], state: { data: { languages: [{ id: 'en' }] } } },
+        {
+          queryKey: ['shelf', 'purchases'],
+          state: { data: { results: [{ id: 1, title: 'The Ember Orchard', type: 'PURCHASED' }] } },
+        },
+      ],
+    });
+    const text = p.report({
+      page: 'https://globalcomix.com/',
+      browser: 'x',
+      date: 'd',
+      dom: [],
+      earlier: [],
+    });
+    expect(text).toContain('-- window.__INITIAL_STATE__.queries[0] key ["app", "init"]');
+    expect(text).toContain('-- window.__INITIAL_STATE__.queries[1] key ["shelf", "purchases"]');
+    expect(text).not.toContain('The Ember Orchard');
   });
 });

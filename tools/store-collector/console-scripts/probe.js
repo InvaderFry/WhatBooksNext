@@ -83,10 +83,10 @@
 	* A URL as host and path pattern: segments that look like IDs or slugs become :id or :slug, and
 	* query values are hidden except a few that name methods (Google's rpcids) or settings.
 	*/
-	function maskUrl(raw, ownHosts) {
+	function maskUrl(raw, ownHosts, base = "https://invalid.example/") {
 		let u;
 		try {
-			u = new URL(raw, "https://invalid.example/");
+			u = new URL(raw, base);
 		} catch {
 			return "(not a URL)";
 		}
@@ -317,7 +317,8 @@
 
 // tools/store-collector/probe/outline.ts
 	const SHOWN_ATTRS = /^(data-[a-z0-9-]{1,40}|aria-label|title|href|src|alt|role|type|name)$/;
-	function outline(n, own, maxLines = 80) {
+	/** `base`: the page's address, so relative links show their real host. */
+	function outline(n, own, maxLines = 80, base) {
 		const lines = [];
 		const walk = (x, d) => {
 			if (lines.length >= maxLines) return;
@@ -329,7 +330,7 @@
 				if (!SHOWN_ATTRS.test(a.name)) continue;
 				const v = a.value.trim();
 				if (a.name === "href" || a.name === "src") {
-					parts.push(`${a.name}=${maskUrl(v, own)}`);
+					parts.push(`${a.name}=${maskUrl(v, own, base)}`);
 					continue;
 				}
 				if (v.startsWith("{") || v.startsWith("[")) try {
@@ -386,6 +387,17 @@
 			this.groups.set(key, g);
 		}
 		addEmbedded(name, data) {
+			const queries = data?.queries;
+			if (Array.isArray(queries) && queries.every((q) => q && typeof q === "object" && "state" in q)) {
+				queries.forEach((q, i) => {
+					const x = q;
+					this.embedded.push({
+						name: `${name}.queries[${i}] key ${queryKeyText(x.queryKey)}`,
+						shape: shapeOf(x.state?.data, this.own)
+					});
+				});
+				return;
+			}
 			this.embedded.push({
 				name,
 				shape: shapeOf(data, this.own)
@@ -416,9 +428,9 @@
 			out.push("", `== Requests made before the script started (${head.earlier.length}) ==`);
 			for (const e of [...new Set(head.earlier)].slice(0, 40)) out.push(`- ${e}`);
 			out.push("", `== Data built into the page (${this.embedded.length}) ==`);
-			for (const e of this.embedded.slice(0, 12)) {
+			for (const e of this.embedded.slice(0, 20)) {
 				out.push(`-- ${e.name}`);
-				out.push(render(e.shape, 1, 400));
+				out.push(render(e.shape, 1, 200));
 			}
 			out.push("", "== Repeated page elements (likely book cards) ==");
 			for (const d of head.dom) out.push(`- ${d.sig} ×${d.count}; attributes: ${d.attrs.join(", ") || "none"}; link: ${d.link ?? "none"}; image: ${d.hasImage ? "yes" : "no"}`);
@@ -426,6 +438,15 @@
 			return out.join("\n");
 		}
 	};
+	/**
+	* A react-query key, like ["account", "purchases", {"page": 1}]: plain words are shown (they name
+	* what was asked for); anything with digits, spaces or hyphens (IDs, slugs, titles) is only
+	* described, and objects show their keys.
+	*/
+	function queryKeyText(key) {
+		if (!Array.isArray(key)) return "(none)";
+		return `[${key.map((k) => typeof k === "string" ? /^[A-Za-z][A-Za-z_]{0,30}$/.test(k) ? JSON.stringify(k) : `text(${k.length})` : k && typeof k === "object" ? `{${Object.keys(k).filter((x) => /^[A-Za-z_][A-Za-z0-9_]{0,30}$/.test(x)).join(", ")}}` : typeof k).join(", ")}]`;
+	}
 
 // tools/store-collector/console/probe.ts
 	(() => {
@@ -546,9 +567,13 @@
 			text: [...el.childNodes].filter((c) => c.nodeType === Node.TEXT_NODE).map((c) => c.textContent ?? "").join(" ").trim(),
 			children: depth < 8 ? [...el.children].map((c) => toNode(c, depth + 1)) : []
 		});
-		const cardOutlines = (list, where) => {
-			const cards = list.filter((d) => d.link && d.hasImage).sort((a, b) => b.count - a.count || a.sig.length - b.sig.length).slice(0, 2);
-			for (const c of cards) probe.addSection(`One card in detail (${where}): ${c.sig} ×${c.count}`, outline(toNode(c.el), own));
+		const sigOf = (el) => {
+			const cls = [...el.classList].map((c) => /\d{3,}|^[a-z0-9_-]{1,3}$/i.test(c) ? null : c.replace(/\d+/g, "#")).filter(Boolean).slice(0, 4).join(".");
+			return `${el.tagName.toLowerCase()}${cls ? "." + cls : ""}`;
+		};
+		const cardOutlines = (list, where, base) => {
+			const cards = list.filter((d) => d.link && d.hasImage).filter((d) => ![...d.el.querySelectorAll("*")].some((x) => sigOf(x) === d.sig)).sort((a, b) => b.el.querySelectorAll("*").length - a.el.querySelectorAll("*").length).slice(0, 1);
+			for (const c of cards) probe.addSection(`One whole card in detail (${where}): ${c.sig} ×${c.count}`, outline(toNode(c.el), own, 120, base));
 		};
 		const panel = document.createElement("div");
 		panel.setAttribute("role", "dialog");
@@ -575,12 +600,12 @@
 			restore();
 			readEmbedded();
 			const here = domSignatures();
-			cardOutlines(here, "this page");
+			cardOutlines(here, "this page", location.href);
 			probe.html.forEach((h, i) => {
 				const doc = new DOMParser().parseFromString(h.body, "text/html");
 				const sigs = domSignatures(doc.body ?? doc);
 				probe.addSection(`Repeated elements in fetched page ${i + 1} (${h.key})`, plain(sigs).map((d) => `- ${d.sig} ×${d.count}; attributes: ${d.attrs.join(", ") || "none"}; link: ${d.link ?? "none"}; image: ${d.hasImage ? "yes" : "no"}`).join("\n"));
-				if (i === 0) cardOutlines(sigs, `fetched page ${i + 1}`);
+				if (i === 0) cardOutlines(sigs, `fetched page ${i + 1}`, location.href);
 			});
 			const text = probe.report({
 				page: location.href,

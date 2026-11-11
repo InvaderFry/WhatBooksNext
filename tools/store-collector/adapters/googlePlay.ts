@@ -13,13 +13,16 @@ import type { StoreRecord } from '../core/format.ts';
  * NOT CHECKED YET as a scan: the owner's first run (A2) checks it.
  */
 
-export const GOOGLE_PLAY_VERSION = '1';
+// 2: cards not yet filled in (placeholders below the fold) are skipped; any Google book link with an
+// id counts (not only the reader); a failure says which parts the card had. The owner's first run
+// of version 1 stopped at a card with no link (2026-11-11).
+export const GOOGLE_PLAY_VERSION = '2';
 
 /** What the page side reads from one card. Plain data, so the reading rules are tested here. */
 export interface PlayCard {
   /** Classes of the card's `div.card` (e.g. ["card", "ebook"]). */
   classes: string[];
-  /** The card's reader link (`a.title`, else `a.cover-link`). */
+  /** The card's book link (`a.title`, else `a.cover-link`, else any link with an id). */
   href: string | null;
   /** `a.title`'s title attribute or text. */
   title: string;
@@ -56,36 +59,50 @@ export const googlePlay: CardAdapter = {
   parse: parsePlayCards,
 };
 
+/** A Google Play book link's volume ID and what it opens; null for any other link. */
+function bookLink(href: unknown): { id: string; path: string; reader: boolean } | null {
+  try {
+    const u = new URL(String(href ?? ''));
+    const id = u.searchParams.get('id');
+    if (u.protocol !== 'https:' || u.hostname !== 'play.google.com' || !id) return null;
+    if (!/^\/(books|store\/books)(\/|$)/.test(u.pathname)) return null;
+    return { id, path: u.pathname, reader: u.pathname.startsWith('/books/reader') };
+  } catch {
+    return null;
+  }
+}
+
 /** Reads the cards on screen now. Pure, so it's tested on invented cards. */
 export function parsePlayCards(cards: unknown): ParsedPage {
   if (!Array.isArray(cards)) throw new LayoutChanged('no list of book cards');
   const records: StoreRecord[] = [];
   const fields = new Set<string>();
-  const labels: string[] = [];
+  const labelFor: Record<string, string> = {};
   for (const raw of cards) {
-    const c = raw as Partial<PlayCard>;
-    for (const [k, v] of Object.entries(c))
-      if (v !== null && v !== '' && !(Array.isArray(v) && v.length === 0)) fields.add(k);
-    let id: string | null = null;
-    try {
-      const u = new URL(String(c.href ?? ''));
-      if (u.hostname === 'play.google.com' && u.pathname.startsWith('/books/reader'))
-        id = u.searchParams.get('id');
-    } catch {
-      /* not a link */
-    }
-    if (!id) throw new LayoutChanged('a book card without a reader link');
+    const c = (raw ?? {}) as Partial<PlayCard>;
+    const has = Object.entries(c)
+      .filter(
+        ([, v]) =>
+          v !== null && v !== undefined && v !== '' && !(Array.isArray(v) && v.length === 0),
+      )
+      .map(([k]) => k);
     const title = typeof c.title === 'string' ? c.title.trim() : '';
-    if (!title) throw new LayoutChanged('a book card without a title');
+    // Not filled in yet (the page fills cards in as they scroll into view): read it later.
+    if (!c.href && !title) continue;
+    for (const k of has) fields.add(k);
+    const link = bookLink(c.href);
+    if (!link || !title)
+      throw new LayoutChanged(
+        `a book card ${!link ? 'without a Google book link' : 'without a title'} (the card had: ${has.sort().join(', ') || 'nothing'})`,
+      );
     const types = (Array.isArray(c.classes) ? c.classes : []).filter((x) =>
       CARD_TYPES.includes(String(x).toLowerCase()),
     );
-    labels.push(types.length ? types.join('+') : 'no card type');
     // Listed under Purchases (uploads are under another filter). An ebook card is a purchase;
     // any other kind of card is shown to the owner to decide, never guessed.
     const ebook = types.length === 1 && types[0] === 'ebook';
     const rec: StoreRecord = {
-      storeRecordId: id,
+      storeRecordId: link.id,
       idKind: 'volume',
       title,
       unit: 'book',
@@ -93,14 +110,18 @@ export function parsePlayCards(cards: unknown): ParsedPage {
         type: ebook ? 'purchase' : 'uncertain',
         evidence: `listed under Purchases; card type ${types.join('+') || 'not shown'}`,
       },
-      // The reader link as the page gives it, reduced to the book's own ID.
-      readUrl: `https://play.google.com/books/reader?id=${encodeURIComponent(id)}`,
     };
+    // The link as the page gives it, reduced to the book's own ID.
+    if (link.reader)
+      rec.readUrl = `https://play.google.com/books/reader?id=${encodeURIComponent(link.id)}`;
+    else rec.pageUrl = `https://play.google.com${link.path}?id=${encodeURIComponent(link.id)}`;
     const authors = (Array.isArray(c.authors) ? c.authors : [])
       .map((a) => String(a).trim())
       .filter(Boolean);
     if (authors.length) rec.creators = authors.map((name) => ({ name, role: 'author' as const }));
     records.push(rec);
+    // For the report: the card type and which kind of page its link opens (never the ID).
+    labelFor[`volume:${link.id}`] = `${types.join('+') || 'no card type'} via ${link.path}`;
   }
-  return { records, excluded: [], next: null, fields: [...fields].sort(), labels };
+  return { records, excluded: [], next: null, fields: [...fields].sort(), labels: [], labelFor };
 }

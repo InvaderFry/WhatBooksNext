@@ -236,7 +236,10 @@
 				throw e;
 			}
 			for (const f of page.fields) this.fields.add(f);
-			for (const l of page.labels) this.labels[l] = (this.labels[l] ?? 0) + 1;
+			const count = (l) => this.labels[l] = (this.labels[l] ?? 0) + 1;
+			if (page.labelFor) {
+				for (const [k, l] of Object.entries(page.labelFor)) if (!this.records.has(k) && !this.excluded.has(k)) count(l);
+			} else page.labels.forEach(count);
 			const before = this.records.size + this.excluded.size;
 			for (const r of page.records) {
 				const key = `${r.idKind}:${r.storeRecordId}`;

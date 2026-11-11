@@ -10,8 +10,9 @@ const text = (el: Element | null) => (el?.getAttribute('title') || el?.textConte
 const readCards = (): PlayCard[] =>
   [...document.querySelectorAll('gpb-volume-card')].map((card) => {
     const link =
-      card.querySelector<HTMLAnchorElement>('a.title') ??
-      card.querySelector<HTMLAnchorElement>('a.cover-link');
+      card.querySelector<HTMLAnchorElement>('a.title[href]') ??
+      card.querySelector<HTMLAnchorElement>('a.cover-link[href]') ??
+      card.querySelector<HTMLAnchorElement>('a[href*="id="]');
     return {
       classes: [...(card.querySelector('div.card')?.classList ?? [])],
       href: link?.href ?? null,

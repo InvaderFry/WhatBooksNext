@@ -44,6 +44,11 @@ export interface ParsedPage {
   fields: string[];
   /** Labels the store uses for how a book was acquired, counted for the report (never titles). */
   labels: string[];
+  /**
+   * Card adapters read the same card many times while scrolling: each record's label, by
+   * `idKind:storeRecordId`, so it's counted once. When given, `labels` is ignored.
+   */
+  labelFor?: Record<string, string>;
 }
 
 /** The store's page or answer no longer looks like what the adapter knows: stop, never guess. */

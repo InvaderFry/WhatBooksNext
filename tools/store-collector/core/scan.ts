@@ -99,7 +99,11 @@ class Collected {
       throw e;
     }
     for (const f of page.fields) this.fields.add(f);
-    for (const l of page.labels) this.labels[l] = (this.labels[l] ?? 0) + 1;
+    const count = (l: string) => (this.labels[l] = (this.labels[l] ?? 0) + 1);
+    if (page.labelFor) {
+      for (const [k, l] of Object.entries(page.labelFor))
+        if (!this.records.has(k) && !this.excluded.has(k)) count(l);
+    } else page.labels.forEach(count);
     const before = this.records.size + this.excluded.size;
     for (const r of page.records) {
       const key = `${r.idKind}:${r.storeRecordId}`;
@@ -241,18 +245,18 @@ export async function scanCards(adapter: CardAdapter, d: CardScanDeps): Promise<
       c.steps++;
       const cards = d.readCards();
       const page = c.read(() => adapter.parse(cards));
-      // An empty list never counts as an empty library: the page probably looks different.
-      if (c.steps === 1 && c.records.size + c.excluded.size === 0) {
-        c.fingerprint = 'failed';
-        throw new Stop(
-          'layout_changed',
-          'No book cards were found on the page. If your library isn’t empty, the store’s page has changed.',
-        );
-      }
       d.onProgress?.({ requests: c.steps, records: c.records.size, waiting: false });
       const { atBottom } = d.scroll();
       idleAtEnd = atBottom && page.added === 0 ? idleAtEnd + 1 : 0;
       if (idleAtEnd >= lim.maxStalled) break;
+    }
+    // An empty list never counts as an empty library: the page probably looks different.
+    if (c.records.size + c.excluded.size === 0) {
+      c.fingerprint = 'failed';
+      throw new Stop(
+        'layout_changed',
+        'No book cards were found on the page. If your library isn’t empty, the store’s page has changed.',
+      );
     }
   } catch (e) {
     c.stop(e);

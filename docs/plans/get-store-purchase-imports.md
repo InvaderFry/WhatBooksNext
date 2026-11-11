@@ -2,9 +2,9 @@
 
 Status: **Stage 0 decided** (all four stores get a collector). **Store links built and checked**
 (A1b). **Stage 1 done for Kindle on amazon.com** (A2 and A3, 2026-11-11). The extension (1c) is
-**deferred** to a nice-to-have (owner decision, 2026-11-11). **Stage 2:** the look-around reports
-for all three stores are in (A6). **Google Play Books is built** and waits on its A2/A3. Kobo and
-GlobalComix need a second, more detailed look-around (A6b) with the improved script. Written 2026-11-11. This revises a first draft from 2026-11-10 ("console scripts, then one
+**deferred** to a nice-to-have (owner decision, 2026-11-11). **Stage 2:** Google Play Books
+version 1 stopped on its first look; **version 2** is built and waits on a re-run of A2. Kobo and
+GlobalComix wait on a third look-around (A6c) with look-around version 3. Written 2026-11-11. This revises a first draft from 2026-11-10 ("console scripts, then one
 extension") after a review. The review kept the draft's rules and its order of proving extraction
 before packaging it. It added: checking each store's official export before scraping anything,
 account safety limits, the owner's steps written for a non-programmer, building one store end to
@@ -621,6 +621,52 @@ Built for A6b:
   (cards and the scrolling loop on invented cards in `fixtures/stores/google_play/`) and
   `app.storePurchases.test.ts` (imported end to end).
 
+### Google Play Books, first run, and version 2 (2026-11-11)
+
+- **Version 1** stopped on its first look at the page with `layout_changed`: "a book card
+  without a reader link". It made 1 step and found nothing.
+- **Most likely cause:** cards below the first screen are empty until scrolled into view. The
+  look-around ran after the owner had scrolled, so it saw every card filled in.
+- **Version 2:**
+  - Cards with neither a link nor a title are skipped and read later, as the scroll fills them in.
+  - Any `play.google.com` book link with an `id` counts. A reader link becomes `readUrl`; any
+    other link, such as an audiobook's, becomes `pageUrl`.
+  - A failure now names the parts the card had (field names only).
+  - The empty-library check moved to the end of the scan.
+  - Labels are counted once per book, as card type plus link path (for example
+    `ebook via /books/reader`), so the next report shows what the one non-ebook card is.
+
+### Second look-around (A6b, 2026-11-11)
+
+- **Kobo:**
+  - The library pages hold 24 books each. Scrolling fetched three, with 24, 24 and 14 books, so
+    about 62 in all. The page shown at the end held one page of 14.
+  - Each book has its "Read now" link (`readnow.kobo.com/<id>`) three times and "view details"
+    (`/us/en/ebook/<slug>`) twice, apparently desktop and mobile copies.
+  - The card outline picked the cover box (`div.item-image`) instead of the whole card, so
+    title, author and any Preview / Kobo Plus label are still unseen. The `data-track-info` on
+    that box is about the shelf (`description`, `totalBooks`), not the book.
+- **GlobalComix:**
+  - **Each card shows the label "Purchased".** Cards link to `/c/<comic>/r/<release>` and show
+    two texts, one 50–200 characters and one under 10.
+  - The detail answers (`api.globalcomix.com/v1/…?releaseDetails=…`) hold a
+    `release_user_purchase` record (purchase time, price, `is_downloadable`), plus
+    `release_type_name` ("Volume"), `isbn`, `comic_name`, `title`, `contributors` with type
+    IDs, and `read_url` (`globalcomix.com/read/<id>/<slug>`). They are heavy (about 460 KB each,
+    with page panel data), so they won't be fetched per book.
+  - The list of purchases still didn't show. It's most likely in `__INITIAL_STATE__`'s react-query
+    queries, which were cut off after the first, site-settings query. Clicking away and back
+    reused cached data, so no new request was made.
+
+### Look-around version 3 (2026-11-11)
+
+- Outlines **one whole card**: the biggest repeated element with a link and an image that
+  doesn't contain another element like itself.
+- Relative links in outlines show the page's own host.
+- `__INITIAL_STATE__`-style react-query state is listed **one query at a time**, each with its
+  key. Plain words in the key are shown; anything with digits, spaces or hyphens is only
+  described.
+
 **A collector that hasn't been checked is never shown as working.** In the extension and the app,
 each store is **Checked on <date>**, **Not checked yet**, or **Not supported** (with the reason).
 
@@ -652,6 +698,7 @@ these rows to PLAN.md §21 when the stage starts.
 | A3  | Stage 1b                      | In whatBooksNext: Settings → Import store purchases → choose the JSON file. Check that the preview looks right, then import. Say whether anything was wrong (no titles needed).                                                                                                                                                                                | 10 min               |
 | A6  | Stage 2 start                 | In one sitting, on each of Google Play Books, Kobo (kobo.com/us) and GlobalComix: open your library page signed in, run the look-around script (Settings → Import store purchases → pick the store → **Copy the look-around script**), scroll to the bottom, click **Finish**, and paste the report into chat. It has no titles or IDs.                        | 15 min for all three |
 | A6b | Stage 2, Kobo and GlobalComix | Run the look-around again (it's improved) on Kobo's library and on GlobalComix's purchases. After starting it, click away and back to your books once, then scroll to the bottom, Finish, and paste both reports.                                                                                                                                              | 10 min               |
+| A6c | Stage 2, Kobo and GlobalComix | Run the look-around once more (version 3) on Kobo's library and on GlobalComix's purchases. Scroll to the bottom, click Finish, and paste both reports.                                                                                                                                                                                                        | 10 min               |
 | A4  | Later (extension)             | Install the extension by following `INSTALL.md` (download the zip, unzip, open the browser's extensions page, turn on Developer mode, Load unpacked). Run **Scan this library** on the same store, import the file, and check that nothing is duplicated.                                                                                                      | 15 min               |
 | A5  | Each new store or fix         | Copy the store's script again from Settings (it's always the latest), run it, and paste the report. Once there's an extension: install the new version instead.                                                                                                                                                                                                | 10 min per store     |
 

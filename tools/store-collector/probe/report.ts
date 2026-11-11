@@ -68,6 +68,22 @@ export class Probe {
   }
 
   addEmbedded(name: string, data: unknown): void {
+    // react-query's saved state (GlobalComix's __INITIAL_STATE__): one entry per query, so a big
+    // one (site settings) can't push the library list out of the report.
+    const queries = (data as { queries?: unknown } | null)?.queries;
+    if (
+      Array.isArray(queries) &&
+      queries.every((q) => q && typeof q === 'object' && 'state' in q)
+    ) {
+      queries.forEach((q, i) => {
+        const x = q as { queryKey?: unknown; state?: { data?: unknown } };
+        this.embedded.push({
+          name: `${name}.queries[${i}] key ${queryKeyText(x.queryKey)}`,
+          shape: shapeOf(x.state?.data, this.own),
+        });
+      });
+      return;
+    }
     this.embedded.push({ name, shape: shapeOf(data, this.own) });
   }
 
@@ -104,9 +120,9 @@ export class Probe {
     out.push('', `== Requests made before the script started (${head.earlier.length}) ==`);
     for (const e of [...new Set(head.earlier)].slice(0, 40)) out.push(`- ${e}`);
     out.push('', `== Data built into the page (${this.embedded.length}) ==`);
-    for (const e of this.embedded.slice(0, 12)) {
+    for (const e of this.embedded.slice(0, 20)) {
       out.push(`-- ${e.name}`);
-      out.push(render(e.shape, 1, 400));
+      out.push(render(e.shape, 1, 200));
     }
     out.push('', '== Repeated page elements (likely book cards) ==');
     for (const d of head.dom)
@@ -116,4 +132,26 @@ export class Probe {
     for (const s of this.sections) out.push('', `== ${s.title} ==`, s.text);
     return out.join('\n');
   }
+}
+
+/**
+ * A react-query key, like ["account", "purchases", {"page": 1}]: plain words are shown (they name
+ * what was asked for); anything with digits, spaces or hyphens (IDs, slugs, titles) is only
+ * described, and objects show their keys.
+ */
+export function queryKeyText(key: unknown): string {
+  if (!Array.isArray(key)) return '(none)';
+  return `[${key
+    .map((k) =>
+      typeof k === 'string'
+        ? /^[A-Za-z][A-Za-z_]{0,30}$/.test(k)
+          ? JSON.stringify(k)
+          : `text(${k.length})`
+        : k && typeof k === 'object'
+          ? `{${Object.keys(k)
+              .filter((x) => /^[A-Za-z_][A-Za-z0-9_]{0,30}$/.test(x))
+              .join(', ')}}`
+          : typeof k,
+    )
+    .join(', ')}]`;
 }

@@ -24,7 +24,7 @@
 	* `play.google.com/books/reader?id=<volume ID>`, and `a.author` linking to an author page.
 	* NOT CHECKED YET as a scan: the owner's first run (A2) checks it.
 	*/
-	const GOOGLE_PLAY_VERSION = "1";
+	const GOOGLE_PLAY_VERSION = "2";
 	/** Class names that say what a card is. Only these are reported; the rest are layout. */
 	const CARD_TYPES = [
 		"ebook",
@@ -37,7 +37,7 @@
 	];
 	const googlePlay = {
 		service: "google_play",
-		version: "1",
+		version: "2",
 		label: "Google Play Books",
 		checkPage(url) {
 			if (url.protocol !== "https:" || url.hostname !== "play.google.com" || !url.pathname.startsWith("/books")) return {
@@ -55,50 +55,65 @@
 		},
 		parse: parsePlayCards
 	};
+	/** A Google Play book link's volume ID and what it opens; null for any other link. */
+	function bookLink(href) {
+		try {
+			const u = new URL(String(href ?? ""));
+			const id = u.searchParams.get("id");
+			if (u.protocol !== "https:" || u.hostname !== "play.google.com" || !id) return null;
+			if (!/^\/(books|store\/books)(\/|$)/.test(u.pathname)) return null;
+			return {
+				id,
+				path: u.pathname,
+				reader: u.pathname.startsWith("/books/reader")
+			};
+		} catch {
+			return null;
+		}
+	}
 	/** Reads the cards on screen now. Pure, so it's tested on invented cards. */
 	function parsePlayCards(cards) {
 		if (!Array.isArray(cards)) throw new LayoutChanged("no list of book cards");
 		const records = [];
 		const fields = /* @__PURE__ */ new Set();
-		const labels = [];
+		const labelFor = {};
 		for (const raw of cards) {
-			const c = raw;
-			for (const [k, v] of Object.entries(c)) if (v !== null && v !== "" && !(Array.isArray(v) && v.length === 0)) fields.add(k);
-			let id = null;
-			try {
-				const u = new URL(String(c.href ?? ""));
-				if (u.hostname === "play.google.com" && u.pathname.startsWith("/books/reader")) id = u.searchParams.get("id");
-			} catch {}
-			if (!id) throw new LayoutChanged("a book card without a reader link");
+			const c = raw ?? {};
+			const has = Object.entries(c).filter(([, v]) => v !== null && v !== void 0 && v !== "" && !(Array.isArray(v) && v.length === 0)).map(([k]) => k);
 			const title = typeof c.title === "string" ? c.title.trim() : "";
-			if (!title) throw new LayoutChanged("a book card without a title");
+			if (!c.href && !title) continue;
+			for (const k of has) fields.add(k);
+			const link = bookLink(c.href);
+			if (!link || !title) throw new LayoutChanged(`a book card ${!link ? "without a Google book link" : "without a title"} (the card had: ${has.sort().join(", ") || "nothing"})`);
 			const types = (Array.isArray(c.classes) ? c.classes : []).filter((x) => CARD_TYPES.includes(String(x).toLowerCase()));
-			labels.push(types.length ? types.join("+") : "no card type");
 			const ebook = types.length === 1 && types[0] === "ebook";
 			const rec = {
-				storeRecordId: id,
+				storeRecordId: link.id,
 				idKind: "volume",
 				title,
 				unit: "book",
 				acquisition: {
 					type: ebook ? "purchase" : "uncertain",
 					evidence: `listed under Purchases; card type ${types.join("+") || "not shown"}`
-				},
-				readUrl: `https://play.google.com/books/reader?id=${encodeURIComponent(id)}`
+				}
 			};
+			if (link.reader) rec.readUrl = `https://play.google.com/books/reader?id=${encodeURIComponent(link.id)}`;
+			else rec.pageUrl = `https://play.google.com${link.path}?id=${encodeURIComponent(link.id)}`;
 			const authors = (Array.isArray(c.authors) ? c.authors : []).map((a) => String(a).trim()).filter(Boolean);
 			if (authors.length) rec.creators = authors.map((name) => ({
 				name,
 				role: "author"
 			}));
 			records.push(rec);
+			labelFor[`volume:${link.id}`] = `${types.join("+") || "no card type"} via ${link.path}`;
 		}
 		return {
 			records,
 			excluded: [],
 			next: null,
 			fields: [...fields].sort(),
-			labels
+			labels: [],
+			labelFor
 		};
 	}
 
@@ -155,7 +170,10 @@
 				throw e;
 			}
 			for (const f of page.fields) this.fields.add(f);
-			for (const l of page.labels) this.labels[l] = (this.labels[l] ?? 0) + 1;
+			const count = (l) => this.labels[l] = (this.labels[l] ?? 0) + 1;
+			if (page.labelFor) {
+				for (const [k, l] of Object.entries(page.labelFor)) if (!this.records.has(k) && !this.excluded.has(k)) count(l);
+			} else page.labels.forEach(count);
 			const before = this.records.size + this.excluded.size;
 			for (const r of page.records) {
 				const key = `${r.idKind}:${r.storeRecordId}`;
@@ -257,10 +275,6 @@
 				c.steps++;
 				const cards = d.readCards();
 				const page = c.read(() => adapter.parse(cards));
-				if (c.steps === 1 && c.records.size + c.excluded.size === 0) {
-					c.fingerprint = "failed";
-					throw new Stop("layout_changed", "No book cards were found on the page. If your library isn’t empty, the store’s page has changed.");
-				}
 				d.onProgress?.({
 					requests: c.steps,
 					records: c.records.size,
@@ -269,6 +283,10 @@
 				const { atBottom } = d.scroll();
 				idleAtEnd = atBottom && page.added === 0 ? idleAtEnd + 1 : 0;
 				if (idleAtEnd >= lim.maxStalled) break;
+			}
+			if (c.records.size + c.excluded.size === 0) {
+				c.fingerprint = "failed";
+				throw new Stop("layout_changed", "No book cards were found on the page. If your library isn’t empty, the store’s page has changed.");
 			}
 		} catch (e) {
 			c.stop(e);
@@ -392,7 +410,7 @@
 // tools/store-collector/console/google_play.ts
 	const text = (el) => (el?.getAttribute("title") || el?.textContent || "").trim();
 	const readCards = () => [...document.querySelectorAll("gpb-volume-card")].map((card) => {
-		const link = card.querySelector("a.title") ?? card.querySelector("a.cover-link");
+		const link = card.querySelector("a.title[href]") ?? card.querySelector("a.cover-link[href]") ?? card.querySelector("a[href*=\"id=\"]");
 		return {
 			classes: [...card.querySelector("div.card")?.classList ?? []],
 			href: link?.href ?? null,

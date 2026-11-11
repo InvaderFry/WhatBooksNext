@@ -83,10 +83,14 @@ export function safeKey(k: string): boolean {
  * A URL as host and path pattern: segments that look like IDs or slugs become :id or :slug, and
  * query values are hidden except a few that name methods (Google's rpcids) or settings.
  */
-export function maskUrl(raw: string, ownHosts: string[]): string {
+export function maskUrl(
+  raw: string,
+  ownHosts: string[],
+  base = 'https://invalid.example/',
+): string {
   let u: URL;
   try {
-    u = new URL(raw, 'https://invalid.example/');
+    u = new URL(raw, base);
   } catch {
     return '(not a URL)';
   }

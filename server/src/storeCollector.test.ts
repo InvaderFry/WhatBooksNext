@@ -330,13 +330,42 @@ describe('reading Google Play Books cards', () => {
       'listed under Purchases; card type audiobook',
     );
     expect(page.records[4]!.creators).toBeUndefined();
-    expect(page.labels).toEqual(['ebook', 'ebook', 'ebook', 'audiobook', 'ebook']);
+    expect(Object.values(page.labelFor!)).toEqual([
+      'ebook via /books/reader',
+      'ebook via /books/reader',
+      'ebook via /books/reader',
+      'audiobook via /books/reader',
+      'ebook via /books/reader',
+    ]);
+  });
+
+  it('skips cards the page hasn’t filled in yet, and takes other Google book links as pages', () => {
+    const page = parsePlayCards([
+      { classes: ['card'], href: null, title: '', authors: [] },
+      {
+        classes: ['card', 'audiobook'],
+        href: 'https://play.google.com/books/listen?id=invListen0006',
+        title: 'Shared Shelf Stories',
+        authors: ['Tobiah Renn'],
+      },
+    ]);
+    expect(page.records).toHaveLength(1);
+    expect(page.records[0]).toMatchObject({
+      storeRecordId: 'invListen0006',
+      acquisition: { type: 'uncertain' },
+      pageUrl: 'https://play.google.com/books/listen?id=invListen0006',
+    });
+    expect(page.records[0]!.readUrl).toBeUndefined();
+    expect(page.labelFor).toEqual({ 'volume:invListen0006': 'audiobook via /books/listen' });
   });
 
   it('refuses cards that look different (the layout fingerprint)', () => {
     expect(() => parsePlayCards({})).toThrow(/list of book cards/);
     expect(() => parsePlayCards([{ ...CARDS[0], href: 'https://play.google.com/store' }])).toThrow(
-      /reader link/,
+      /without a Google book link \(the card had: authors, classes, href, title\)/,
+    );
+    expect(() => parsePlayCards([{ ...CARDS[0], href: 'https://example.com/x?id=1' }])).toThrow(
+      /book link/,
     );
     expect(() => parsePlayCards([{ ...CARDS[0], title: ' ' }])).toThrow(/title/);
   });
@@ -357,11 +386,36 @@ describe('scanning a page of cards', () => {
     );
     expect(r.envelope).toMatchObject({
       service: 'google_play',
-      adapterVersion: '1',
+      adapterVersion: '2',
       completion: { status: 'complete', reason: 'finished' },
       counts: { seen: 5, included: 4, uncertain: 1 },
     });
     expect(r.stats.fingerprint).toBe('passed');
+  });
+
+  it('waits for cards that fill in as they scroll into view', async () => {
+    // Cards below the first screen are empty until scrolled to.
+    const filled = new Set<number>();
+    let top = 0;
+    const r = await scanCards(googlePlay, {
+      ...playPage(CARDS).d,
+      readCards: () =>
+        CARDS.map((c, i) =>
+          i < top + 2
+            ? (filled.add(i), c)
+            : { classes: ['card'], href: null, title: '', authors: [] },
+        ),
+      scroll: () => {
+        top = Math.min(top + 2, CARDS.length);
+        return { atBottom: top >= CARDS.length };
+      },
+    });
+    expect(r.envelope.completion.status).toBe('complete');
+    expect(r.envelope.records).toHaveLength(CARDS.length);
+    expect(r.stats.labels).toEqual({
+      'ebook via /books/reader': 4,
+      'audiobook via /books/reader': 1,
+    });
   });
 
   it('never reports an empty page as an empty library', async () => {

@@ -166,15 +166,26 @@ void (() => {
       .trim(),
     children: depth < 8 ? [...el.children].map((c) => toNode(c, depth + 1)) : [],
   });
-  const cardOutlines = (list: (DomSignature & { el: Element })[], where: string) => {
+  // The whole card: of the repeated elements holding a link and an image, the biggest one that
+  // isn't a list of them (it holds no other element like itself).
+  const sigOf = (el: Element) => {
+    const cls = [...el.classList]
+      .map((c) => (/\d{3,}|^[a-z0-9_-]{1,3}$/i.test(c) ? null : c.replace(/\d+/g, '#')))
+      .filter(Boolean)
+      .slice(0, 4)
+      .join('.');
+    return `${el.tagName.toLowerCase()}${cls ? '.' + cls : ''}`;
+  };
+  const cardOutlines = (list: (DomSignature & { el: Element })[], where: string, base: string) => {
     const cards = list
       .filter((d) => d.link && d.hasImage)
-      .sort((a, b) => b.count - a.count || a.sig.length - b.sig.length)
-      .slice(0, 2);
+      .filter((d) => ![...d.el.querySelectorAll('*')].some((x) => sigOf(x) === d.sig))
+      .sort((a, b) => b.el.querySelectorAll('*').length - a.el.querySelectorAll('*').length)
+      .slice(0, 1);
     for (const c of cards)
       probe.addSection(
-        `One card in detail (${where}): ${c.sig} ×${c.count}`,
-        outline(toNode(c.el), own),
+        `One whole card in detail (${where}): ${c.sig} ×${c.count}`,
+        outline(toNode(c.el), own, 120, base),
       );
   };
 
@@ -208,7 +219,7 @@ void (() => {
     restore();
     readEmbedded();
     const here = domSignatures();
-    cardOutlines(here, 'this page');
+    cardOutlines(here, 'this page', location.href);
     // Library pages the page fetched as HTML: their repeated elements and one card.
     probe.html.forEach((h, i) => {
       const doc = new DOMParser().parseFromString(h.body, 'text/html');
@@ -222,7 +233,7 @@ void (() => {
           )
           .join('\n'),
       );
-      if (i === 0) cardOutlines(sigs, `fetched page ${i + 1}`);
+      if (i === 0) cardOutlines(sigs, `fetched page ${i + 1}`, location.href);
     });
     const text = probe.report({
       page: location.href,

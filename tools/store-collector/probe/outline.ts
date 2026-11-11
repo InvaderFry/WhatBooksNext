@@ -17,7 +17,8 @@ export interface OutlineNode {
 
 const SHOWN_ATTRS = /^(data-[a-z0-9-]{1,40}|aria-label|title|href|src|alt|role|type|name)$/;
 
-export function outline(n: OutlineNode, own: string[], maxLines = 80): string {
+/** `base`: the page's address, so relative links show their real host. */
+export function outline(n: OutlineNode, own: string[], maxLines = 80, base?: string): string {
   const lines: string[] = [];
   const walk = (x: OutlineNode, d: number) => {
     if (lines.length >= maxLines) return;
@@ -32,7 +33,7 @@ export function outline(n: OutlineNode, own: string[], maxLines = 80): string {
       if (!SHOWN_ATTRS.test(a.name)) continue;
       const v = a.value.trim();
       if (a.name === 'href' || a.name === 'src') {
-        parts.push(`${a.name}=${maskUrl(v, own)}`);
+        parts.push(`${a.name}=${maskUrl(v, own, base)}`);
         continue;
       }
       if (v.startsWith('{') || v.startsWith('[')) {
