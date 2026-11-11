@@ -4,6 +4,7 @@ import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { googlePlay } from '../../tools/store-collector/adapters/googlePlay.ts';
 import { kindle } from '../../tools/store-collector/adapters/kindle.ts';
+import { kobo } from '../../tools/store-collector/adapters/kobo.ts';
 import { scan, scanCards } from '../../tools/store-collector/core/scan.ts';
 import { createApp } from './app.ts';
 import type { DB } from './db/database.ts';
@@ -312,16 +313,24 @@ describe('the collectors in the app', () => {
       },
       {
         service: 'google_play',
-        state: 'not_checked',
-        checkedOn: null,
+        state: 'checked',
+        checkedOn: '2026-11-11',
         page: 'https://play.google.com/books?source=purchases',
       },
-      { service: 'kobo', state: 'not_built', checkedOn: null, page: null },
+      {
+        service: 'kobo',
+        state: 'not_checked',
+        checkedOn: null,
+        page: 'https://www.kobo.com/us/en/library/books',
+      },
       { service: 'globalcomix', state: 'not_built', checkedOn: null, page: null },
     ]);
     const s = await api.get('/api/store-collectors/kindle/script');
     expect(s.body.script).toContain('kindle-library/search');
-    expect((await api.get('/api/store-collectors/kobo/script')).status).toBe(404);
+    expect((await api.get('/api/store-collectors/kobo/script')).body.script).toContain(
+      'library/books',
+    );
+    expect((await api.get('/api/store-collectors/globalcomix/script')).status).toBe(404);
     // The look-around script for stores with no collector yet.
     expect((await api.get('/api/store-collectors/probe/script')).body.script).toContain(
       'look-around report',
@@ -396,6 +405,88 @@ describe('the collectors in the app', () => {
         url: 'https://play.google.com/books/reader?id=invOrchardLed05',
         kind: 'read',
         host: 'play.google.com',
+      },
+    ]);
+  });
+
+  it('spots the same book twice in one file, and joins them when ticked', async () => {
+    const twice = storeFile([
+      { id: 'INVENTED0301', title: 'Faust Revisited', author: 'Ivo Brask' },
+      { id: 'INVENTED0302', title: 'Faust Revisited', author: 'Ivo Brask' },
+    ]);
+    const p = await preview(twice);
+    expect(
+      p.rows.map((r: { outcome: string; sameInFile: string | null }) => [r.outcome, r.sameInFile]),
+    ).toEqual([
+      ['new', null],
+      ['possible', 'asin:INVENTED0301'],
+    ]);
+    expect(p.rows[1].itemTitle).toBe('Faust Revisited');
+    expect(await importFile(twice, { attach: ['asin:INVENTED0302'] })).toMatchObject({
+      added: 1,
+      attached: 1,
+    });
+    expect(one("SELECT COUNT(*) FROM items WHERE title = 'Faust Revisited'")).toBe(1);
+    expect(one('SELECT COUNT(DISTINCT item_id) FROM store_purchases')).toBe(1);
+    expect(one('SELECT COUNT(*) FROM store_purchases')).toBe(2);
+    // Importing again finds both as already imported.
+    expect(await importFile(twice)).toMatchObject({ already: 2, added: 0 });
+  });
+
+  it('keeps them as two books when not ticked', async () => {
+    const twice = storeFile([
+      { id: 'INVENTED0301', title: 'Faust Revisited', author: 'Ivo Brask' },
+      { id: 'INVENTED0302', title: 'Faust Revisited', author: 'Ivo Brask' },
+    ]);
+    expect(await importFile(twice)).toMatchObject({ added: 2 });
+    expect(one("SELECT COUNT(*) FROM items WHERE title = 'Faust Revisited'")).toBe(2);
+  });
+
+  it('imports what the Kobo collector read: links, reading status, and preview cards to tick', async () => {
+    const dir = path.join(import.meta.dirname, '..', '..', 'fixtures', 'stores', 'kobo');
+    const result = await scan(kobo, {
+      page: new URL('https://www.kobo.com/us/en/library/books'),
+      fetch: async () =>
+        new Response('<html></html>', { headers: { 'content-type': 'text/html' } }),
+      fromHtml: (_h, url) => {
+        const n = new URL(url).searchParams.get('pageNumber')!;
+        const f = path.join(dir, `page-${n}.json`);
+        return fs.existsSync(f)
+          ? JSON.parse(fs.readFileSync(f, 'utf8'))
+          : { page: Number(n), cards: [] };
+      },
+      sleep: async () => {},
+      now: () => new Date('2026-11-11T12:00:00Z'),
+      signal: new AbortController().signal,
+    });
+    const text = JSON.stringify(result.envelope);
+    const p = await preview(text);
+    expect(p).toMatchObject({ service: 'kobo', label: 'Kobo', problems: [] });
+    expect(
+      p.rows.filter((r: { acquisition: string }) => r.acquisition === 'uncertain'),
+    ).toHaveLength(2);
+    // Tidewright (typed in earlier as a Kindle book) is offered as the same book; not ticked here.
+    expect(await importFile(text)).toMatchObject({ added: 2, skipped: 2 });
+    const tide = db
+      .prepare(
+        "SELECT i.id FROM items i JOIN locations l ON l.item_id = i.id WHERE i.title = 'Tidewright' AND l.store = 'kobo'",
+      )
+      .pluck()
+      .get() as string;
+    const item = (await api.get(`/api/items/${tide}`)).body;
+    expect(item.user.progress).toBe('finished');
+    const ember = db
+      .prepare(
+        "SELECT i.id FROM items i JOIN locations l ON l.item_id = i.id WHERE l.store = 'kobo' AND i.title = 'The Ember Orchard'",
+      )
+      .pluck()
+      .get() as string;
+    expect((await api.get(`/api/items/${ember}`)).body.availability.storeLinks).toEqual([
+      {
+        store: 'kobo',
+        url: 'https://readnow.kobo.com/inv00000-0000-0000-0000-000000000001',
+        kind: 'read',
+        host: 'readnow.kobo.com',
       },
     ]);
   });

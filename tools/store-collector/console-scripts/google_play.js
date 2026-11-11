@@ -156,6 +156,7 @@
 		reason = "finished";
 		text = "The store’s list ended normally.";
 		region;
+		storeTotal;
 		/** Reads one answer or one look at the page; returns how many new books it brought. */
 		read(parse) {
 			let page;
@@ -170,6 +171,7 @@
 				throw e;
 			}
 			for (const f of page.fields) this.fields.add(f);
+			if (page.storeTotal !== void 0) this.storeTotal = Math.max(this.storeTotal ?? 0, page.storeTotal);
 			const count = (l) => this.labels[l] = (this.labels[l] ?? 0) + 1;
 			if (page.labelFor) {
 				for (const [k, l] of Object.entries(page.labelFor)) if (!this.records.has(k) && !this.excluded.has(k)) count(l);
@@ -228,7 +230,8 @@
 					fingerprint: this.fingerprint,
 					fields: [...this.fields].sort(),
 					labels: this.labels,
-					errors: this.errors
+					errors: this.errors,
+					...this.storeTotal !== void 0 ? { storeTotal: this.storeTotal } : {}
 				}
 			};
 		}
@@ -255,6 +258,12 @@
 			await d.sleep(wait, d.signal);
 			if (d.signal.aborted) throw new Stop("cancelled", "You cancelled the scan.");
 		}
+	}
+	/** An empty list never counts as an empty library: the page probably looks different. */
+	function emptyIsLayout(c) {
+		if (c.records.size + c.excluded.size > 0) return;
+		c.fingerprint = "failed";
+		throw new Stop("layout_changed", "No books were found. If your library isn’t empty, the store’s page has changed.");
 	}
 	/**
 	* Scrolls the library and reads its cards, keeping every card seen (a list may drop cards that
@@ -284,10 +293,7 @@
 				idleAtEnd = atBottom && page.added === 0 ? idleAtEnd + 1 : 0;
 				if (idleAtEnd >= lim.maxStalled) break;
 			}
-			if (c.records.size + c.excluded.size === 0) {
-				c.fingerprint = "failed";
-				throw new Stop("layout_changed", "No book cards were found on the page. If your library isn’t empty, the store’s page has changed.");
-			}
+			emptyIsLayout(c);
 		} catch (e) {
 			c.stop(e);
 		}
@@ -314,7 +320,7 @@
 			`Browser: ${browser}`,
 			`Date: ${e.collectedAt}`,
 			`Requests: ${r.stats.requests}`,
-			`Found: ${e.counts.seen}`,
+			`Found: ${e.counts.seen}${r.stats.storeTotal !== void 0 ? ` (the store's own count: ${r.stats.storeTotal})` : ""}`,
 			`Included: ${e.counts.included} (purchases ${acquired.purchase}, free ${acquired.free})`,
 			`Uncertain: ${e.counts.uncertain}`,
 			`Excluded: ${excluded || "none"}`,

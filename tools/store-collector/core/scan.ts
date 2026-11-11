@@ -41,6 +41,8 @@ interface CommonDeps {
 
 export interface ScanDeps extends CommonDeps {
   fetch: (url: string, init: RequestInit) => Promise<Response>;
+  /** For stores that answer with HTML: the page side reads it into plain objects for `parse`. */
+  fromHtml?: (html: string, url: string) => unknown;
 }
 
 export interface CardScanDeps extends CommonDeps {
@@ -61,6 +63,8 @@ export interface ScanResult {
     fields: string[];
     labels: Record<string, number>;
     errors: string[];
+    /** The store's own count of the library, when its page shows one. */
+    storeTotal?: number;
   };
 }
 
@@ -84,6 +88,7 @@ class Collected {
   reason: CompletionReason = 'finished';
   text = 'The store’s list ended normally.';
   region: string | undefined;
+  storeTotal: number | undefined;
 
   /** Reads one answer or one look at the page; returns how many new books it brought. */
   read(parse: () => ParsedPage): ParsedPage & { added: number } {
@@ -99,6 +104,8 @@ class Collected {
       throw e;
     }
     for (const f of page.fields) this.fields.add(f);
+    if (page.storeTotal !== undefined)
+      this.storeTotal = Math.max(this.storeTotal ?? 0, page.storeTotal);
     const count = (l: string) => (this.labels[l] = (this.labels[l] ?? 0) + 1);
     if (page.labelFor) {
       for (const [k, l] of Object.entries(page.labelFor))
@@ -159,6 +166,7 @@ class Collected {
         fields: [...this.fields].sort(),
         labels: this.labels,
         errors: this.errors,
+        ...(this.storeTotal !== undefined ? { storeTotal: this.storeTotal } : {}),
       },
     };
   }
@@ -204,20 +212,33 @@ export async function scan(adapter: Adapter, d: ScanDeps): Promise<ScanResult> {
       cursors.add(cursor);
       const { url, init } = adapter.request(cursor, d.page);
       c.steps++;
-      const body = await send(d, url, init);
-      const page = c.read(() => adapter.parse(body));
+      const body = await send(d, url, init, adapter.answer ?? 'json');
+      const data = adapter.answer === 'html' ? d.fromHtml!(body as string, url) : body;
+      const page = c.read(() => adapter.parse(data));
       d.onProgress?.({ requests: c.steps, records: c.records.size, waiting: false });
       if (page.next !== null && cursors.has(page.next))
         throw new Stop('error', 'The store sent the same page twice; stopped instead of looping.');
+      if (adapter.endsWhenNothingNew && page.added === 0 && c.steps > 1) break;
       stalled = page.added === 0 && page.next !== null ? stalled + 1 : 0;
       if (stalled >= lim.maxStalled)
         throw new Stop('error', 'The store kept sending no new books; stopped instead of looping.');
       cursor = page.next;
     }
+    emptyIsLayout(c);
   } catch (e) {
     c.stop(e);
   }
   return c.result(adapter, d.now());
+}
+
+/** An empty list never counts as an empty library: the page probably looks different. */
+function emptyIsLayout(c: Collected): void {
+  if (c.records.size + c.excluded.size > 0) return;
+  c.fingerprint = 'failed';
+  throw new Stop(
+    'layout_changed',
+    'No books were found. If your library isn’t empty, the store’s page has changed.',
+  );
 }
 
 /**
@@ -250,14 +271,7 @@ export async function scanCards(adapter: CardAdapter, d: CardScanDeps): Promise<
       idleAtEnd = atBottom && page.added === 0 ? idleAtEnd + 1 : 0;
       if (idleAtEnd >= lim.maxStalled) break;
     }
-    // An empty list never counts as an empty library: the page probably looks different.
-    if (c.records.size + c.excluded.size === 0) {
-      c.fingerprint = 'failed';
-      throw new Stop(
-        'layout_changed',
-        'No book cards were found on the page. If your library isn’t empty, the store’s page has changed.',
-      );
-    }
+    emptyIsLayout(c);
   } catch (e) {
     c.stop(e);
   }
@@ -268,7 +282,12 @@ export async function scanCards(adapter: CardAdapter, d: CardScanDeps): Promise<
  * Sends one request in the owner's own signed-in tab. Stops at the first sign of trouble: a
  * sign-in page, 401/403/429, an unexpected redirect, or an answer that isn't the library's.
  */
-async function send(d: ScanDeps, url: string, init: RequestInit): Promise<unknown> {
+async function send(
+  d: ScanDeps,
+  url: string,
+  init: RequestInit,
+  answer: 'json' | 'html',
+): Promise<unknown> {
   let res: Response;
   try {
     res = await d.fetch(url, { credentials: 'include', ...init, signal: d.signal });
@@ -289,6 +308,14 @@ async function send(d: ScanDeps, url: string, init: RequestInit): Promise<unknow
   if (res.redirected && final.host !== new URL(url).host)
     throw new Stop('blocked', `The store sent the request somewhere else (${final.host}).`);
   if (!res.ok) throw new Stop('error', `The store answered HTTP ${res.status}.`);
+  if (answer === 'html') {
+    if (!/html/i.test(res.headers.get('content-type') ?? ''))
+      throw new Stop(
+        'blocked',
+        'The store answered with something other than a library page. Stopped.',
+      );
+    return await res.text();
+  }
   if (!/json/i.test(res.headers.get('content-type') ?? ''))
     throw new Stop(
       'blocked',

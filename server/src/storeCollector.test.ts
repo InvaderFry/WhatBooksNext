@@ -8,6 +8,7 @@ import {
   type PlayCard,
 } from '../../tools/store-collector/adapters/googlePlay.ts';
 import { kindle, parseKindlePage } from '../../tools/store-collector/adapters/kindle.ts';
+import { kobo, parseKoboPage } from '../../tools/store-collector/adapters/kobo.ts';
 import { report } from '../../tools/store-collector/core/report.ts';
 import {
   scan,
@@ -449,6 +450,134 @@ describe('scanning a page of cards', () => {
       status: 'partial',
       reason: 'limit_reached',
     });
+  });
+});
+
+const KOBO_DIR = path.join(import.meta.dirname, '..', '..', 'fixtures', 'stores', 'kobo');
+const koboPage = (n: number) =>
+  JSON.parse(fs.readFileSync(path.join(KOBO_DIR, `page-${n}.json`), 'utf8')) as {
+    page: number;
+    cards: unknown[];
+  };
+const KOBO = new URL('https://www.kobo.com/us/en/library/books');
+
+/** A fake Kobo: answers each ?pageNumber=N with an HTML page the fake page side reads. */
+function koboStore(pages: Record<string, () => { page: number; cards: unknown[] }>) {
+  const asked: string[] = [];
+  const html = (body = '<html></html>') =>
+    new Response(body, { status: 200, headers: { 'content-type': 'text/html; charset=utf-8' } });
+  return {
+    asked,
+    deps: (extra: Partial<ScanDeps> = {}): ScanDeps => ({
+      page: KOBO,
+      fetch: async (url) => {
+        asked.push(new URL(url).searchParams.get('pageNumber') ?? '');
+        return html();
+      },
+      fromHtml: (_html, url) => {
+        const n = new URL(url).searchParams.get('pageNumber')!;
+        return pages[n] ? pages[n]!() : { page: Number(n), cards: [] };
+      },
+      sleep: async () => {},
+      now: () => new Date('2026-11-11T12:00:00Z'),
+      signal: new AbortController().signal,
+      ...extra,
+    }),
+  };
+}
+
+describe('reading Kobo library pages', () => {
+  it('keeps plain books as owned, sends preview and Kobo Plus cards to the owner, and reads status', () => {
+    const one = parseKoboPage(koboPage(1));
+    expect(one.next).toBe('2');
+    expect(one.storeTotal).toBe(4);
+    expect(one.records[0]).toEqual({
+      storeRecordId: 'inv00000-0000-0000-0000-000000000001',
+      idKind: 'product',
+      title: 'The Ember Orchard',
+      unit: 'book',
+      acquisition: {
+        type: 'purchase',
+        evidence: 'in your Kobo Books library, with no preview or Kobo Plus mark',
+      },
+      creators: [{ name: 'Nell Varga', role: 'author' }],
+      readUrl: 'https://readnow.kobo.com/inv00000-0000-0000-0000-000000000001',
+      pageUrl: 'https://www.kobo.com/us/en/ebook/the-ember-orchard-invented',
+      readingStatus: 'not_started',
+    });
+    expect(one.records[1]).toMatchObject({ readingStatus: 'finished' });
+    expect(one.records[1]!.readUrl).toBeUndefined();
+    const two = parseKoboPage(koboPage(2));
+    expect(two.records.map((r) => [r.acquisition.type, r.acquisition.evidence])).toEqual([
+      ['uncertain', 'in your Kobo Books library, marked book, preview'],
+      ['uncertain', 'in your Kobo Books library, marked book, kobo-plus'],
+    ]);
+    expect(Object.values(two.labelFor!)).toEqual([
+      'book+preview (not_started)',
+      'book+kobo-plus (in_progress)',
+    ]);
+    expect(parseKoboPage(koboPage(3)).next).toBeNull();
+  });
+
+  it('refuses cards that look different, naming what they had', () => {
+    expect(() => parseKoboPage({ cards: [] })).toThrow(/list of book cards/);
+    expect(() =>
+      parseKoboPage({
+        page: 1,
+        cards: [{ classes: ['item-wrapper', 'book'], title: 'Untracked', trackInfo: '{}' }],
+      }),
+    ).toThrow(/without a product ID \(the card had: classes, title\)/);
+  });
+
+  it('only runs on the Books library', () => {
+    expect(kobo.checkPage(KOBO)).toEqual({ ok: true, region: 'kobo.com/us' });
+    const lib = kobo.checkPage(new URL('https://www.kobo.com/us/en/library'));
+    expect(!lib.ok && lib.message).toMatch(/library\/books/);
+  });
+});
+
+describe('scanning Kobo', () => {
+  it('reads page after page until an empty one, and notes the store’s own count', async () => {
+    const s = koboStore({ '1': () => koboPage(1), '2': () => koboPage(2) });
+    const r = await scan(kobo, s.deps());
+    expect(s.asked).toEqual(['1', '2', '3']);
+    expect(r.envelope).toMatchObject({
+      service: 'kobo',
+      region: 'kobo.com/us',
+      completion: { status: 'complete', reason: 'finished' },
+      counts: { seen: 4, included: 2, uncertain: 2 },
+    });
+    expect(r.stats.storeTotal).toBe(4);
+    expect(report(kobo, r, 'x')).toContain("Found: 4 (the store's own count: 4)");
+  });
+
+  it('ends when a page past the end repeats the last one', async () => {
+    const s = koboStore({
+      '1': () => koboPage(1),
+      '2': () => koboPage(2),
+      '3': () => ({ ...koboPage(2), page: 3 }),
+    });
+    const r = await scan(kobo, s.deps());
+    expect(s.asked).toEqual(['1', '2', '3']);
+    expect(r.envelope.completion.status).toBe('complete');
+    expect(r.envelope.records).toHaveLength(4);
+  });
+
+  it('stops at a sign-in page, and never reports an empty first page as an empty library', async () => {
+    const s = koboStore({});
+    const signedOut = await scan(kobo, {
+      ...s.deps(),
+      fetch: async () => {
+        const res = new Response('<html>sign in</html>', {
+          headers: { 'content-type': 'text/html' },
+        });
+        Object.defineProperty(res, 'url', { value: 'https://www.kobo.com/us/en/account/login' });
+        return res;
+      },
+    });
+    expect(signedOut.envelope.completion).toMatchObject({ status: 'failed', reason: 'signed_out' });
+    const empty = await scan(kobo, koboStore({}).deps());
+    expect(empty.envelope.completion).toMatchObject({ status: 'failed', reason: 'layout_changed' });
   });
 });
 

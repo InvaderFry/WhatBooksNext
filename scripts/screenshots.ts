@@ -468,7 +468,7 @@ try {
       'settings-store-look-around',
       '/?view=settings',
       async (p) => {
-        await p.getByRole('radio', { name: /Kobo/ }).check();
+        await p.getByRole('radio', { name: /GlobalComix/ }).check();
         await p.getByRole('button', { name: 'Copy the look-around script' }).waitFor();
         await p.getByRole('heading', { name: 'Import store purchases' }).scrollIntoViewIfNeeded();
       },

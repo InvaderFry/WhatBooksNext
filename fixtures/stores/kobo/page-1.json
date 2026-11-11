@@ -1,0 +1,25 @@
+{
+  "page": 1,
+  "cards": [
+    {
+      "classes": ["item-wrapper", "book"],
+      "trackInfo": "{\"totalBooks\":4,\"productId\":\"inv00000-0000-0000-0000-000000000001\",\"title\":\"The Ember Orchard\",\"readStatus\":\"ReadStatusUnread\",\"isSearchResult\":false}",
+      "title": "The Ember Orchard",
+      "pageHref": "https://www.kobo.com/us/en/ebook/the-ember-orchard-invented",
+      "authors": ["Nell Varga"],
+      "readHref": "https://readnow.kobo.com/inv00000-0000-0000-0000-000000000001?utm_content=x&backref_url=y&locale=en-US",
+      "status": "Unread",
+      "marks": []
+    },
+    {
+      "classes": ["item-wrapper", "book"],
+      "trackInfo": "{\"totalBooks\":4,\"productId\":\"inv00000-0000-0000-0000-000000000002\",\"title\":\"Tidewright\",\"readStatus\":\"ReadStatusFinished\",\"isSearchResult\":false}",
+      "title": "Tidewright",
+      "pageHref": "https://www.kobo.com/us/en/ebook/tidewright-invented",
+      "authors": ["Osric Lane"],
+      "readHref": null,
+      "status": "Finished",
+      "marks": []
+    }
+  ]
+}

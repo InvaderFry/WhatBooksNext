@@ -2,9 +2,13 @@
 
 Status: **Stage 0 decided** (all four stores get a collector). **Store links built and checked**
 (A1b). **Stage 1 done for Kindle on amazon.com** (A2 and A3, 2026-11-11). The extension (1c) is
-**deferred** to a nice-to-have (owner decision, 2026-11-11). **Stage 2:** Google Play Books
-version 1 stopped on its first look; **version 2** is built and waits on a re-run of A2. Kobo and
-GlobalComix wait on a third look-around (A6c) with look-around version 3. Written 2026-11-11. This revises a first draft from 2026-11-10 ("console scripts, then one
+**deferred** to a nice-to-have (owner decision, 2026-11-11). **Stage 2:**
+
+- **Google Play Books** is checked (version 2, 2026-11-11).
+- **Kobo** is built from the third look-around and waits on A2/A3.
+- **GlobalComix** waits on one more look-around (A6d), started on the home page.
+
+Written 2026-11-11. This revises a first draft from 2026-11-10 ("console scripts, then one
 extension") after a review. The review kept the draft's rules and its order of proving extraction
 before packaging it. It added: checking each store's official export before scraping anything,
 account safety limits, the owner's steps written for a non-programmer, building one store end to
@@ -667,6 +671,67 @@ Built for A6b:
   key. Plain words in the key are shown; anything with digits, spaces or hyphens is only
   described.
 
+### Google Play Books checked (A2, 2026-11-11)
+
+- **Version 2** ran in Firefox: complete in 3 steps, 23 found, with the layout check passing.
+  22 cards were `ebook via /books/reader` (purchases). One was `audiobook via /books/listen`,
+  which goes to the owner as uncertain with a page link. No ISBNs, no progress.
+- **A3:** imported. `COLLECTORS.google_play` is **Checked on 2026-11-11**.
+- **Found during A3:**
+  - **The same title twice:** two separate Google volumes with the same title and author (most
+    likely two editions) came in as two books. The preview now marks a later book in the same file
+    with the same title and author as **"Same title and author as another book in this file
+    (another edition?)"**. Ticked, both store records join one library book; unticked, they stay
+    separate, as before. Books already doubled can be joined with **Merge with another entry** on
+    the book's page.
+  - **Lookups:** since the import-starts-lookups change, no "Look them up now" prompt appears
+    after an import. Books whose lookup finds several close editions (classics) go to Needs review
+    as "Two possible matches" rather than being guessed.
+
+### Third look-around (A6c, 2026-11-11), and Kobo built
+
+- **Kobo:** the whole card, `li.item-wrapper.book`, is now outlined.
+  - Its `data-track-info` JSON holds `productId` (36 characters), `title`, `readStatus`,
+    `isSearchResult` and the store's `totalBooks`.
+  - `h2.title a` holds the title and links `/us/en/ebook/<slug>`.
+  - `p.authors a.contributor-name` gives one author each.
+  - `a.button.readnow` links `readnow.kobo.com/<id>`. Its `data-*` attributes repeat the title and
+    contributors, with empty series fields.
+  - `span.item-status` shows "Unread", and `span.date-added` the date added.
+  - The card's menu holds actions (mark as finished, remove from library, archive). The collector
+    never touches them.
+  - The owner opens `kobo.com/us/en/library/books`, not `/library`, to see the books.
+- **Kobo collector** (`adapters/kobo.ts` version 1, `console/kobo.ts`, `console-scripts/kobo.js`):
+  - **Paging:** it fetches `library/books?pageNumber=1, 2, …`, the same HTML pages the library
+    page fetches while scrolling, and reads them with the browser's own HTML parser. It never
+    presses a card's buttons. It ends at a page with no books, or one that brings nothing new (a
+    page past the end may repeat the last).
+  - **The scan core** gained HTML answers (`answer: 'html'` plus the page side's `fromHtml`) and
+    `endsWhenNothingNew`. Every loop now refuses to call an empty library complete.
+  - **Ownership:** a card whose classes are just `item-wrapper book`, with no preview, sample,
+    Kobo Plus, subscription, loan or rental mark in its badges or classes, is owned (bought or
+    claimed free: the Books library holds both). Anything else is uncertain, with the marks as
+    evidence. Kobo's preview and Kobo Plus marks haven't been seen yet, because the owner's cards
+    showed none; A2's labels line will show any. **This is the one inference in Stage 2**: owned
+    is read from the absence of a not-owned mark on the owner's own Books library page.
+  - **Reading status:** Kobo's explicit status text ("Unread", "Finished", "Reading") is read.
+    It only fills what's empty, as always.
+  - **Links:** the reader link loses its tracking parameters (`readnow.kobo.com/<id>`); the
+    book's page link is `/us/en/ebook/<slug>`.
+  - **The report** shows the store's own count (`totalBooks`) next to what was found, so the owner
+    can check completeness at a glance.
+- **GlobalComix:**
+  - Cards were outlined as rows of five (`data-index`) holding release cards linking
+    `/c/<comic>/r/<release>`.
+  - Before the script started, the page called `api.globalcomix.com/v1/account/<word>?p=<n>`,
+    most likely the purchases list. It was masked because the path word was hyphenated, and its
+    answer wasn't seen.
+  - `__INITIAL_STATE__` wasn't on the page this time.
+  - **Look-around version 4:** paths made only of plain API words (`my-shelf`,
+    `digital-purchases` and the like) are shown. For GlobalComix, the steps now start on the home
+    page and reach Purchases through the site's own menu, so the list request happens while the
+    script watches (A6d).
+
 **A collector that hasn't been checked is never shown as working.** In the extension and the app,
 each store is **Checked on <date>**, **Not checked yet**, or **Not supported** (with the reason).
 
@@ -699,6 +764,7 @@ these rows to PLAN.md §21 when the stage starts.
 | A6  | Stage 2 start                 | In one sitting, on each of Google Play Books, Kobo (kobo.com/us) and GlobalComix: open your library page signed in, run the look-around script (Settings → Import store purchases → pick the store → **Copy the look-around script**), scroll to the bottom, click **Finish**, and paste the report into chat. It has no titles or IDs.                        | 15 min for all three |
 | A6b | Stage 2, Kobo and GlobalComix | Run the look-around again (it's improved) on Kobo's library and on GlobalComix's purchases. After starting it, click away and back to your books once, then scroll to the bottom, Finish, and paste both reports.                                                                                                                                              | 10 min               |
 | A6c | Stage 2, Kobo and GlobalComix | Run the look-around once more (version 3) on Kobo's library and on GlobalComix's purchases. Scroll to the bottom, click Finish, and paste both reports.                                                                                                                                                                                                        | 10 min               |
+| A6d | Stage 2, GlobalComix          | Open GlobalComix's home page (not Purchases), paste the look-around script there, then use the site's menu to go to My Shelf → Purchases. Scroll to the bottom, Finish, and paste the report.                                                                                                                                                                  | 5 min                |
 | A4  | Later (extension)             | Install the extension by following `INSTALL.md` (download the zip, unzip, open the browser's extensions page, turn on Developer mode, Load unpacked). Run **Scan this library** on the same store, import the file, and check that nothing is duplicated.                                                                                                      | 15 min               |
 | A5  | Each new store or fix         | Copy the store's script again from Settings (it's always the latest), run it, and paste the report. Once there's an extension: install the new version instead.                                                                                                                                                                                                | 10 min per store     |
 

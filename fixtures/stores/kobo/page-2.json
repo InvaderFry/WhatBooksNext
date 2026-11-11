@@ -1,0 +1,25 @@
+{
+  "page": 2,
+  "cards": [
+    {
+      "classes": ["item-wrapper", "book"],
+      "trackInfo": "{\"totalBooks\":4,\"productId\":\"inv00000-0000-0000-0000-000000000003\",\"title\":\"Lanterns Over Harrowgate\"}",
+      "title": "Lanterns Over Harrowgate",
+      "pageHref": "https://www.kobo.com/us/en/ebook/lanterns-invented",
+      "authors": ["Pell Inchcape", "Wenna Holloway"],
+      "readHref": "https://readnow.kobo.com/inv00000-0000-0000-0000-000000000003",
+      "status": "Unread",
+      "marks": ["preview"]
+    },
+    {
+      "classes": ["item-wrapper", "book", "kobo-plus"],
+      "trackInfo": "{\"totalBooks\":4,\"productId\":\"inv00000-0000-0000-0000-000000000004\",\"title\":\"A Borrowed Season\"}",
+      "title": "A Borrowed Season",
+      "pageHref": "https://www.kobo.com/us/en/ebook/borrowed-invented",
+      "authors": ["Ivo Brask"],
+      "readHref": "https://readnow.kobo.com/inv00000-0000-0000-0000-000000000004",
+      "status": "Reading",
+      "marks": []
+    }
+  ]
+}

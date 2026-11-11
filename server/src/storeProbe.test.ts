@@ -63,6 +63,12 @@ describe('the look-around script’s privacy rules', () => {
     expect(maskUrl('https://www.kobo.com/us/en/ebook/the-ember-orchard', ['kobo.com'])).toBe(
       'www.kobo.com/us/en/ebook/:slug',
     );
+    expect(
+      maskUrl('https://api.globalcomix.com/v1/account/digital-purchases?p=2', ['globalcomix.com']),
+    ).toBe('api.globalcomix.com/v1/account/digital-purchases?p=…');
+    expect(maskUrl('https://globalcomix.com/c/the-ember-orchard/r/1234', ['globalcomix.com'])).toBe(
+      'globalcomix.com/c/:slug/r/:id',
+    );
     expect(safeKey('INVENTED0001')).toBe(false);
     expect(safeKey('someone@example.invalid')).toBe(false);
     expect(safeKey('originType')).toBe(true);

@@ -42,10 +42,10 @@ owner has already made. Don't reopen those decisions. Then read the latest
   2026-11-11** (A2/A3). The extension (1c) is deferred: console scripts are the supported way.
   Stage 2 order: Google Play Books, Kobo (US), GlobalComix. Each starts from the owner's
   look-around report (`tools/store-collector/probe/`, `console-scripts/probe.js`; A6). Build its
-  adapter from that report, never from guesses. **Google Play Books built** (`adapters/googlePlay.ts`,
-  a card-reading `scanCards` loop with no requests; version 2 after the first run stopped on unfilled
-  cards; waiting on A2/A3). Kobo and GlobalComix wait on a third look-around (probe v3, A6c);
-  what's known so far is in the plan.
+  adapter from that report, never from guesses. **Google Play Books checked**
+  (`adapters/googlePlay.ts`, card-reading `scanCards`, no requests). **Kobo built**
+  (`adapters/kobo.ts`, library HTML pages read page-side; waiting on A2/A3). GlobalComix waits on
+  look-around A6d (started on its home page); what's known so far is in the plan.
 - Automatic refresh: due rules are pure in `lib/refresh.ts`; `identify/refresher.ts` runs batches
   through `lookUpItem` (never a second lookup engine). `lookup_state.accepted_source_id` remembers
   the app's own accepted match: lookups keep it (a rival goes to Needs review as "Check this

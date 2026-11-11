@@ -79,6 +79,8 @@
 	function safeKey(k) {
 		return /^[A-Za-z_$][A-Za-z0-9_$-]{0,40}$/.test(k) && (k.match(/\d/g) ?? []).length < 3;
 	}
+	/** Words that name parts of a store's own API or pages, never a book: shown even when hyphenated. */
+	const API_WORDS = new Set("my shelf purchases purchase purchased digital library account user users me list lists items orders order entitlements entitlement owned unlocks unlocked releases release comics comic books book collection collections reading history downloads download shelves bookmarks favorites follows sections section details search recent all page pages".split(" "));
 	/**
 	* A URL as host and path pattern: segments that look like IDs or slugs become :id or :slug, and
 	* query values are hidden except a few that name methods (Google's rpcids) or settings.
@@ -95,6 +97,7 @@
 			if (!seg) return seg;
 			if (/^[a-z]{2}(-[a-z]{2})?$/i.test(seg) || /^[a-z_]{1,30}$/i.test(seg)) return seg;
 			if (/^v\d{1,2}$/i.test(seg)) return seg;
+			if (seg.split("-").every((w) => API_WORDS.has(w.toLowerCase()))) return seg;
 			if (/\d/.test(seg) && seg.length >= 4) return ":id";
 			return ":slug";
 		}).join("/");

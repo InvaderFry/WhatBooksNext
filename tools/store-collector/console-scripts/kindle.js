@@ -170,7 +170,7 @@
 			`Browser: ${browser}`,
 			`Date: ${e.collectedAt}`,
 			`Requests: ${r.stats.requests}`,
-			`Found: ${e.counts.seen}`,
+			`Found: ${e.counts.seen}${r.stats.storeTotal !== void 0 ? ` (the store's own count: ${r.stats.storeTotal})` : ""}`,
 			`Included: ${e.counts.included} (purchases ${acquired.purchase}, free ${acquired.free})`,
 			`Uncertain: ${e.counts.uncertain}`,
 			`Excluded: ${excluded || "none"}`,
@@ -222,6 +222,7 @@
 		reason = "finished";
 		text = "The store’s list ended normally.";
 		region;
+		storeTotal;
 		/** Reads one answer or one look at the page; returns how many new books it brought. */
 		read(parse) {
 			let page;
@@ -236,6 +237,7 @@
 				throw e;
 			}
 			for (const f of page.fields) this.fields.add(f);
+			if (page.storeTotal !== void 0) this.storeTotal = Math.max(this.storeTotal ?? 0, page.storeTotal);
 			const count = (l) => this.labels[l] = (this.labels[l] ?? 0) + 1;
 			if (page.labelFor) {
 				for (const [k, l] of Object.entries(page.labelFor)) if (!this.records.has(k) && !this.excluded.has(k)) count(l);
@@ -294,7 +296,8 @@
 					fingerprint: this.fingerprint,
 					fields: [...this.fields].sort(),
 					labels: this.labels,
-					errors: this.errors
+					errors: this.errors,
+					...this.storeTotal !== void 0 ? { storeTotal: this.storeTotal } : {}
 				}
 			};
 		}
@@ -337,28 +340,37 @@
 				cursors.add(cursor);
 				const { url, init } = adapter.request(cursor, d.page);
 				c.steps++;
-				const body = await send(d, url, init);
-				const page = c.read(() => adapter.parse(body));
+				const body = await send(d, url, init, adapter.answer ?? "json");
+				const data = adapter.answer === "html" ? d.fromHtml(body, url) : body;
+				const page = c.read(() => adapter.parse(data));
 				d.onProgress?.({
 					requests: c.steps,
 					records: c.records.size,
 					waiting: false
 				});
 				if (page.next !== null && cursors.has(page.next)) throw new Stop("error", "The store sent the same page twice; stopped instead of looping.");
+				if (adapter.endsWhenNothingNew && page.added === 0 && c.steps > 1) break;
 				stalled = page.added === 0 && page.next !== null ? stalled + 1 : 0;
 				if (stalled >= lim.maxStalled) throw new Stop("error", "The store kept sending no new books; stopped instead of looping.");
 				cursor = page.next;
 			}
+			emptyIsLayout(c);
 		} catch (e) {
 			c.stop(e);
 		}
 		return c.result(adapter, d.now());
 	}
+	/** An empty list never counts as an empty library: the page probably looks different. */
+	function emptyIsLayout(c) {
+		if (c.records.size + c.excluded.size > 0) return;
+		c.fingerprint = "failed";
+		throw new Stop("layout_changed", "No books were found. If your library isn’t empty, the store’s page has changed.");
+	}
 	/**
 	* Sends one request in the owner's own signed-in tab. Stops at the first sign of trouble: a
 	* sign-in page, 401/403/429, an unexpected redirect, or an answer that isn't the library's.
 	*/
-	async function send(d, url, init) {
+	async function send(d, url, init, answer) {
 		let res;
 		try {
 			res = await d.fetch(url, {
@@ -376,6 +388,10 @@
 		if (res.status === 403 || res.status === 429) throw new Stop("blocked", `The store refused the request (HTTP ${res.status}). Stopped; don’t run it again today.`);
 		if (res.redirected && final.host !== new URL(url).host) throw new Stop("blocked", `The store sent the request somewhere else (${final.host}).`);
 		if (!res.ok) throw new Stop("error", `The store answered HTTP ${res.status}.`);
+		if (answer === "html") {
+			if (!/html/i.test(res.headers.get("content-type") ?? "")) throw new Stop("blocked", "The store answered with something other than a library page. Stopped.");
+			return await res.text();
+		}
 		if (!/json/i.test(res.headers.get("content-type") ?? "")) throw new Stop("blocked", "The store answered with a page instead of the library list (maybe a check that you’re a person). Stopped.");
 		try {
 			return await res.json();

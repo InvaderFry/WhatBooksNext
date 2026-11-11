@@ -686,6 +686,8 @@ interface PurchaseRow {
   evidence: string;
   outcome: 'already' | 'isbn' | 'possible' | 'new';
   itemTitle: string | null;
+  /** The same title and author as an earlier book in this file (often a second edition). */
+  sameInFile: string | null;
   applies: string[];
   kept: string[];
 }
@@ -721,15 +723,14 @@ const COLLECTOR_STATE: Record<Collector['state'], string> = {
 
 /** Where each store's library is, for the look-around script. A starting point: the owner may
  * need a click or two to reach the list of their own books. */
-const LIBRARY_PAGES: Record<string, { url: string; how: string }> = {
-  google_play: {
-    url: 'https://play.google.com/books',
-    how: 'Google Play Books, then “Library” (your books)',
-  },
-  kobo: { url: 'https://www.kobo.com/us/en/library', how: 'kobo.com, then My Books' },
+const LIBRARY_PAGES: Record<string, { url: string; how: string; open: string; then: string }> = {
+  // GlobalComix loads the purchases list as its page opens, before a pasted script can watch: so
+  // start on its home page and go to the purchases with the site's own menu.
   globalcomix: {
     url: 'https://globalcomix.com',
-    how: 'GlobalComix, then your library or the comics you bought',
+    how: 'GlobalComix’s home page',
+    open: 'Sign in if asked, and stay on the home page for now.',
+    then: 'Now use the site’s own menu to go to My Shelf, then Purchases, so the page loads your purchases while the script watches. Scroll to the very bottom, until no more comics load, and click',
   },
 };
 
@@ -755,7 +756,7 @@ function LookAroundSteps({ service }: { service: string }) {
             <span aria-hidden="true"> ↗</span>
             <span className="visually-hidden"> (opens in a new tab)</span>
           </a>
-          . Sign in if asked, and go to the page that lists the books you own.
+          . {lib.open}
         </li>
         <li>
           Copy the look-around script:{' '}
@@ -786,10 +787,7 @@ function LookAroundSteps({ service }: { service: string }) {
           browser asks).
         </li>
         <li>
-          If the page has tabs or filters, click away and back to your books once, so the page loads
-          its list again while the script watches. Then scroll your library slowly to the very
-          bottom, until no more books load (click any “Show more” button), and click{' '}
-          <strong>Finish</strong> in the box in the corner.
+          {lib.then} <strong>Finish</strong> in the box in the corner.
         </li>
         <li>
           Click <strong>Copy report</strong> and paste it into chat. It holds only the page’s
@@ -808,6 +806,12 @@ const SCRIPT_STEPS: Record<string, { where: string; shown: string; pace: string;
     shown: 'read.amazon.com/kindle-library',
     pace: 'it goes slowly on purpose (about 50 books every 2 seconds)',
     file: 'whatbooksnext-kindle-…json',
+  },
+  kobo: {
+    where: 'your Kobo Books library',
+    shown: 'kobo.com/us/en/library/books',
+    pace: 'it reads your library a page at a time, slowly (one page of 24 books every 2 seconds); you can leave the page as it is',
+    file: 'whatbooksnext-kobo-…json',
   },
   google_play: {
     where: 'your Google Play Books purchases',
@@ -1113,7 +1117,9 @@ export function StorePurchaseImport({ onChanged }: { onChanged?: () => void }) {
                   <strong>{r.title}</strong>
                   {r.author && ` · ${r.author}`}
                   <div className="small">
-                    {OUTCOME_TEXT[r.outcome]}
+                    {r.sameInFile
+                      ? 'Same title and author as another book in this file (another edition?)'
+                      : OUTCOME_TEXT[r.outcome]}
                     {r.itemTitle && r.outcome !== 'new' && `: “${r.itemTitle}”`}
                     {r.outcome === 'possible' && (
                       <label className="check inline">

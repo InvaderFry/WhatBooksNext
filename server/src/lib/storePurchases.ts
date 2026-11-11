@@ -1,5 +1,7 @@
 import { STORE_FILE_MAX_RECORDS, STORE_SHRINK_WARNING } from '../config.ts';
 import type { DB } from '../db/database.ts';
+import { titleCompareKey } from '../identify/filename.ts';
+import { samePerson } from '../identify/match.ts';
 import { syncSeries } from '../identify/series.ts';
 import { HttpError, newId, nowIso, parseJson } from '../util.ts';
 import { applyUserPatch, KINDS } from './progress.ts';
@@ -53,13 +55,18 @@ export const COLLECTORS: Record<
     checkedOn: '2026-11-11',
     page: 'https://read.amazon.com/kindle-library',
   },
-  // Built 2026-11-11 from the owner's look-around report; not yet run on their account (A2).
+  // Checked on the owner's account 2026-11-11 (version 2: complete, 23 found, layout passed).
   google_play: {
-    state: 'not_checked',
-    checkedOn: null,
+    state: 'checked',
+    checkedOn: '2026-11-11',
     page: 'https://play.google.com/books?source=purchases',
   },
-  kobo: { state: 'not_built', checkedOn: null, page: null },
+  // Built 2026-11-11 from the owner's look-around reports; not yet run on their account (A2).
+  kobo: {
+    state: 'not_checked',
+    checkedOn: null,
+    page: 'https://www.kobo.com/us/en/library/books',
+  },
   globalcomix: { state: 'not_built', checkedOn: null, page: null },
 };
 
@@ -317,6 +324,11 @@ export interface PurchasePreviewRow {
   outcome: 'already' | 'isbn' | 'possible' | 'new';
   itemId: string | null;
   itemTitle: string | null;
+  /**
+   * A possible match with another book in this same file (an earlier row with the same title and
+   * author, often a second edition at the store): its key. Ticked, both become one book.
+   */
+  sameInFile: string | null;
   applies: string[];
   kept: string[];
 }
@@ -353,9 +365,12 @@ export function previewPurchases(
   const priorKey = db
     .prepare('SELECT item_id FROM import_keys WHERE source = ? AND row_key = ?')
     .pluck();
+  // Earlier new books in this file, by title, to spot the same book twice (two editions).
+  const newInFile = new Map<string, { key: string; title: string; author: string | null }[]>();
   const rows: PurchasePreviewRow[] = file.records.map((r) => {
     let outcome: PurchasePreviewRow['outcome'] = 'new';
     let itemId: string | null = null;
+    let sameInFile: { key: string; title: string } | null = null;
     const prior = priorKey.get(`store_json:${file.service}`, `${scope}:${recordKey(r)}`) as
       string | undefined;
     const author = r.creators[0]?.name ?? null;
@@ -366,6 +381,20 @@ export function previewPurchases(
       const same = itemsWithTitle(titles, r.title, author);
       if (same.length === 1) [outcome, itemId] = ['possible', same[0]!];
     }
+    if (outcome === 'new') {
+      const t = titleCompareKey(r.title);
+      const earlier = (newInFile.get(t) ?? []).find(
+        (x) => !author || !x.author || samePerson(x.author, author),
+      );
+      if (t && earlier) {
+        outcome = 'possible';
+        sameInFile = earlier;
+      } else if (t)
+        newInFile.set(t, [
+          ...(newInFile.get(t) ?? []),
+          { key: recordKey(r), title: r.title, author },
+        ]);
+    }
     const { applies, kept } = ownerChanges(db, itemId, fillOf(file.service, r));
     return {
       key: recordKey(r),
@@ -375,7 +404,8 @@ export function previewPurchases(
       evidence: r.evidence,
       outcome,
       itemId,
-      itemTitle: itemId ? titleOfItem(db, itemId) : null,
+      itemTitle: itemId ? titleOfItem(db, itemId) : (sameInFile?.title ?? null),
+      sameInFile: sameInFile?.key ?? null,
       // A book imported before only gains a missing link (as with the CSV).
       applies: outcome === 'already' ? applies.filter((a) => a === 'a link to read it') : applies,
       kept,
@@ -484,6 +514,8 @@ export function importPurchases(
          not_seen_since = NULL, not_seen_kept = 0
        WHERE service = ? AND account_scope = ? AND id_kind = ? AND store_record_id = ?`,
     );
+    // The book each row became in this import, for later rows ticked as the same book.
+    const made = new Map<string, string>();
     for (const p of preview.rows) {
       const r = byKey.get(p.key)!;
       if (p.outcome === 'already') {
@@ -514,7 +546,17 @@ export function importPurchases(
         continue;
       }
       let itemId: string;
-      if (p.outcome === 'isbn' || (p.outcome === 'possible' && opts.attach.includes(p.key))) {
+      const joinTo =
+        p.sameInFile && opts.attach.includes(p.key) ? made.get(p.sameInFile) : undefined;
+      if (joinTo) {
+        // The same book twice in this file (two editions): one book, one store copy.
+        itemId = joinTo;
+        addLocation(db, itemId, file.service as Store, false, r.link);
+        counts.attached++;
+      } else if (
+        p.outcome === 'isbn' ||
+        (p.outcome === 'possible' && !p.sameInFile && opts.attach.includes(p.key))
+      ) {
         itemId = p.itemId!;
         if (r.link && linkWouldFill(db, itemId, file.service as Store) === 'fill') counts.links++;
         addLocation(db, itemId, file.service as Store, false, r.link);
@@ -536,6 +578,7 @@ export function importPurchases(
         counts.skipped++;
         continue;
       }
+      made.set(p.key, itemId);
       const { patch } = ownerChanges(db, itemId, fillOf(file.service, r));
       if (Object.keys(patch).length) applyUserPatch(db, itemId, patch);
       db.prepare(

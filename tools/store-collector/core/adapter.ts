@@ -17,6 +17,16 @@ export interface Adapter {
   firstCursor: string;
   /** The read-only request for one page of the library (the same one the store's page makes). */
   request(cursor: string, page: URL): { url: string; init: RequestInit };
+  /**
+   * What the store answers: JSON (default), or an HTML page that the page side turns into plain
+   * card objects first (`ScanDeps.fromHtml`), so `parse` stays pure.
+   */
+  answer?: 'json' | 'html';
+  /**
+   * A page that brings nothing new means the list has ended (some stores answer a page past the
+   * end with the last page again). Otherwise that's a stall, and the scan stops as partial.
+   */
+  endsWhenNothingNew?: boolean;
   /** Reads one answer. Throws LayoutChanged when something the adapter relies on is missing. */
   parse(body: unknown): ParsedPage;
 }
@@ -49,6 +59,8 @@ export interface ParsedPage {
    * `idKind:storeRecordId`, so it's counted once. When given, `labels` is ignored.
    */
   labelFor?: Record<string, string>;
+  /** The store's own count of the library, when the page shows one: for the report only. */
+  storeTotal?: number;
 }
 
 /** The store's page or answer no longer looks like what the adapter knows: stop, never guess. */
