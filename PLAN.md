@@ -1334,6 +1334,8 @@ plainly at the start of your message, with what to do and roughly how long it ta
 | **End of M3** | First ~20-minute recommendation quality session (§17.2). |
 | **During M1–M6, as they come up** | Check the "needs checking on the owner's machine" items on the Windows PC. For ratings Stage 1, open the CSV in Excel to check the appended scope/match columns, accents and formula text; inspect Diagnostics tier counts. For Stage 2, spot-check chosen titles/creators, page provenance and conflicting years, including Unicode and Calibre-formatted descriptions. No new accounts or keys. |
 | **End of M6** | Try installing from the README as a stranger would. The second quality session moves to after stage 3 of the [ratings and refresh plan](docs/plans/online-ratings-and-refreshes.md), so it judges the new ratings and details. |
+| **Store purchases: Stage 0 (now)** | A1 in the [store purchases plan](docs/plans/get-store-purchase-imports.md): say roughly how many books you own in Kindle, Google Play Books, Kobo and GlobalComix; request Amazon's Kindle data and run Google Takeout for Play Store and Play Books; when they arrive, say which files and columns they have and how many rows (no titles). |
+| **Store links (now)** | A1b in the same plan: add a link to one store book per store you use, click **Read in … ↗**, and say whether it opened the right book. |
 | **Now (after stage 4)** | The second quality session (§17.2), on the new ratings and details. Also, on the Windows PC: Settings → Online lookups → **Keeping ratings up to date** shows due books and a last batch after the app has been open 10–15 minutes; Diagnostics → Automatic refresh shows requests within the daily share. No new accounts or keys. |
 
 ### Still to confirm (not blocking)

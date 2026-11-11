@@ -118,6 +118,11 @@ export interface AvailabilityView {
   alsoInICloud: boolean;
   /** Ready to read (§13.1): a present file, or a place the owner confirmed they can read from. */
   readyToRead: boolean;
+  /**
+   * Links to read it in a store (Store links), copies the owner can read there first. Shown as
+   * "Read in Kindle ↗"; `host` is shown for "another app" so the owner sees where it goes.
+   */
+  storeLinks?: { store: string; url: string; kind: 'read' | 'page'; host: string }[];
 }
 
 const DEFAULT_USER: UserData = {
@@ -261,7 +266,12 @@ export function availabilityFor(
   folders: Map<string, FolderRow>,
   user: UserData,
   confirmedLocations: { store: string | null }[],
-  storeLocations: { store: string | null }[],
+  storeLocations: {
+    store: string | null;
+    url?: string | null;
+    url_kind?: string | null;
+    confirmed_readable?: number;
+  }[],
 ): AvailabilityView {
   // "Also in iCloud": the folder is marked, unless this item says otherwise (§13.1).
   const folderSaysICloud = files.some((f) => folders.get(f.folderId)?.also_in_icloud === 1);
@@ -295,7 +305,16 @@ export function availabilityFor(
     label = `In ${STORE_LABELS[storeLocations[0]!.store ?? 'other'] ?? 'another app'}`;
   }
   const readyToRead = state === 'present' || alsoInICloud || confirmedLocations.length > 0;
-  return { state, label, alsoInICloud, readyToRead };
+  const storeLinks = storeLocations
+    .filter((l) => l.url)
+    .sort((a, b) => (b.confirmed_readable ?? 0) - (a.confirmed_readable ?? 0))
+    .map((l) => ({
+      store: l.store ?? 'other',
+      url: l.url!,
+      kind: (l.url_kind === 'read' ? 'read' : 'page') as 'read' | 'page',
+      host: new URL(l.url!).hostname,
+    }));
+  return { state, label, alsoInICloud, readyToRead, storeLinks };
 }
 
 export interface LibraryData {
@@ -380,18 +399,20 @@ export function loadLibrary(db: DB, reach: FolderReachability, onlyIds?: string[
     if (r.is_primary) detailFiles.get(r.item_id)!.unshift(df);
     else detailFiles.get(r.item_id)!.push(df);
   }
-  const locations = new Map<
-    string,
-    { kind: string; store: string | null; confirmed_readable: number }[]
-  >();
-  for (const l of db
-    .prepare('SELECT item_id, kind, store, confirmed_readable FROM locations')
-    .all() as {
+  type LocationRow = {
     item_id: string;
     kind: string;
     store: string | null;
     confirmed_readable: number;
-  }[]) {
+    url: string | null;
+    url_kind: string | null;
+  };
+  const locations = new Map<string, LocationRow[]>();
+  for (const l of db
+    .prepare(
+      'SELECT item_id, kind, store, confirmed_readable, url, url_kind FROM locations ORDER BY created_at, id',
+    )
+    .all() as LocationRow[]) {
     if (!locations.has(l.item_id)) locations.set(l.item_id, []);
     locations.get(l.item_id)!.push(l);
   }

@@ -1,20 +1,25 @@
 import { useCallback, useEffect, useState } from 'react';
-import { api, KIND_LABELS } from '../api.ts';
-import { Notice } from '../components.tsx';
+import { api, KIND_LABELS, STORE_LABELS } from '../api.ts';
+import { Notice, storeLinkText } from '../components.tsx';
 import { navigate } from '../url.ts';
 
 /**
  * Books owned in a store app (PLAN.md §14): add by search or by hand, where each book can be
- * read, and the store CSV import with a preview. A store is shown as a label, never a link.
+ * read, and the store CSV import with a preview. A store copy can carry a link to read it there
+ * ("Read in Kindle ↗"; Store links in docs/plans/get-store-purchase-imports.md).
  */
 
-export const STORE_LABELS: Record<string, string> = {
-  kindle: 'Kindle',
-  apple_books: 'Apple Books',
-  google_play: 'Google Play Books',
-  kobo: 'Kobo',
-  globalcomix: 'GlobalComix',
-  other: 'Another app',
+export { STORE_LABELS };
+
+/** Where to copy a link from, per store. Apple Books has no web reader, so it takes none. */
+const LINK_HELP: Record<string, string> = {
+  kindle:
+    'Open the book in Kindle’s web reader (read.amazon.com) or on its Amazon page, then copy the address from your browser.',
+  google_play:
+    'Open the book in Google Play Books (play.google.com/books) or on its Play store page, then copy the address.',
+  kobo: 'Open the book on kobo.com (My Books, or its store page), then copy the address.',
+  globalcomix: 'Open the comic on globalcomix.com, then copy the address.',
+  other: 'Any secure (https) link. Its site is shown next to it, so you can see where it goes.',
 };
 
 function StoreSelect({
@@ -45,6 +50,7 @@ export function AddStoreBook({ onClose }: { onClose: () => void }) {
   const [mode, setMode] = useState<'search' | 'type'>('search');
   const [store, setStore] = useState('kindle');
   const [readable, setReadable] = useState(false);
+  const [url, setUrl] = useState('');
   const [q, setQ] = useState('');
   const [author, setAuthor] = useState('');
   const [found, setFound] = useState<{
@@ -68,6 +74,7 @@ export function AddStoreBook({ onClose }: { onClose: () => void }) {
       const r = await api.post<{ itemId: string; joined: boolean }>('/api/store/items', {
         store,
         readable,
+        ...(store !== 'apple_books' && url.trim() ? { url: url.trim() } : {}),
         ...body,
       });
       navigate({ view: 'item', id: r.itemId });
@@ -94,6 +101,25 @@ export function AddStoreBook({ onClose }: { onClose: () => void }) {
         </label>
       </div>
       <p className="muted small">{READABLE_HELP}</p>
+      {store === 'apple_books' ? (
+        <p className="muted small">
+          Apple Books has no web reader, so its books don’t take a link. Read them in the Books app
+          on your iPhone or iPad.
+        </p>
+      ) : (
+        <div className="field">
+          <label htmlFor="store-url">Link to read it there (optional)</label>
+          <input
+            id="store-url"
+            type="url"
+            inputMode="url"
+            placeholder="https://…"
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+          />
+          <p className="muted small">{LINK_HELP[store]}</p>
+        </div>
+      )}
       <div className="row-actions" role="group" aria-label="How to add it">
         <button
           type="button"
@@ -247,6 +273,53 @@ interface Place {
   store: string | null;
   readable: boolean;
   note: string | null;
+  url: string | null;
+  urlKind: 'read' | 'page' | null;
+  urlHost: string | null;
+  /** The owner typed, changed or removed the link: imports leave it alone. */
+  urlByOwner: boolean;
+}
+
+/** Add link / Change link: a small form; the server checks the link and says plainly if not. */
+function LinkEditor({
+  place,
+  onSave,
+  onCancel,
+}: {
+  place: Place;
+  onSave: (url: string) => Promise<void>;
+  onCancel: () => void;
+}) {
+  const [value, setValue] = useState(place.url ?? '');
+  const id = `link-${place.id}`;
+  return (
+    <form
+      className="row-actions wrap link-editor"
+      onSubmit={(e) => {
+        e.preventDefault();
+        void onSave(value.trim());
+      }}
+    >
+      <div className="field">
+        <label htmlFor={id}>Link for {STORE_LABELS[place.store ?? 'other']}</label>
+        <input
+          id={id}
+          type="url"
+          inputMode="url"
+          placeholder="https://…"
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+        />
+        <p className="muted small">{LINK_HELP[place.store ?? 'other']}</p>
+      </div>
+      <button type="submit" className="small" disabled={!value.trim()}>
+        Save link
+      </button>
+      <button type="button" className="small secondary" onClick={onCancel}>
+        Cancel
+      </button>
+    </form>
+  );
 }
 
 /** Item page → Where you can read it: stores (with "I can read it there now") and removal. */
@@ -261,6 +334,7 @@ export function PlacesSection({
 }) {
   const [places, setPlaces] = useState<Place[] | null>(null);
   const [store, setStore] = useState('kindle');
+  const [editing, setEditing] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const load = useCallback(
     async () => setPlaces(await api.get(`/api/items/${itemId}/locations`)),
@@ -269,14 +343,16 @@ export function PlacesSection({
   useEffect(() => {
     void load();
   }, [load]);
-  const act = async (fn: () => Promise<unknown>) => {
+  const act = async (fn: () => Promise<unknown>): Promise<boolean> => {
     try {
       setError(null);
       await fn();
       await load();
       onChanged();
+      return true;
     } catch (e) {
       setError((e as Error).message);
+      return false;
     }
   };
   if (!places) return null;
@@ -304,10 +380,75 @@ export function PlacesSection({
             <button
               type="button"
               className="link-button"
+              aria-label={`Remove ${STORE_LABELS[p.store ?? 'other']} from this book`}
               onClick={() => void act(() => api.delete(`/api/locations/${p.id}`))}
             >
               Remove
             </button>
+            {p.store !== 'apple_books' && (
+              <div className="place-link">
+                {p.url ? (
+                  <>
+                    <a
+                      href={p.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title={p.urlKind === 'read' ? 'The store’s web reader' : 'Its store page'}
+                    >
+                      {storeLinkText({ store: p.store ?? 'other', host: p.urlHost ?? '' })}
+                      <span aria-hidden="true"> ↗</span>
+                      <span className="visually-hidden"> (opens in a new tab)</span>
+                    </a>{' '}
+                    {p.store !== 'other' && <span className="muted small">{p.urlHost}</span>}{' '}
+                    <button
+                      type="button"
+                      className="link-button small"
+                      onClick={() => setEditing(p.id)}
+                    >
+                      Change link
+                    </button>{' '}
+                    <button
+                      type="button"
+                      className="link-button small"
+                      onClick={() =>
+                        void act(() => api.patch(`/api/locations/${p.id}`, { url: null }))
+                      }
+                    >
+                      Remove link
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      className="link-button small"
+                      onClick={() => setEditing(p.id)}
+                    >
+                      Add link
+                    </button>
+                    {p.urlByOwner && (
+                      <span className="muted small">
+                        {' '}
+                        (you removed its link; imports won’t add one back)
+                      </span>
+                    )}
+                  </>
+                )}
+                {editing === p.id && (
+                  <LinkEditor
+                    place={p}
+                    onCancel={() => setEditing(null)}
+                    onSave={async (url) => {
+                      if (await act(() => api.patch(`/api/locations/${p.id}`, { url })))
+                        setEditing(null);
+                    }}
+                  />
+                )}
+              </div>
+            )}
+            {p.store === 'apple_books' && (
+              <span className="muted small">No web reader: read it in the Books app.</span>
+            )}
           </li>
         ))}
       </ul>
@@ -385,12 +526,15 @@ export function CsvImport() {
       <h2 id="csv-h">Store books from a spreadsheet</h2>
       <p className="muted small">
         A CSV file with a first line naming the columns:{' '}
-        <code>title, author, store, kind, progress, isbn, series, series_index, rating, note</code>.
-        Only <code>title</code> is needed. <code>store</code> is Kindle, Apple Books, Google Play,
+        <code>
+          title, author, store, kind, progress, isbn, series, series_index, rating, note, url
+        </code>
+        . Only <code>title</code> is needed. <code>store</code> is Kindle, Apple Books, Google Play,
         Kobo or GlobalComix (anything else counts as another app). <code>progress</code> can be
-        read, reading or to-read. <code>rating</code> is out of 10, or written like 4/5. You see
-        what would happen before anything changes, and importing the same file again adds nothing
-        twice and never overwrites your own edits.
+        read, reading or to-read. <code>rating</code> is out of 10, or written like 4/5.{' '}
+        <code>url</code> is a link to read it in that store (https, on the store’s own site). You
+        see what would happen before anything changes, and importing the same file again adds
+        nothing twice and never overwrites your own edits.
       </p>
       <div className="field">
         <label htmlFor="csv-file">CSV file</label>
@@ -496,9 +640,11 @@ export function CsvImport() {
                     attached: number;
                     already: number;
                     skipped: number;
+                    links: number;
                   }>('/api/import/csv', { text, attach, keepNew });
                   setResult(
-                    `Imported: ${r.added} new, ${r.attached} added to books you have, ${r.already} already there, ${r.skipped} skipped.`,
+                    `Imported: ${r.added} new, ${r.attached} added to books you have, ${r.already} already there, ${r.skipped} skipped.` +
+                      (r.links ? ` ${r.links} link${r.links === 1 ? '' : 's'} added.` : ''),
                   );
                   setPreview(null);
                 } catch (err) {

@@ -252,9 +252,22 @@ button.secondary.danger {
   color: var(--error);
   border-color: var(--border);
 }
-button.small {
+button.small,
+.button.small {
   font-size: 0.85rem;
   padding: 0.3rem 0.65rem;
+}
+.button.secondary {
+  background: var(--surface);
+  color: var(--text);
+  border-color: var(--border);
+}
+.button.secondary:hover {
+  background: var(--surface-2);
+  filter: none;
+}
+.store-links {
+  margin-top: 0.4rem;
 }
 button.icon {
   min-width: 2.2rem;

@@ -378,6 +378,19 @@ try {
       },
     ],
     [
+      // Store links: the owner changes a store copy's link (an invented one).
+      'item-store-link',
+      '/?view=library&q=cartographer',
+      async (p) => {
+        await p
+          .getByRole('link', { name: /Cartographer of Small Rains/ })
+          .first()
+          .click();
+        await p.getByRole('button', { name: 'Change link' }).click();
+      },
+    ],
+    ['library-store-links', '/?view=library&q=cartographer', async () => {}],
+    [
       'settings-csv',
       '/?view=settings',
       async (p) => {

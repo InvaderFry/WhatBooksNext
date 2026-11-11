@@ -48,7 +48,26 @@ export interface Availability {
   label: string | null;
   alsoInICloud: boolean;
   readyToRead: boolean;
+  /** Links to read it in a store, copies the owner can read there first (Store links). */
+  storeLinks?: StoreLinkView[];
 }
+
+export interface StoreLinkView {
+  store: string;
+  url: string;
+  /** read: the store's web reader. page: its store or library page. */
+  kind: 'read' | 'page';
+  host: string;
+}
+
+export const STORE_LABELS: Record<string, string> = {
+  kindle: 'Kindle',
+  apple_books: 'Apple Books',
+  google_play: 'Google Play Books',
+  kobo: 'Kobo',
+  globalcomix: 'GlobalComix',
+  other: 'Another app',
+};
 
 export interface UserData {
   progress: Progress;

@@ -114,10 +114,24 @@ describe('restore regression across every table (§16)', () => {
     expect(
       (
         await api.post('/api/import/csv', {
-          text: 'title,author,store\nAn Invented Import,Ola Pennant,kobo\n',
+          text: 'title,author,store,url\nAn Invented Import,Ola Pennant,kobo,https://www.kobo.com/ww/en/ebook/invented-import\n',
         })
       ).status,
     ).toBe(200);
+    // Store links (014): an imported link (above) and one the owner typed.
+    const typed = one(db, "SELECT id FROM locations WHERE store = 'kindle' LIMIT 1");
+    expect(
+      (
+        await api.patch(`/api/locations/${typed}`, {
+          url: 'https://www.amazon.com/dp/INVENTED-RESTORE',
+        })
+      ).status,
+    ).toBe(200);
+    expect(
+      ['url', 'url_kind', 'url_by_owner'].filter(
+        (c) => !one(db, `SELECT COUNT(*) FROM locations WHERE ${c} IS NOT NULL AND ${c} != 0`),
+      ),
+    ).toEqual([]);
 
     // Automatic refresh's columns (stage 4): a rival and a retry, as a refresh leaves them.
     db.prepare(

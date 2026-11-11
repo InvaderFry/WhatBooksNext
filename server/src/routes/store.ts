@@ -5,9 +5,11 @@ import { scoreCandidate } from '../identify/match.ts';
 import { syncSeries } from '../identify/series.ts';
 import {
   addLocation,
+  checkStoreLink,
   createStoreItem,
   importCsv,
   previewCsv,
+  setLocationLink,
   STORES,
   validateFields,
   type Store,
@@ -82,6 +84,8 @@ export function registerStoreRoutes(
       const b = (req.body ?? {}) as Record<string, unknown>;
       const s = store(b.store);
       const readable = b.readable === true;
+      // A link the owner typed or pasted is theirs: imports never replace it.
+      const link = typeof b.url === 'string' && b.url.trim() ? checkStoreLink(s, b.url) : null;
       const pick = b.pick as { token?: unknown; index?: unknown } | undefined;
       return db.transaction(() => {
         if (pick) {
@@ -96,18 +100,23 @@ export function registerStoreRoutes(
             .pluck()
             .get(key, rec.source, rec.sourceId) as string | undefined;
           if (existing) {
-            addLocation(db, existing, s, readable);
+            addLocation(db, existing, s, readable, link, true);
             return { itemId: existing, joined: true };
           }
-          const itemId = createStoreItem(db, {
-            title: rec.title,
-            author: rec.authors[0] ?? null,
-            isbn: rec.isbns.find((x) => x.length === 13) ?? rec.isbns[0] ?? null,
-            series: rec.series?.name ?? null,
-            number: rec.series?.position !== undefined ? String(rec.series.position) : null,
-            store: s,
-            readable,
-          });
+          const itemId = createStoreItem(
+            db,
+            {
+              title: rec.title,
+              author: rec.authors[0] ?? null,
+              isbn: rec.isbns.find((x) => x.length === 13) ?? rec.isbns[0] ?? null,
+              series: rec.series?.name ?? null,
+              number: rec.series?.position !== undefined ? String(rec.series.position) : null,
+              store: s,
+              readable,
+              link,
+            },
+            true,
+          );
           storeCandidates(
             db,
             itemId,
@@ -123,7 +132,7 @@ export function registerStoreRoutes(
           return { itemId, joined: false };
         }
         const f = validateFields({ ...b, store: s, readable });
-        const itemId = createStoreItem(db, f);
+        const itemId = createStoreItem(db, f, true);
         syncSeries(db);
         return { itemId, joined: false };
       })();
@@ -135,33 +144,77 @@ export function registerStoreRoutes(
     '/api/items/:id/locations',
     route((req) => {
       const id = d.itemIdOr404(String(req.params.id));
-      return db
-        .prepare(
-          `SELECT id, kind, store, confirmed_readable AS readable, note FROM locations
-           WHERE item_id = ? ORDER BY kind, store`,
-        )
-        .all(id)
-        .map((r) => ({ ...(r as object), readable: (r as { readable: number }).readable === 1 }));
+      return (
+        db
+          .prepare(
+            `SELECT id, kind, store, confirmed_readable, note, url, url_kind, url_by_owner
+             FROM locations WHERE item_id = ? ORDER BY kind, store`,
+          )
+          .all(id) as {
+          id: string;
+          kind: string;
+          store: string | null;
+          confirmed_readable: number;
+          note: string | null;
+          url: string | null;
+          url_kind: string | null;
+          url_by_owner: number;
+        }[]
+      ).map((r) => ({
+        id: r.id,
+        kind: r.kind,
+        store: r.store,
+        readable: r.confirmed_readable === 1,
+        note: r.note,
+        url: r.url,
+        urlKind: r.url_kind,
+        /** Shown next to an "another app" link, so the owner can see where it goes. */
+        urlHost: r.url ? new URL(r.url).hostname : null,
+        urlByOwner: r.url_by_owner === 1,
+      }));
     }),
   );
   app.post(
     '/api/items/:id/locations',
     route((req) => {
       const id = d.itemIdOr404(String(req.params.id));
-      return { id: addLocation(db, id, store(req.body?.store), req.body?.readable === true) };
+      const s = store(req.body?.store);
+      const url = req.body?.url;
+      const link = typeof url === 'string' && url.trim() ? checkStoreLink(s, url) : null;
+      return { id: addLocation(db, id, s, req.body?.readable === true, link, true) };
     }),
   );
+  /**
+   * Changes a store copy: "I can read it there now", and its link. A link set here is the
+   * owner's (Add / Change link); `url: null` removes it, and a removed link stays removed.
+   */
   app.patch(
     '/api/locations/:id',
     route((req) => {
-      if (typeof req.body?.readable !== 'boolean')
+      const b = (req.body ?? {}) as Record<string, unknown>;
+      const hasReadable = 'readable' in b;
+      const hasUrl = 'url' in b;
+      if (!hasReadable && !hasUrl) throw new HttpError(400, 'Nothing to change.');
+      if (hasReadable && typeof b.readable !== 'boolean')
         throw new HttpError(400, 'readable must be true or false.');
-      const r = db
-        .prepare(
-          "UPDATE locations SET confirmed_readable = ?, updated_at = ? WHERE id = ? AND kind = 'store'",
-        )
-        .run(req.body.readable ? 1 : 0, nowIso(), String(req.params.id));
-      if (r.changes === 0) throw new HttpError(404, 'No such place.');
+      if (hasUrl && b.url !== null && typeof b.url !== 'string')
+        throw new HttpError(400, 'url must be a link or null.');
+      const id = String(req.params.id);
+      const loc = db
+        .prepare("SELECT store FROM locations WHERE id = ? AND kind = 'store'")
+        .get(id) as { store: Store | null } | undefined;
+      if (!loc) throw new HttpError(404, 'No such place.');
+      const link =
+        typeof b.url === 'string' && b.url.trim()
+          ? checkStoreLink(loc.store ?? 'other', b.url)
+          : null;
+      db.transaction(() => {
+        if (hasReadable)
+          db.prepare(
+            'UPDATE locations SET confirmed_readable = ?, updated_at = ? WHERE id = ?',
+          ).run(b.readable ? 1 : 0, nowIso(), id);
+        if (hasUrl) setLocationLink(db, id, link, true);
+      })();
       return { ok: true };
     }),
   );

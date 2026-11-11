@@ -10,6 +10,7 @@ import {
 } from '../api.ts';
 import {
   AvailabilityLabels,
+  StoreLinks,
   Cover,
   creatorsText,
   Formats,
@@ -315,6 +316,11 @@ export function Library({
                   )}
                 </div>
                 <AvailabilityLabels a={item.availability} />
+                {item.availability.storeLinks?.length ? (
+                  <div className="row-actions wrap store-links">
+                    <StoreLinks a={item.availability} title={item.title} />
+                  </div>
+                ) : null}
               </div>
               <button
                 type="button"

@@ -9,6 +9,7 @@ import {
 } from '../api.ts';
 import {
   AvailabilityLabels,
+  StoreLinks,
   Cover,
   creatorsText,
   Formats,
@@ -535,6 +536,12 @@ function PickCard({
         )}
         <AvailabilityLabels a={{ ...card.availability, label: null }} />
         <div className="row-actions wrap">
+          {/* A store copy's link: the main action when no file is here to open. */}
+          <StoreLinks
+            a={card.availability}
+            title={card.title}
+            primary={card.availability.state !== 'present'}
+          />
           <button
             type="button"
             className={`secondary small star-button${shortlisted ? ' on' : ''}`}

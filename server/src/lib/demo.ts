@@ -398,12 +398,15 @@ export async function buildDemoLibrary(
   );
 
   // Books owned in store apps (§14): one the owner can read on the iPad, one not confirmed.
+  // The Kindle one has a link to read it there (Store links). Its ID is invented and isn't in
+  // Amazon's form, so it can't point to a real book.
   createStoreItem(db, {
     title: 'The Cartographer of Small Rains',
     author: 'Wenna Holloway',
     kind: 'fiction',
     store: 'kindle',
     readable: false,
+    link: { url: 'https://read.amazon.com/?asin=INVENTED-DEMO-1', kind: 'read' },
   });
   createStoreItem(db, {
     title: 'A Field Guide to Quiet Machines',
