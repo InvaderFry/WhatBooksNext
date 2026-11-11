@@ -410,6 +410,59 @@ try {
           .scrollIntoViewIfNeeded();
       },
     ],
+    [
+      // Import store purchases: the Kindle steps, then an invented collector file's preview.
+      'settings-store-purchases',
+      '/?view=settings',
+      async (p) => {
+        await p.getByLabel('The file the script downloaded').setInputFiles({
+          name: 'whatbooksnext-kindle-2026-11-11.json',
+          mimeType: 'application/json',
+          buffer: Buffer.from(
+            JSON.stringify({
+              format: 'whatBooksNext-store-purchases',
+              formatVersion: 1,
+              service: 'kindle',
+              adapterVersion: '1',
+              source: { type: 'collector' },
+              collectedAt: '2026-11-11T12:00:00.000Z',
+              region: 'read.amazon.com',
+              completion: { status: 'complete', reason: 'finished', text: 'Done.' },
+              counts: {
+                seen: 6,
+                included: 3,
+                uncertain: 1,
+                excluded: { sample: 1, subscription: 1 },
+              },
+              records: [
+                [
+                  'INVENTED-DEMO-1',
+                  'The Cartographer of Small Rains',
+                  'Wenna Holloway',
+                  'purchase',
+                ],
+                ['INVENTED-DEMO-2', 'The Orchard Ledger', 'Pim Arkwright', 'purchase'],
+                ['INVENTED-DEMO-3', 'Glass Harbor', 'Mira Vantongeren', 'purchase'],
+                ['INVENTED-DEMO-4', 'Shared Shelf Stories', 'Tobiah Renn', 'uncertain'],
+              ].map(([id, title, name, type]) => ({
+                storeRecordId: id,
+                idKind: 'asin',
+                title,
+                creators: [{ name, role: 'author' }],
+                unit: 'book',
+                acquisition: {
+                  type,
+                  evidence: `originType ${type === 'purchase' ? 'PURCHASE' : 'FAMILY_SHARE'}`,
+                },
+                readUrl: `https://read.amazon.com/?asin=${id}`,
+              })),
+            }),
+          ),
+        });
+        await p.getByRole('button', { name: 'Import selected books' }).waitFor();
+        await p.getByRole('heading', { name: 'Import store purchases' }).scrollIntoViewIfNeeded();
+      },
+    ],
     ...(['goodreads', 'storygraph'] as const).map(
       (source): [string, string, (p: import('playwright').Page) => Promise<void>] => [
         `settings-history-${source}`,

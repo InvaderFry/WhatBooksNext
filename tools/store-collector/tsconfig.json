@@ -1,0 +1,14 @@
+{
+  "extends": "../../tsconfig.base.json",
+  // Store collectors: erasable TypeScript, like the server, bundled for the browser by
+  // `npm run build:collector`. core/ and adapters/ are pure; console/ touches the page.
+  "compilerOptions": {
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "allowImportingTsExtensions": true,
+    "erasableSyntaxOnly": true,
+    "lib": ["es2023", "dom", "dom.iterable"],
+    "types": []
+  },
+  "include": ["core", "adapters", "console"]
+}

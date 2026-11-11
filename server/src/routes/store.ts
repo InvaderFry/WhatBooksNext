@@ -1,3 +1,5 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import type { Express } from 'express';
 import type { DB } from '../db/database.ts';
 import { applyIdentity, matchFactsFor, storeCandidates } from '../identify/lookups.ts';
@@ -14,6 +16,13 @@ import {
   validateFields,
   type Store,
 } from '../lib/store.ts';
+import {
+  actOnNotSeen,
+  COLLECTORS,
+  importPurchases,
+  previewPurchases,
+  SERVICES,
+} from '../lib/storePurchases.ts';
 import type { Sources } from '../sources/index.ts';
 import { SOURCE_LABELS, SourceError, type SourceRecord } from '../sources/types.ts';
 import { HttpError, newId, nowIso } from '../util.ts';
@@ -248,6 +257,77 @@ export function registerStoreRoutes(
         ? b.attach.filter((x): x is number => Number.isInteger(x))
         : [];
       return importCsv(db, csvText(b), { attach, keepNew: b.keepNew !== false });
+    }),
+  );
+
+  // ---- Store purchases (store purchases plan, "1b"): a collector's file, preview then import --
+  const fileText = (b: unknown) => {
+    const t = (b as { text?: unknown } | null)?.text;
+    if (typeof t !== 'string' || !t.trim()) throw new HttpError(400, 'Choose the store file.');
+    if (t.length > 50_000_000) throw new HttpError(400, 'That file is too large.');
+    return t;
+  };
+  const accountName = (b: Record<string, unknown>) =>
+    typeof b.accountName === 'string' ? b.accountName.slice(0, 40) : null;
+  const keys = (v: unknown) =>
+    Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string').slice(0, 100_000) : [];
+  app.post(
+    '/api/import/store-purchases/preview',
+    route((req) => {
+      const b = (req.body ?? {}) as Record<string, unknown>;
+      return previewPurchases(db, fileText(b), { accountName: accountName(b) });
+    }),
+  );
+  app.post(
+    '/api/import/store-purchases',
+    route((req) => {
+      const b = (req.body ?? {}) as Record<string, unknown>;
+      return importPurchases(db, fileText(b), {
+        attach: keys(b.attach),
+        uncertain: keys(b.uncertain),
+        keepNew: b.keepNew !== false,
+        accountName: accountName(b),
+        confirmShrink: b.confirmShrink === true,
+      });
+    }),
+  );
+  app.post(
+    '/api/store-purchases/:id/not-seen',
+    route((req) => {
+      const action = req.body?.action;
+      if (action !== 'keep' && action !== 'remove')
+        throw new HttpError(400, 'action must be keep or remove.');
+      actOnNotSeen(db, String(req.params.id), action);
+      syncSeries(db);
+      return { ok: true };
+    }),
+  );
+
+  /**
+   * Each store's collector: whether it's built and checked, and the console script to copy. The
+   * script is the committed build in tools/store-collector/console-scripts (no build needed).
+   */
+  const SCRIPTS = path.join(
+    import.meta.dirname,
+    '..',
+    '..',
+    '..',
+    'tools',
+    'store-collector',
+    'console-scripts',
+  );
+  app.get(
+    '/api/store-collectors',
+    route(() => SERVICES.map((s) => ({ service: s, ...COLLECTORS[s] }))),
+  );
+  app.get(
+    '/api/store-collectors/:service/script',
+    route((req) => {
+      const s = String(req.params.service);
+      const c = (COLLECTORS as Record<string, (typeof COLLECTORS)[keyof typeof COLLECTORS]>)[s];
+      if (!c || c.state === 'not_built')
+        throw new HttpError(404, 'There’s no collector for that store yet.');
+      return { script: fs.readFileSync(path.join(SCRIPTS, `${s}.js`), 'utf8') };
     }),
   );
 }

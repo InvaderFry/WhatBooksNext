@@ -460,3 +460,14 @@ export const MAX_TOPIC_LENGTH = 40;
  * call high; a strict rater's 6s and 7s can stand out without being high.
  */
 export const TASTE_HIGH_RATING = 8;
+
+/**
+ * Store purchases (store purchases plan, "When a store changes its website"): a complete scan
+ * that finds more than this share fewer books than the last complete scan of the same account
+ * gets a warning, and "not seen" reviews wait for the owner to confirm. Assumption: a real
+ * library rarely loses a fifth of its books between two scans; a broken collector easily does.
+ */
+export const STORE_SHRINK_WARNING = 0.2;
+
+/** At most this many books in one store purchases file: far more than a personal library. */
+export const STORE_FILE_MAX_RECORDS = 50_000;

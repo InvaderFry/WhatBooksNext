@@ -1318,6 +1318,11 @@ use. Keep them in one config module, each with its reason in a comment.
 | Server port | 4818, overridable with `PORT` | Unlikely to clash with common dev tools. |
 | Per-file limits | 60 s (parsing, counting, thumbnails — not full hashing); uncompressed ≤ 4 GB; compression ratio ≤ 100:1; images ≤ 50 megapixels | Large comic archives are fine; zip bombs and runaway files aren't. |
 | Light-scan target | 5,000 files in under 30 s on a local SSD | A goal to measure against, not a claim. |
+| Store collectors: gap between requests | 2 s | Store purchases plan, "Account safety": about a person's pace on their own library page. |
+| Store collectors: longer pause | 30 s after every 50 requests | Same: no long bursts. |
+| Store collectors: requests per scan | at most 300 | 15,000 books at 50 a page, far beyond a personal library; reaching it stops the scan as partial. |
+| Store collectors: stalled pages | 2 in a row with nothing new | Stops a list that repeats itself instead of looping. |
+| Store purchases: "far fewer books" warning | more than 20% fewer than the last complete scan | A real library rarely loses a fifth of its books between scans; a broken collector easily does. |
 
 ## 21. Owner actions and things still to confirm
 
@@ -1334,7 +1339,8 @@ plainly at the start of your message, with what to do and roughly how long it ta
 | **End of M3** | First ~20-minute recommendation quality session (§17.2). |
 | **During M1–M6, as they come up** | Check the "needs checking on the owner's machine" items on the Windows PC. For ratings Stage 1, open the CSV in Excel to check the appended scope/match columns, accents and formula text; inspect Diagnostics tier counts. For Stage 2, spot-check chosen titles/creators, page provenance and conflicting years, including Unicode and Calibre-formatted descriptions. No new accounts or keys. |
 | **End of M6** | Try installing from the README as a stranger would. The second quality session moves to after stage 3 of the [ratings and refresh plan](docs/plans/online-ratings-and-refreshes.md), so it judges the new ratings and details. |
-| **Store purchases: Stage 0 (now)** | A1 in the [store purchases plan](docs/plans/get-store-purchase-imports.md): say roughly how many books you own in Kindle, Google Play Books, Kobo and GlobalComix. No export requests: every store is read by a collector you run when you like. |
+| **Store purchases: Stage 0** | Done: over 12 books in each store (2026-11-11). |
+| **Store purchases: Kindle (now)** | A2 and A3 in the [store purchases plan](docs/plans/get-store-purchase-imports.md): run the Kindle script on read.amazon.com/kindle-library (Settings → Import store purchases has the button and steps), paste the title-free report into chat, then import the file and say whether the preview looked right. |
 | **Store links (now)** | A1b in the same plan: add a link to one store book per store you use, click **Read in … ↗**, and say whether it opened the right book. |
 | **Now (after stage 4)** | The second quality session (§17.2), on the new ratings and details. Also, on the Windows PC: Settings → Online lookups → **Keeping ratings up to date** shows due books and a last batch after the app has been open 10–15 minutes; Diagnostics → Automatic refresh shows requests within the daily share. No new accounts or keys. |
 

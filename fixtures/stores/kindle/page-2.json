@@ -1,0 +1,38 @@
+{
+  "itemsList": [
+    {
+      "asin": "INVENTED0005",
+      "webReaderUrl": "https://read.amazon.com/?asin=INVENTED0005",
+      "productUrl": "https://images.invalid/INVENTED0005.jpg",
+      "title": "Tidewright",
+      "percentageRead": 100,
+      "authors": ["Lane, Osric:"],
+      "resourceType": "EBOOK",
+      "originType": "PURCHASE",
+      "mangaOrComicAsin": false
+    },
+    {
+      "asin": "INVENTED0006",
+      "webReaderUrl": "https://read.amazon.com/?asin=INVENTED0006",
+      "productUrl": "https://images.invalid/INVENTED0006.jpg",
+      "title": "Shared Shelf Stories",
+      "percentageRead": 0,
+      "authors": ["Renn, Tobiah:"],
+      "resourceType": "EBOOK",
+      "originType": "FAMILY_SHARE",
+      "mangaOrComicAsin": false
+    },
+    {
+      "asin": "INVENTED0007",
+      "title": "My Own Notes",
+      "percentageRead": 0,
+      "authors": [],
+      "resourceType": "PDOC",
+      "originType": "PDOCS",
+      "mangaOrComicAsin": false
+    }
+  ],
+  "paginationToken": "7",
+  "libraryType": "BOOKS",
+  "sortType": "recency"
+}

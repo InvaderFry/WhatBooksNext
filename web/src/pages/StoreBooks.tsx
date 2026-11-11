@@ -100,7 +100,10 @@ export function AddStoreBook({ onClose }: { onClose: () => void }) {
           I can read it there now
         </label>
       </div>
-      <p className="muted small">{READABLE_HELP}</p>
+      <p className="muted small">
+        {READABLE_HELP} To bring in a whole store library at once, use Settings → Import store
+        purchases.
+      </p>
       {store === 'apple_books' ? (
         <p className="muted small">
           Apple Books has no web reader, so its books don’t take a link. Read them in the Books app
@@ -665,3 +668,439 @@ export function CsvImport() {
     </section>
   );
 }
+
+// ---- Import store purchases (store purchases plan, "1b") ---------------------------------------
+
+interface Collector {
+  service: string;
+  state: 'checked' | 'not_checked' | 'not_built';
+  checkedOn: string | null;
+  page: string | null;
+}
+
+interface PurchaseRow {
+  key: string;
+  title: string;
+  author: string | null;
+  acquisition: 'purchase' | 'free_claim' | 'uncertain';
+  evidence: string;
+  outcome: 'already' | 'isbn' | 'possible' | 'new';
+  itemTitle: string | null;
+  applies: string[];
+  kept: string[];
+}
+
+interface PurchasePreview {
+  label: string;
+  adapterVersion: string;
+  collectedAt: string;
+  region: string | null;
+  scopeFromFile: boolean;
+  completion: { status: 'complete' | 'partial' | 'failed'; reason: string; text: string };
+  counts: { seen: number; included: number; uncertain: number; excluded: Record<string, number> };
+  rows: PurchaseRow[];
+  problems: string[];
+  shrink: { before: number; now: number } | null;
+  notSeen: number;
+}
+
+const EXCLUDED_LABELS: Record<string, string> = {
+  sample: 'samples',
+  subscription: 'subscription reads',
+  loan: 'loans and library borrows',
+  personal_document: 'your own documents',
+  upload: 'your own uploads',
+  other_shelf: 'other shelves',
+};
+
+const COLLECTOR_STATE: Record<Collector['state'], string> = {
+  checked: 'Checked',
+  not_checked: 'Not checked yet: your first run is the test',
+  not_built: 'Not available yet',
+};
+
+/** The steps for one store's console script. Written for someone who has never used one. */
+function KindleSteps({ page }: { page: string }) {
+  const [copied, setCopied] = useState<string | null>(null);
+  return (
+    <ol className="steps">
+      <li>
+        In Edge or Chrome, open{' '}
+        <a href={page} target="_blank" rel="noopener noreferrer">
+          your Kindle library
+          <span aria-hidden="true"> ↗</span>
+          <span className="visually-hidden"> (opens in a new tab)</span>
+        </a>{' '}
+        (read.amazon.com/kindle-library) and sign in if Amazon asks.
+      </li>
+      <li>
+        Copy the script:{' '}
+        <button
+          type="button"
+          className="small secondary"
+          onClick={async () => {
+            try {
+              const r = await api.get<{ script: string }>('/api/store-collectors/kindle/script');
+              await navigator.clipboard.writeText(r.script);
+              setCopied('Copied. Now go to the Kindle tab.');
+            } catch (e) {
+              setCopied(`Couldn’t copy: ${(e as Error).message}`);
+            }
+          }}
+        >
+          Copy the Kindle script
+        </button>{' '}
+        {copied && (
+          <span className="small" role="status">
+            {copied}
+          </span>
+        )}
+      </li>
+      <li>
+        On the Kindle tab, press <kbd>F12</kbd> (or <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>J</kbd>)
+        and choose the <strong>Console</strong> tab.
+      </li>
+      <li>
+        Paste with <kbd>Ctrl</kbd>+<kbd>V</kbd> and press <kbd>Enter</kbd>. If the browser warns
+        about pasting, type <code>allow pasting</code>, press <kbd>Enter</kbd>, then paste again.
+      </li>
+      <li>
+        Read the notice and click <strong>OK</strong>. Leave the tab open: it goes slowly on purpose
+        (about 50 books every 2 seconds) and shows its progress in the corner.
+      </li>
+      <li>
+        When it’s done, a file called <code>whatbooksnext-kindle-…json</code> is in your Downloads
+        folder. Keep it private. If you’re asked for the report, click{' '}
+        <strong>Copy report (no titles)</strong> and paste it into chat.
+      </li>
+      <li>Choose that file below.</li>
+    </ol>
+  );
+}
+
+/** Settings → Import store purchases: steps per store, then the file, a preview and Import. */
+export function StorePurchaseImport({ onChanged }: { onChanged?: () => void }) {
+  const [collectors, setCollectors] = useState<Collector[] | null>(null);
+  const [service, setService] = useState('kindle');
+  const [text, setText] = useState<string | null>(null);
+  const [name, setName] = useState('');
+  const [preview, setPreview] = useState<PurchasePreview | null>(null);
+  const [onlyAccount, setOnlyAccount] = useState(true);
+  const [accountName, setAccountName] = useState('');
+  const [attach, setAttach] = useState<string[]>([]);
+  const [uncertain, setUncertain] = useState<string[]>([]);
+  const [keepNew, setKeepNew] = useState(true);
+  const [confirmShrink, setConfirmShrink] = useState(false);
+  const [result, setResult] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    void api
+      .get<Collector[]>('/api/store-collectors')
+      .then(setCollectors)
+      .catch(() => setCollectors([]));
+  }, []);
+
+  const account = () => (onlyAccount ? null : accountName.trim() || null);
+  const load = async (t: string) => {
+    setError(null);
+    try {
+      const p = await api.post<PurchasePreview>('/api/import/store-purchases/preview', {
+        text: t,
+        accountName: account(),
+      });
+      setPreview(p);
+      setAttach([]);
+      setUncertain([]);
+      setConfirmShrink(false);
+    } catch (err) {
+      setPreview(null);
+      setError((err as Error).message);
+    }
+  };
+
+  const chosen = collectors?.find((c) => c.service === service);
+  const rows = preview?.rows ?? [];
+  const sure = rows.filter((r) => r.acquisition !== 'uncertain');
+  const unsure = rows.filter((r) => r.acquisition === 'uncertain' && r.outcome !== 'already');
+  const excluded = Object.entries(preview?.counts.excluded ?? {}).filter(([, n]) => n > 0);
+
+  return (
+    <section aria-labelledby="purchases-h" className="section">
+      <h2 id="purchases-h">Import store purchases</h2>
+      <p className="muted small">
+        Bring in the books you own at a store, using a small script you run yourself on the store’s
+        own website, in your own browser, while signed in. It only reads your library list, slowly,
+        and stops at the first warning. It never sees your password, and whatBooksNext never
+        contacts the store. Run it again whenever you buy more; nothing is added twice. Apple Books
+        can’t be read this way (it has no web library): add those books by search, by hand or with
+        the spreadsheet above.
+      </p>
+      <fieldset className="radio-row">
+        <legend>Store</legend>
+        {(collectors ?? []).map((c) => (
+          <label key={c.service}>
+            <input
+              type="radio"
+              name="purchase-store"
+              checked={service === c.service}
+              onChange={() => setService(c.service)}
+            />
+            {STORE_LABELS[c.service]}{' '}
+            <span className="muted small">
+              (
+              {c.state === 'checked' && c.checkedOn
+                ? `Checked on ${c.checkedOn}`
+                : COLLECTOR_STATE[c.state]}
+              )
+            </span>
+          </label>
+        ))}
+      </fieldset>
+      {chosen && chosen.state === 'not_built' && (
+        <p className="small">
+          There’s no script for {STORE_LABELS[service]} yet. Until there is, add its books by
+          search, by hand or with the spreadsheet above.
+        </p>
+      )}
+      {chosen && chosen.state !== 'not_built' && service === 'kindle' && chosen.page && (
+        <>
+          <p className="small warn">
+            Reading a store page with a script may break the store’s terms of use, and a store could
+            challenge or restrict an account that does unusual things. The script keeps close to a
+            person scrolling their own library. If you’d rather not, use the spreadsheet or add
+            books by hand.
+          </p>
+          <KindleSteps page={chosen.page} />
+        </>
+      )}
+      {chosen && chosen.state !== 'not_built' && (
+        <div className="field">
+          <label htmlFor="purchases-file">The file the script downloaded</label>
+          <input
+            id="purchases-file"
+            type="file"
+            accept=".json,application/json"
+            onChange={async (e) => {
+              const file = e.target.files?.[0];
+              setPreview(null);
+              setResult(null);
+              setError(null);
+              if (!file) return;
+              setName(file.name);
+              const t = await file.text();
+              setText(t);
+              await load(t);
+            }}
+          />
+        </div>
+      )}
+      {preview && text && (
+        <>
+          <p>
+            <strong>{name}</strong>: {preview.label}, made {formatWhen(preview.collectedAt)} by
+            collector version {preview.adapterVersion}
+            {preview.region ? ` on ${preview.region}` : ''}.
+          </p>
+          {preview.completion.status === 'complete' ? (
+            <p className="small ok">The scan finished: this is your whole library.</p>
+          ) : (
+            <Notice kind="error">
+              This scan didn’t finish ({preview.completion.status}): {preview.completion.text} You
+              can still import what it found; books it didn’t reach are left as they are.
+            </Notice>
+          )}
+          <p className="small">
+            Found {preview.counts.seen}: {preview.counts.included} owned
+            {preview.counts.uncertain ? `, ${preview.counts.uncertain} not sure` : ''}
+            {excluded.length > 0 &&
+              `. Left out: ${excluded.map(([k, n]) => `${EXCLUDED_LABELS[k] ?? k} ${n}`).join(', ')}`}
+            .
+          </p>
+          {preview.shrink && (
+            <div className="notice notice-error" role="alert">
+              <p>
+                This scan found far fewer books ({preview.shrink.now}) than the last complete one (
+                {preview.shrink.before}). The store’s website may have changed. Books it didn’t find
+                won’t be flagged unless you say so.
+              </p>
+              <label className="check">
+                <input
+                  type="checkbox"
+                  checked={confirmShrink}
+                  onChange={(e) => setConfirmShrink(e.target.checked)}
+                />
+                The numbers are right: flag the books it didn’t find
+              </label>
+            </div>
+          )}
+          {preview.notSeen > 0 && !preview.shrink && (
+            <p className="small">
+              {preview.notSeen} book{preview.notSeen === 1 ? '' : 's'} from earlier scans weren’t
+              found. {preview.notSeen === 1 ? 'It goes' : 'They go'} to Needs review, never deleted.
+            </p>
+          )}
+          {!preview.scopeFromFile && (
+            <div className="row-actions wrap">
+              <label className="check">
+                <input
+                  type="checkbox"
+                  checked={onlyAccount}
+                  onChange={(e) => {
+                    setOnlyAccount(e.target.checked);
+                    if (e.target.checked) void load(text);
+                  }}
+                />
+                This is my only {preview.label} account
+              </label>
+              {!onlyAccount && (
+                <div className="field inline">
+                  <label htmlFor="purchase-account">Name for this account</label>
+                  <input
+                    id="purchase-account"
+                    value={accountName}
+                    onChange={(e) => setAccountName(e.target.value)}
+                    onBlur={() => void load(text)}
+                  />
+                </div>
+              )}
+            </div>
+          )}
+          {preview.problems.length > 0 && (
+            <ul className="small warn">
+              {preview.problems.slice(0, 20).map((p) => (
+                <li key={p}>{p}</li>
+              ))}
+            </ul>
+          )}
+          {unsure.length > 0 && (
+            <>
+              <h3>Not sure these are yours</h3>
+              <p className="muted small">
+                The store didn’t say clearly how you got these. Tick the ones you own for good.
+              </p>
+              <ul className="plain-list csv-preview">
+                {unsure.map((r) => (
+                  <li key={r.key}>
+                    <label className="check">
+                      <input
+                        type="checkbox"
+                        checked={uncertain.includes(r.key)}
+                        onChange={(e) =>
+                          setUncertain(
+                            e.target.checked
+                              ? [...uncertain, r.key]
+                              : uncertain.filter((x) => x !== r.key),
+                          )
+                        }
+                      />
+                      <strong>{r.title}</strong>
+                      {r.author && ` · ${r.author}`}
+                    </label>
+                    <div className="small muted">The store says: {r.evidence}</div>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+          <h3>Your books</h3>
+          <ul className="plain-list csv-preview">
+            {[
+              ...sure,
+              ...rows.filter((r) => r.acquisition === 'uncertain' && r.outcome === 'already'),
+            ]
+              .slice(0, 500)
+              .map((r) => (
+                <li key={r.key}>
+                  <strong>{r.title}</strong>
+                  {r.author && ` · ${r.author}`}
+                  <div className="small">
+                    {OUTCOME_TEXT[r.outcome]}
+                    {r.itemTitle && r.outcome !== 'new' && `: “${r.itemTitle}”`}
+                    {r.outcome === 'possible' && (
+                      <label className="check inline">
+                        <input
+                          type="checkbox"
+                          checked={attach.includes(r.key)}
+                          onChange={(e) =>
+                            setAttach(
+                              e.target.checked
+                                ? [...attach, r.key]
+                                : attach.filter((x) => x !== r.key),
+                            )
+                          }
+                        />
+                        It’s that book
+                      </label>
+                    )}
+                  </div>
+                  {r.applies.length > 0 && (
+                    <div className="small muted">Records: {r.applies.join(', ')}</div>
+                  )}
+                  {r.kept.length > 0 && (
+                    <div className="small warn">Yours kept — {r.kept.join('; ')}</div>
+                  )}
+                </li>
+              ))}
+          </ul>
+          {rows.length > 500 && <p className="muted small">The first 500 are shown.</p>}
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={keepNew}
+              onChange={(e) => setKeepNew(e.target.checked)}
+            />
+            Add books that match nothing (as unconfirmed books; lookups can identify them later)
+          </label>
+          <div className="row-actions">
+            <button
+              type="button"
+              onClick={async () => {
+                setError(null);
+                try {
+                  const r = await api.post<{
+                    added: number;
+                    attached: number;
+                    already: number;
+                    skipped: number;
+                    links: number;
+                    notSeen: number;
+                  }>('/api/import/store-purchases', {
+                    text,
+                    attach,
+                    uncertain,
+                    keepNew,
+                    accountName: account(),
+                    confirmShrink,
+                  });
+                  setResult(
+                    `Imported: ${r.added} new, ${r.attached} added to books you have, ${r.already} already there, ${r.skipped} skipped` +
+                      (r.links ? `, ${r.links} link${r.links === 1 ? '' : 's'} added` : '') +
+                      (r.notSeen ? `; ${r.notSeen} not found this time are in Needs review` : '') +
+                      '.',
+                  );
+                  setPreview(null);
+                  onChanged?.();
+                } catch (err) {
+                  setError((err as Error).message);
+                }
+              }}
+            >
+              Import selected books
+            </button>
+            <button type="button" className="secondary" onClick={() => setPreview(null)}>
+              Cancel
+            </button>
+          </div>
+        </>
+      )}
+      {result && <Notice kind="success">{result}</Notice>}
+      {error && <Notice kind="error">{error}</Notice>}
+    </section>
+  );
+}
+
+const formatWhen = (iso: string) => {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? iso : d.toLocaleString();
+};

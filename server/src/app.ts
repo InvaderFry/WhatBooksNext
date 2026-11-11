@@ -44,6 +44,7 @@ import { route } from './routes/route.ts';
 import { registerSeriesRoutes } from './routes/series.ts';
 import { registerOperationRoutes } from './routes/operations.ts';
 import { registerStoreRoutes } from './routes/store.ts';
+import { lastStoreImports } from './lib/storePurchases.ts';
 import { registerCalibreRoutes } from './routes/calibre.ts';
 import { registerHistoryImportRoutes } from './routes/historyImport.ts';
 import { registerStatsRoutes } from './routes/stats.ts';
@@ -798,6 +799,7 @@ export function createApp(ctx: AppContext) {
         })),
         lookups: { pending: lookups.pending(), running: lookups.isRunning() },
         refresh: refresher.status(),
+        storeImports: lastStoreImports(db),
       };
     }),
   );

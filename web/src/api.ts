@@ -205,7 +205,8 @@ export interface ReviewRow {
     | 'wrong_match'
     | 'unidentified'
     | 'provisional'
-    | 'check_match';
+    | 'check_match'
+    | 'store_not_seen';
   tier: number;
   why: string;
   items: { id: string; title: string; hasHistory: boolean }[];

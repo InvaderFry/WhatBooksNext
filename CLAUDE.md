@@ -33,11 +33,13 @@ owner has already made. Don't reopen those decisions. Then read the latest
   choice, best details, "From each source" in `lib/fromEachSource.ts`, automatic refresh; notes in
   M6.md). **Next:** the owner's second quality session (§17.2), due now. Google Books was dropped;
   the plan says why.
-- **Store purchase imports** (`docs/plans/get-store-purchase-imports.md`): Stage 0 decided:
-  every store gets a collector (or is skipped by count); the owner ruled out waiting on official
-  exports for updates. **Store links built** (`014_store_links.sql`,
-  `checkStoreLink`/`STORE_LINK_HOSTS` in `lib/store.ts`; waiting on A1b). Collectors not started:
-  next is Stage 1 (Kindle or Google Play Books, by the owner's A1 counts).
+- **Store purchase imports** (`docs/plans/get-store-purchase-imports.md`): every store gets
+  a collector (the owner ruled out waiting on official exports). **Store links built**
+  (`014_store_links.sql`, `checkStoreLink`/`STORE_LINK_HOSTS` in `lib/store.ts`; waiting on A1b).
+  **Stage 1a/1b built for Kindle (amazon.com)**: `tools/store-collector/` (core + `adapters/kindle.ts`;
+  `npm run build:collector` writes the committed `console-scripts/`, a test checks they're fresh),
+  import in `lib/storePurchases.ts` (`015_store_purchases.sql`). Waiting on A2/A3; the adapter is
+  unchecked on a real account. Next: fix the adapter from the A2 report, then 1c (extension).
 - Automatic refresh: due rules are pure in `lib/refresh.ts`; `identify/refresher.ts` runs batches
   through `lookUpItem` (never a second lookup engine). `lookup_state.accepted_source_id` remembers
   the app's own accepted match: lookups keep it (a rival goes to Needs review as "Check this

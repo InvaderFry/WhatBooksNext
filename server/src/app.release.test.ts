@@ -12,6 +12,7 @@ import { createStoreItem } from './lib/store.ts';
 import { applyUserPatch } from './lib/progress.ts';
 import type { Platform } from './platform/types.ts';
 import { fakePlatformWithDrives, memoryDb, tempDir } from './testing/helpers.ts';
+import { storeFile } from './testing/storeFile.ts';
 
 /** Milestone 6: restore across every table, full snapshots, the CSV export, Stats, Diagnostics. */
 
@@ -115,6 +116,16 @@ describe('restore regression across every table (§16)', () => {
       (
         await api.post('/api/import/csv', {
           text: 'title,author,store,url\nAn Invented Import,Ola Pennant,kobo,https://www.kobo.com/ww/en/ebook/invented-import\n',
+        })
+      ).status,
+    ).toBe(200);
+    // Store purchases (015): one imported from an invented collector file.
+    expect(
+      (
+        await api.post('/api/import/store-purchases', {
+          text: storeFile([
+            { id: 'INVENTED0100', title: 'An Invented Purchase', author: 'Ola Pennant' },
+          ]),
         })
       ).status,
     ).toBe(200);

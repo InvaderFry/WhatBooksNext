@@ -1,8 +1,9 @@
 # Import store purchases: official exports first, then a browser extension
 
-Status: **Stage 0 decided** (all four stores get a collector or are skipped by count; waiting on
-the owner's counts, A1) and **Store links built** (waiting on owner action A1b). No collector is started, and no store has been checked on a
-signed-in account. Written 2026-11-11. This revises a first draft from 2026-11-10 ("console scripts, then one
+Status: **Stage 0 decided** (the owner has over 12 books in each store, so all four get a
+collector), **Store links built** (waiting on owner action A1b), and **Stage 1a and 1b built for
+Kindle** (amazon.com; waiting on owner actions A2 and A3). The extension (1c) waits until A2 shows
+the extraction works. No store has been checked on a signed-in account yet. Written 2026-11-11. This revises a first draft from 2026-11-10 ("console scripts, then one
 extension") after a review. The review kept the draft's rules and its order of proving extraction
 before packaging it. It added: checking each store's official export before scraping anything,
 account safety limits, the owner's steps written for a non-programmer, building one store end to
@@ -167,9 +168,10 @@ so no store uses an official export to bring books in.
 | Kobo              | **Collector, or skip by count.** No self-service export. If the owner has fewer than about 10 Kobo books, use the store CSV or manual entry (decision 3). Otherwise a collector on My Books. The owner may also email a privacy request, only as a completeness check later: it's not needed to start.   |
 | GlobalComix       | **Collector, or skip by count.** No export or API. Same rule as Kobo.                                                                                                                                                                                                                                    |
 
-**Next:** the owner's rough counts (A1). Stage 1 starts with whichever of Kindle and Google Play
-Books has more books, or Kindle if the owner can't say. Kobo and GlobalComix follow in Stage 2
-unless they're skipped by count.
+**A1 answered (2026-11-11):** over 12 books in each of the four stores, so none is skipped.
+The owner couldn't say which has most, so Stage 1 is **Kindle, on amazon.com**. The owner read
+the account risk notice and chose to go ahead. Google Play Books, Kobo and GlobalComix follow in
+Stage 2.
 
 ## Store links
 
@@ -405,6 +407,50 @@ there too). Pick a store and it shows that store's steps, then a file picker. Ch
 tests against in-memory SQLite for each outcome, re-importing the same file, partial files, and the
 owner's data winning.
 
+### Built for Kindle (2026-11-11)
+
+- **Collector core** (`tools/store-collector/core/`): `limits.ts` (the safety numbers, also in
+  PLAN.md §20), `format.ts` (the file), `adapter.ts`, `scan.ts` (the loop: pacing, dedupe by
+  store ID, stops on cancel, sign-in, 401/403/429, a redirect elsewhere, a non-JSON answer, a
+  repeated cursor, stalled pages, the request limit or a fingerprint mismatch; never retries; a
+  stopped scan is `partial`, or `failed` when nothing was found), `report.ts` (title-free).
+- **Kindle adapter** (`adapters/kindle.ts`, version 1): runs only on
+  `https://read.amazon.com/kindle-library`. It uses the request that page itself makes to list
+  the library, `GET /kindle-library/search?query=&libraryType=BOOKS&paginationToken=<n>&sortType=recency&querySize=50`.
+  That's a search: it reads and changes nothing. The paging token starts at `0` and comes back in
+  each answer; an empty `itemsList` or no token ends the list. Each item's `asin`, `title`,
+  `authors` ("Last, First:"), `originType`, `resourceType`, `percentageRead` and `webReaderUrl`
+  are read. Ownership: `PURCHASE` is a purchase (free books are $0 purchases at Amazon); Kindle
+  Unlimited, Comics Unlimited and Prime are excluded as subscriptions; samples (`SAMPLE`, or a
+  `resourceType` with SAMPLE), loans and personal documents are excluded; **any other label is
+  uncertain** and goes to the owner. Reading status is **not** taken from `percentageRead` (a
+  finished Kindle book often stops at 98%): only the percentage is kept. The reader link comes
+  only from the answer's own `webReaderUrl`.
+  **All of this is from public descriptions of the page, not checked on a signed-in account**:
+  A2 checks it, and the fingerprint (`itemsList`, and `asin` and `title` on every item) stops
+  the scan the moment the answer differs.
+- **Console script:** `npm run build:collector` bundles it with rolldown (already in the `web`
+  workspace through Vite) into `tools/store-collector/console-scripts/kindle.js`, readable and
+  committed, so the app can hand it over with no build step. A test fails if the committed file
+  differs from a fresh build. Settings → Import store purchases has a **Copy the Kindle script**
+  button and the steps.
+- **Import** (`server/src/lib/storePurchases.ts`): `readPurchaseFile` checks the envelope and each
+  record; `previewPurchases` and `importPurchases` as specified above. Migration
+  `015_store_purchases.sql` (`store_purchases` in the backup and the restore regression;
+  `store_import_runs` excluded, like `scan_runs`). Merge and undo carry `store_purchases`.
+  The run log has no titles. Needs review shows "Still yours in the store?" (tier 3) with
+  **Keep** / **Remove the store copy**. Diagnostics shows the last import per store.
+  - An unticked possible match becomes a separate book, as with the store CSV.
+  - Without an `accountScope` in the file, "This is my only Kindle account" is ticked by default.
+    Unticking it asks for a name, which keeps that account's books apart.
+- **Tests:** `server/src/storeCollector.test.ts` (adapter and scan loop on invented answers in
+  `fixtures/stores/kindle/`) and `server/src/app.storePurchases.test.ts` (routes, plus a collector
+  scan imported end to end). Screenshot: `settings-store-purchases`.
+- **Not yet:** `accountScope` (no account ID was found in the library answer), other Amazon
+  countries, and acquisition dates (not in this answer). The Kindle collector shows as
+  **Not checked yet** until A2 passes; then set `COLLECTORS.kindle` in `lib/storePurchases.ts` to
+  `checked` with the date.
+
 ### 1c. Package as a browser extension
 
 - One Manifest V3 extension for **Microsoft Edge and Google Chrome** (Edge is the Windows
@@ -467,8 +513,8 @@ these rows to PLAN.md §21 when the stage starts.
 | --- | --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------- |
 | A1  | Stage 0               | Say roughly how many books you own in Kindle, Google Play Books, Kobo and GlobalComix. No export requests are needed (decided 2026-11-11).                                                                                                                                                                                                                     | 2 min            |
 | A1b | Store links           | On a few store books (one per store you use), open the book page, add the link (copy it from the store's reader or book page in your browser), and click **Read in … ↗**. Say whether it opened the right book. Also say, without the ID itself, what shape the reader's address has (for example `read.amazon.com/?asin=…`), so link patterns can be checked. | 5 min            |
-| A2  | Stage 1a              | Sign in to the first store in Edge or Chrome, open its library page, and paste the provided script into the browser's developer console (the steps include Chrome's "allow pasting" prompt). Wait for it to finish, then paste the **title-free report** into chat. Keep the downloaded JSON file private.                                                     | 10–15 min        |
-| A3  | Stage 1b              | In whatBooksNext: store books → Import store purchases → choose the JSON file. Check that the preview looks right, then import. Say whether anything was wrong (no titles needed).                                                                                                                                                                             | 10 min           |
+| A2  | Stage 1a              | Sign in to the first store in Edge or Chrome, open its library page, and paste the script (Settings → Import store purchases → **Copy the Kindle script**) into the browser's developer console (the steps include the "allow pasting" prompt). Wait for it to finish, then paste the **title-free report** into chat. Keep the downloaded JSON file private.  | 10–15 min        |
+| A3  | Stage 1b              | In whatBooksNext: Settings → Import store purchases → choose the JSON file. Check that the preview looks right, then import. Say whether anything was wrong (no titles needed).                                                                                                                                                                                | 10 min           |
 | A4  | Stage 1c              | Install the extension by following `INSTALL.md` (download the zip, unzip, open the browser's extensions page, turn on Developer mode, Load unpacked). Run **Scan this library** on the same store, import the file, and check that nothing is duplicated.                                                                                                      | 15 min           |
 | A5  | Each new store or fix | Install the new extension version the same way (or click Reload on the extensions page after replacing the folder), run a scan, and paste the report.                                                                                                                                                                                                          | 10 min per store |
 

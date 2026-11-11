@@ -220,7 +220,11 @@ export function setLocationLink(
 }
 
 /** Whether an imported link would fill this item's copy in that store (no copy yet counts). */
-function linkWouldFill(db: DB, itemId: string | null, store: Store): 'fill' | 'kept' | 'same' {
+export function linkWouldFill(
+  db: DB,
+  itemId: string | null,
+  store: Store,
+): 'fill' | 'kept' | 'same' {
   if (!itemId) return 'fill';
   const l = db
     .prepare(
@@ -582,10 +586,22 @@ export interface PreviewRow {
   kept: string[];
 }
 
-function ownerChanges(
+/** What an import row brings: shared by the store CSV and the store purchases file. */
+export interface ImportFill {
+  fields: Pick<StoreFields, 'store' | 'link'>;
+  progress: string | null;
+  rating: number | null;
+  note: string | null;
+}
+
+/**
+ * What an import would record on a book, and what the owner already has that differs (theirs is
+ * kept). Imports only fill what's empty: the owner's own data always wins.
+ */
+export function ownerChanges(
   db: DB,
   itemId: string | null,
-  r: CsvRow,
+  r: ImportFill,
 ): { applies: string[]; kept: string[]; patch: Record<string, unknown> } {
   const u = itemId
     ? (db.prepare('SELECT progress, rating, note FROM user_item WHERE item_id = ?').get(itemId) as
@@ -626,7 +642,7 @@ function ownerChanges(
   return { applies, kept, patch };
 }
 
-function titleOfItem(db: DB, id: string): string {
+export function titleOfItem(db: DB, id: string): string {
   return (
     (db
       .prepare(

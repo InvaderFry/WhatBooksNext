@@ -3,7 +3,7 @@ import { api, daysAgo, formatBytes, formatDate, type Folder, type ScanStatus } f
 import { Notice } from '../components.tsx';
 import { HistoryImport } from './HistoryImport.tsx';
 import { CalibreImport } from './CalibreImport.tsx';
-import { CsvImport } from './StoreBooks.tsx';
+import { CsvImport, StorePurchaseImport } from './StoreBooks.tsx';
 import { OnlineSettings } from './OnlineSettings.tsx';
 import { TopicsSection } from './Tune.tsx';
 import { hrefFor, onLinkClick } from '../url.ts';
@@ -98,6 +98,7 @@ export function Settings({
 
       <OnlineSettings />
       <CsvImport />
+      <StorePurchaseImport onChanged={onLibraryChanged} />
       <CalibreImport />
       <HistoryImport onChanged={onLibraryChanged} />
       <section aria-labelledby="picks-h" className="section">
