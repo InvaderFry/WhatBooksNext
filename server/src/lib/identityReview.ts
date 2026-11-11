@@ -57,7 +57,7 @@ export function candidateView(m: Pick<MatchRow, 'record' | 'score' | 'evidence'>
 
 export interface IdentityRow {
   id: string;
-  kind: 'tie' | 'wrong_match' | 'unidentified' | 'provisional';
+  kind: 'tie' | 'wrong_match' | 'unidentified' | 'provisional' | 'check_match';
   tier: 2 | 3 | 4;
   why: string;
   itemId: string;
@@ -173,6 +173,56 @@ export function identityRows(db: DB): { rows: IdentityRow[]; unidentifiedOther: 
       });
     }
   }
+  // "Check this match" (stage 4): a later lookup preferred another record, but the app keeps
+  // the one it accepted earlier until the owner decides. Confirming either one settles it.
+  for (const c of db
+    .prepare(
+      `SELECT l.item_id, l.source, l.accepted_source_id, l.rival_source_id,
+         COALESCE(u.title_override, i.title) AS title, u.progress, u.shortlist_position,
+         u.triage, u.rating
+       FROM lookup_state l JOIN items i ON i.id = l.item_id
+       LEFT JOIN user_item u ON u.item_id = i.id
+       WHERE l.rival_source_id IS NOT NULL AND l.accepted_source_id IS NOT NULL
+         AND u.match_override IS NULL AND u.wrong_match_at IS NULL AND COALESCE(u.hidden, 0) = 0
+       ORDER BY title`,
+    )
+    .all() as {
+    item_id: string;
+    source: SourceName;
+    accepted_source_id: string;
+    rival_source_id: string;
+    title: string;
+    progress: string | null;
+    shortlist_position: number | null;
+    triage: string | null;
+    rating: number | null;
+  }[]) {
+    if (rows.some((r) => r.itemId === c.item_id)) continue;
+    const rej = new Set(
+      (rejected.all(c.item_id) as { source: string; source_id: string }[]).map(
+        (r) => `${r.source}:${r.source_id}`,
+      ),
+    );
+    const ms = matchesOf(db, c.item_id).filter(
+      (m) => m.source === c.source && !rej.has(`${m.source}:${m.sourceId}`),
+    );
+    const kept = ms.find((m) => m.sourceId === c.accepted_source_id);
+    const rival = ms.find((m) => m.sourceId === c.rival_source_id);
+    if (!kept || !rival) continue;
+    const matters = c.shortlist_position !== null || IN_PROGRESS.includes(c.progress ?? '');
+    rows.push({
+      id: `check:${c.item_id}:${c.source}`,
+      kind: 'check_match',
+      tier: matters ? 3 : 4,
+      why: `A newer ${SOURCE_LABELS[c.source]} lookup prefers another record. The match in use (listed first) stays until you choose; confirm the right one.`,
+      itemId: c.item_id,
+      title: c.title,
+      hasHistory:
+        c.progress !== null &&
+        (c.progress !== 'not_started' || c.rating !== null || c.triage !== null),
+      candidates: [kept, rival].map((m) => candidateView(m)),
+    });
+  }
   return { rows, unidentifiedOther };
 }
 
@@ -249,6 +299,8 @@ export function applyMatchAction(db: DB, itemId: string, a: MatchAction): void {
       'DELETE FROM candidates_rejected WHERE item_id = ? AND source = ? AND source_id = ?',
     ).run(itemId, a.source, a.sourceId);
     setOverride(key);
+    // The owner decided: nothing is left to check.
+    db.prepare('UPDATE lookup_state SET rival_source_id = NULL WHERE item_id = ?').run(itemId);
   } else if (a.action === 'reject') {
     const score = db
       .prepare('SELECT score FROM item_matches WHERE item_id = ? AND source = ? AND source_id = ?')
@@ -261,6 +313,15 @@ export function applyMatchAction(db: DB, itemId: string, a: MatchAction): void {
       .prepare('SELECT match_override FROM user_item WHERE item_id = ?')
       .pluck()
       .get(itemId);
+    // The app no longer keeps a record the owner rejected, nor offers it as a rival.
+    db.prepare(
+      `UPDATE lookup_state SET accepted_source_id = NULL, rival_source_id = NULL
+       WHERE item_id = ? AND source = ? AND accepted_source_id = ?`,
+    ).run(itemId, a.source, a.sourceId);
+    db.prepare(
+      `UPDATE lookup_state SET rival_source_id = NULL
+       WHERE item_id = ? AND source = ? AND rival_source_id = ?`,
+    ).run(itemId, a.source, a.sourceId);
     if (cur === `${a.source}:${a.sourceId}`) setOverride(null);
     else
       db.prepare(
@@ -295,11 +356,14 @@ export function itemMatchSummary(db: DB, itemId: string) {
     .pluck()
     .get(itemId) as string | null | undefined;
   const lookups = db
-    .prepare('SELECT source, outcome, looked_up_at, error FROM lookup_state WHERE item_id = ?')
+    .prepare(
+      'SELECT source, outcome, looked_up_at, last_answer_at, error FROM lookup_state WHERE item_id = ?',
+    )
     .all(itemId) as {
     source: SourceName;
     outcome: string;
     looked_up_at: string;
+    last_answer_at: string | null;
     error: string | null;
   }[];
   return {

@@ -186,7 +186,8 @@ describe('lookups', () => {
       `INSERT INTO item_matches VALUES (?, 'hardcover', '9', 1, 1, '{}', ?, '2026-01-01')`,
     ).run(id, rec);
     db.prepare(
-      `INSERT INTO lookup_state VALUES (?, 'hardcover', 4, '{}', '2026-01-01', 'matched', NULL)`,
+      `INSERT INTO lookup_state (item_id, source, version, query, looked_up_at, outcome, error)
+       VALUES (?, 'hardcover', 4, '{}', '2026-01-01', 'matched', NULL)`,
     ).run(id);
     await api.post('/api/lookups', {});
     await made.lookups.wait();

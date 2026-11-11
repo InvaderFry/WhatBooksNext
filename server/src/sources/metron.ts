@@ -170,6 +170,7 @@ export class Metron implements SourceAdapter {
         'metron',
         'Reached today’s Metron allowance; carrying on tomorrow.',
         true,
+        true,
       );
     this.usage.count();
     return this.client.json(

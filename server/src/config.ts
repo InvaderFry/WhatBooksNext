@@ -237,6 +237,44 @@ export const CIRCUIT_PAUSE_MS = 10 * 60_000;
  */
 export const LOOKUP_STOP_AFTER_FAILED_ITEMS = 10;
 
+// ---- Automatic refresh (ratings plan stage 4, §20) -------------------------------------------
+
+/**
+ * How often a source is asked again about a book, by how likely its answer has changed:
+ * books in progress or shortlisted weekly; a book with no supported trusted rating monthly
+ * (ratings arrive as people read it); everything else, settled ratings and sources that never
+ * rate, every three months. Assumptions from the plan; calibrate with the owner's library.
+ */
+export const REFRESH_ACTIVE_DAYS = 7;
+export const REFRESH_OPEN_DAYS = 30;
+export const REFRESH_SETTLED_DAYS = 90;
+
+/** A failed lookup is retried after 1, 3 and 7 days, then returns to its group's interval. */
+export const REFRESH_RETRY_DAYS = [1, 3, 7] as const;
+
+/**
+ * Each due date is stretched by up to this share, by a fixed amount per book and source, so
+ * books looked up on the same day (a first scan) don't all fall due on the same day again.
+ */
+export const REFRESH_JITTER = 0.1;
+
+/** One automatic batch makes at most this many real requests (searches and record fetches). */
+export const REFRESH_BATCH_REQUESTS = 25;
+
+/**
+ * Automatic work may use at most this share of a source's daily allowance (Hardcover and Metron,
+ * 5,000 each), leaving the rest for the owner's own lookups.
+ */
+export const REFRESH_DAILY_SHARE = 0.2;
+
+/**
+ * Checks for due books: the first a few minutes after start (the owner's first clicks go first),
+ * then every ten minutes while the app runs. One batch per check, so a long time closed (or a
+ * restore) is caught up gradually.
+ */
+export const REFRESH_FIRST_CHECK_MS = 3 * 60_000;
+export const REFRESH_CHECK_MS = 10 * 60_000;
+
 /** Search results considered per source. More rarely helps and costs rate limit. */
 export const SEARCH_RESULTS = 5;
 

@@ -160,6 +160,17 @@ Metron finds nothing), so without those keys they rank on your own signals. An i
 series name and number; a year in the file (the filename's "(2019)" or ComicInfo's Year) that
 agrees with the issue's makes the match certain, so two runs with the same name aren't confused.
 
+**Ratings stay current on their own.** While the app is open it asks the sources again now and
+then, in small batches: every 7 days for books you're reading or have shortlisted, every 30 days
+for books still without a rating many people agree on, and every 90 days for the rest. It uses at
+most a fifth of Hardcover's and Metron's daily allowance, waits during scans and lookups, and keeps
+a book's previous answer when a source fails or no longer finds it clearly. It never switches a
+match on its own: if a source now prefers another record, **Needs review** asks you ("Check this
+match"). Turn it off, pause it or run it now in **Settings → Online lookups → Keeping ratings up to
+date**. **Look up again** on a book page, and **Look up all books again** in Settings, ask every
+source afresh and let the app choose its matches again; your confirmations, rejections and edits
+always stay.
+
 When a match isn't certain, the book is still recommended, marked "unconfirmed", and listed in
 **Needs review**, where you can confirm it, pick another, search, or leave it unidentified. Your
 answers always win over later lookups. A book with no rating or length counts as average, never

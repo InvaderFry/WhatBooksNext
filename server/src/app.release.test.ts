@@ -119,6 +119,24 @@ describe('restore regression across every table (§16)', () => {
       ).status,
     ).toBe(200);
 
+    // Automatic refresh's columns (stage 4): a rival and a retry, as a refresh leaves them.
+    db.prepare(
+      `UPDATE lookup_state SET rival_source_id = 'invented-rival', failure_count = 2,
+         next_eligible_at = '2026-11-12T00:00:00.000Z'
+       WHERE rowid = (SELECT rowid FROM lookup_state WHERE accepted_source_id IS NOT NULL LIMIT 1)`,
+    ).run();
+    const unfilled = [
+      'accepted_source_id',
+      'rival_source_id',
+      'last_answer_at',
+      'next_eligible_at',
+      'failure_count',
+    ].filter(
+      (c) => !one(db, `SELECT COUNT(*) FROM lookup_state WHERE ${c} IS NOT NULL AND ${c} != 0`),
+    );
+    expect(unfilled).toEqual([]);
+    const dueBefore = made!.refresher.dueItemIds();
+
     // Guard: a new table must get a row here too, or this test would prove nothing about it.
     const empty = BACKUP_TABLES.filter(
       (t) => db.prepare(`SELECT COUNT(*) FROM ${t}`).pluck().get() === 0,
@@ -137,6 +155,8 @@ describe('restore regression across every table (§16)', () => {
     const after = dump(fresh);
     for (const t of BACKUP_TABLES)
       expect({ table: t, rows: after[t] }).toEqual({ table: t, rows: before[t] });
+    // Restored lookups keep when they last answered: nothing more falls due at once.
+    expect(made!.refresher.dueItemIds()).toEqual(dueBefore);
     const statsAfter = (await api.get('/api/stats')).body;
     // Folders aren't connected now, which Stats doesn't depend on.
     expect(statsAfter).toEqual(statsBefore);

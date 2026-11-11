@@ -139,6 +139,28 @@ export class Sources {
     ];
   }
 
+  private client(name: SourceName) {
+    if (name === 'openlibrary') return this.openlibrary.client;
+    if (name === 'anilist') return this.anilist.client;
+    if (name === 'hardcover') return this.hardcover.client;
+    if (name === 'metron') return this.metron.client;
+    if (name === 'comicvine') return this.comicvine.client;
+    return null;
+  }
+
+  /**
+   * Real requests sent to a source since the app started (cache reads don't count). The demo
+   * source never goes online, so it always says 0.
+   */
+  requestCount(name: SourceName): number {
+    return this.client(name)?.status().requests ?? 0;
+  }
+
+  /** The source's circuit breaker is open after repeated failures. */
+  isPaused(name: SourceName): boolean {
+    return this.client(name)?.status().state === 'paused';
+  }
+
   resetBreakers(): void {
     for (const c of [
       this.openlibrary.client,

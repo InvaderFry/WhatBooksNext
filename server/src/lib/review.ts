@@ -47,7 +47,8 @@ export interface ReviewRow {
     | 'tie'
     | 'wrong_match'
     | 'unidentified'
-    | 'provisional';
+    | 'provisional'
+    | 'check_match';
   tier: number;
   why: string;
   items: ReviewItemRef[];

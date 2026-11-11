@@ -112,10 +112,13 @@ export class SourceError extends Error {
   readonly source: SourceName;
   /** True for problems worth retrying later (timeouts, 429, 5xx). */
   readonly transient: boolean;
-  constructor(source: SourceName, message: string, transient: boolean) {
+  /** The source's daily allowance is used up: not this book's fault, try again tomorrow. */
+  readonly quota: boolean;
+  constructor(source: SourceName, message: string, transient: boolean, quota = false) {
     super(message);
     this.source = source;
     this.transient = transient;
+    this.quota = quota;
   }
 }
 

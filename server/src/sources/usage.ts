@@ -21,10 +21,10 @@ export class DailyUsage {
     return u.day === todayLocal() ? u.count : 0;
   }
 
-  count(): number {
+  count(n = 1): number {
     const today = todayLocal();
     const u = this.read();
-    const next = { day: today, count: u.day === today ? u.count + 1 : 1 };
+    const next = { day: today, count: (u.day === today ? u.count : 0) + n };
     if (!this.db) this.memory = next;
     else
       this.db

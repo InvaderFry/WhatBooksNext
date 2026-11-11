@@ -31,6 +31,8 @@ export interface SourceEntry {
   statusText: string;
   /** When the app last asked this source about the book (stage 4 adds the last real answer). */
   lookedUpAt: string | null;
+  /** When the source last actually answered over the network (stage 4); null if unknown. */
+  lastAnswerAt: string | null;
   record: {
     sourceId: string;
     title: string;
@@ -61,7 +63,13 @@ export interface FromEachSourceInput {
   /** Sources that would cover this kind of item if all were set up. */
   covering: SourceName[];
   configured: (s: SourceName) => boolean;
-  lookups: { source: SourceName; outcome: string; looked_up_at: string; error: string | null }[];
+  lookups: {
+    source: SourceName;
+    outcome: string;
+    looked_up_at: string;
+    error: string | null;
+    last_answer_at?: string | null;
+  }[];
   matches: MatchRow[];
   rejected: Set<string>;
   override: string | null;
@@ -201,6 +209,7 @@ export function fromEachSource(input: FromEachSourceInput): FromEachSource {
       status,
       statusText: statusText(status, label, l?.error ?? null),
       lookedUpAt: l?.looked_up_at ?? null,
+      lastAnswerAt: l?.last_answer_at ?? null,
       record: r
         ? {
             sourceId: r.sourceId,

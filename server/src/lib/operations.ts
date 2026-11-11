@@ -427,8 +427,11 @@ export function mergeItems(
        WHERE item_id = ? AND source || ':' || source_id = ?`,
     ).run(keepId, otherId, next.match_override ?? null);
     db.prepare(
-      `INSERT OR IGNORE INTO lookup_state (item_id, source, version, query, looked_up_at, outcome, error)
-       SELECT ?, source, version, query, looked_up_at, outcome, error FROM lookup_state WHERE item_id = ?`,
+      `INSERT OR IGNORE INTO lookup_state (item_id, source, version, query, looked_up_at, outcome,
+         error, accepted_source_id, rival_source_id, last_answer_at, next_eligible_at, failure_count)
+       SELECT ?, source, version, query, looked_up_at, outcome, error, accepted_source_id,
+         rival_source_id, last_answer_at, next_eligible_at, failure_count
+       FROM lookup_state WHERE item_id = ?`,
     ).run(keepId, otherId);
     db.prepare('DELETE FROM items WHERE id = ?').run(otherId);
     const now = nowIso();

@@ -56,7 +56,7 @@ async function main() {
   }
 
   const webDist = path.join(ROOT, 'web', 'dist');
-  const { app, close } = createApp({
+  const { app, close, refresher } = createApp({
     db,
     platform,
     port,
@@ -76,6 +76,8 @@ async function main() {
       console.log('The web pages are not built yet: run "npm run build" first.');
     }
     console.log('Keep this window open while you use the app. Press Ctrl+C to stop.');
+    // Automatic refresh checks a few minutes after start, then every ten minutes (never in the demo).
+    refresher.startTimers();
   });
   server.on('error', (err: NodeJS.ErrnoException) => {
     if (err.code === 'EADDRINUSE') {

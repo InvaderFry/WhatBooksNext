@@ -3,6 +3,7 @@ import { api, formatDate, type Lookups } from '../api.ts';
 import { Notice } from '../components.tsx';
 import { hrefFor, onLinkClick } from '../url.ts';
 import { LookupBanner } from './LookupBanner.tsx';
+import { RefreshSettings } from './RefreshSettings.tsx';
 
 /**
  * Settings → Online lookups (PLAN.md §12.1, §6.3). Open Library and AniList need no key.
@@ -20,6 +21,8 @@ export function OnlineSettings() {
   const [shown, setShown] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /** Bumped when a run starts from below, so the banner picks it up at once. */
+  const [bannerKey, setBannerKey] = useState(0);
 
   const load = useCallback(async () => {
     setLookups(await api.get<Lookups>('/api/lookups'));
@@ -53,7 +56,12 @@ export function OnlineSettings() {
         whatBooksNext looks your books up online for ratings, first publication years, subjects and
         series. Only titles and authors are sent — never files or your reading history.
       </p>
-      <LookupBanner always onFinished={() => void load()} onProgress={() => void load()} />
+      <LookupBanner
+        key={bannerKey}
+        always
+        onFinished={() => void load()}
+        onProgress={() => void load()}
+      />
       {lookups && (
         <>
           <label className="check">
@@ -67,6 +75,7 @@ export function OnlineSettings() {
             />
             Look up new books automatically after each scan
           </label>
+          <RefreshSettings onStarted={() => setBannerKey((k) => k + 1)} />
           <ul className="folder-list">
             {lookups.sources.map((s) => (
               <li key={s.source} className="card source-row">

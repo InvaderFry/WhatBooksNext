@@ -25,6 +25,8 @@ export function OnlineCard({ itemId, onChanged }: { itemId: string; onChanged: (
   const matchesRef = useRef<HTMLDetailsElement>(null);
   const [query, setQuery] = useState<string | null>(null);
   const [results, setResults] = useState<Candidate[] | null>(null);
+  /** What the last "Look up again" changed, in plain words. */
+  const [changes, setChanges] = useState<string[] | null>(null);
 
   const load = useCallback(async () => {
     setData(await api.get<ItemOnline>(`/api/items/${encodeURIComponent(itemId)}/online`));
@@ -238,7 +240,14 @@ export function OnlineCard({ itemId, onChanged }: { itemId: string; onChanged: (
             type="button"
             className="secondary small"
             disabled={busy}
-            onClick={() => void run(() => api.post(`/api/items/${itemId}/lookup`, {}))}
+            title="Asks every source again and lets the app choose its matches afresh. Your confirmations, rejections and edits stay."
+            onClick={() =>
+              void run(async () => {
+                setChanges(null);
+                const r = await api.post<{ changes: string[] }>(`/api/items/${itemId}/lookup`, {});
+                setChanges(r.changes);
+              })
+            }
           >
             Look up again
           </button>
@@ -264,6 +273,14 @@ export function OnlineCard({ itemId, onChanged }: { itemId: string; onChanged: (
           </button>
         )}
       </div>
+      {data.lookupAvailable && (data.refresh.failed.length > 0 || data.refresh.due.length > 0) && (
+        <p className="muted small">
+          {data.refresh.failed.length > 0 &&
+            `Refresh failed on ${data.refresh.failed.join(', ')}; showing the previous result. `}
+          {data.refresh.due.length > 0 && `Refresh due (${data.refresh.due.join(', ')}).`}
+        </p>
+      )}
+      {changes && <Notice kind="success">Looked up again. {changes.join(' ')}</Notice>}
       {error && <Notice kind="error">{error}</Notice>}
     </section>
   );

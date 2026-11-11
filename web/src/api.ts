@@ -185,7 +185,8 @@ export interface ReviewRow {
     | 'tie'
     | 'wrong_match'
     | 'unidentified'
-    | 'provisional';
+    | 'provisional'
+    | 'check_match';
   tier: number;
   why: string;
   items: { id: string; title: string; hasHistory: boolean }[];
@@ -558,6 +559,49 @@ export interface LookupStatus {
   estimateSeconds: number | null;
   series?: { done: number; total: number };
   error: string | null;
+  /** "Look up all books again", or "Refresh due books now". */
+  label?: 'fresh' | 'due';
+}
+
+/** Automatic refresh (ratings plan stage 4), for Settings and Diagnostics. */
+export interface RefreshStatus {
+  enabled: boolean;
+  demo: boolean;
+  paused: boolean;
+  running: boolean;
+  lastCheckAt: string | null;
+  lastBatch: {
+    at: string;
+    books: number;
+    requests: number;
+    bySource: Record<string, number>;
+    stopped: string | null;
+  } | null;
+  dueBooks: number;
+  fresh: {
+    startedAt: string;
+    running: boolean;
+    waitingForTomorrow: boolean;
+    remaining: number | null;
+    passes: number;
+  } | null;
+  sources: {
+    source: string;
+    label: string;
+    books: number;
+    due: number;
+    lastAnswerAt: string | null;
+    failing: number;
+    automaticToday: number;
+    automaticAllowance: number | null;
+    pausedBecause: string | null;
+  }[];
+  intervals?: { active: number; open: number; settled: number };
+}
+
+export interface FreshEstimate {
+  estimate: { books: number; requests: number; hours: number; days: number };
+  snapshot: boolean;
 }
 
 export interface Lookups {
@@ -630,6 +674,8 @@ export interface ItemOnline {
   description: string | null;
   subjects: string[];
   lookupAvailable: boolean;
+  /** Sources due for a refresh, and ones whose last refresh failed (previous result shown). */
+  refresh: { due: string[]; failed: string[] };
 }
 
 export interface TriageList {

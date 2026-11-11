@@ -286,6 +286,7 @@ export class Hardcover implements SourceAdapter {
         'hardcover',
         'Reached today’s Hardcover allowance; carrying on tomorrow.',
         true,
+        true,
       );
     this.usage.count();
     const payload = await this.client.json(
@@ -415,6 +416,7 @@ export class Hardcover implements SourceAdapter {
       throw new SourceError(
         'hardcover',
         'Reached today’s Hardcover allowance; carrying on tomorrow.',
+        true,
         true,
       );
     this.usage.count();

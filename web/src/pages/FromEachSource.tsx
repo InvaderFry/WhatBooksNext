@@ -115,7 +115,14 @@ function Entry({
           </>
         )}
       </div>
-      {e.lookedUpAt && <p className="muted small">Last looked up {formatDate(e.lookedUpAt)}</p>}
+      {e.lookedUpAt && (
+        <p className="muted small">
+          Last looked up {formatDate(e.lookedUpAt)}
+          {e.lastAnswerAt &&
+            e.lastAnswerAt !== e.lookedUpAt &&
+            ` · last answered ${formatDate(e.lastAnswerAt)}`}
+        </p>
+      )}
     </li>
   );
 }
