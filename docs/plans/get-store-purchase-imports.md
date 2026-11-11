@@ -45,6 +45,11 @@ comic pages.
   plan.
 - **Google Books stays dropped as a metadata and ratings source.** Importing the owner's Google
   purchases doesn't bring it back (see `docs/plans/online-ratings-and-refreshes.md`).
+- **Every store copy gets a link to read it there** (decided 2026-11-11; this replaces PLAN.md
+  §14's "a label, not a link"). Most store books and comics can't be downloaded, so the store is
+  where they're read. A book with a store location shows **Read in Kindle ↗** (and so on), which
+  opens the book in that store's web reader or on its store page. This applies to books added by
+  hand or by CSV too, not only imported ones (see "Store links").
 
 ## Decisions added by the review
 
@@ -113,6 +118,54 @@ whether the format looks stable.
 **Done when:** each of the four stores has a recorded decision, and the owner has said roughly how
 many books they own in each (owner action A1). Stage 1 starts with the store that has the most
 books and needs a collector. If the owner can't say, start with Kindle.
+
+## Store links
+
+This part needs no collector, so build it **first**, right after Stage 0. It helps the store
+books already in the app straight away.
+
+- **Where the link is kept:** migration `014_store_links.sql` (the next number; never edit
+  `001_init.sql`) adds `url`, `url_kind` (`read` or `page`) and `url_by_owner` (0/1) to
+  `locations`. `locations` is already in the backup. Add the new columns to the restore
+  regression row in `app.release.test.ts`. The `store_purchases` migration in Stage 1b then
+  takes the next number.
+- **Only safe links:** `https` only, and the host must be on that store's list in one place in
+  `lib/store.ts`. For example, Amazon's country sites and `read.amazon.*` for Kindle,
+  `play.google.com` for Google Play Books, `kobo.com` for Kobo, and `globalcomix.com`. Check the
+  exact hosts and paths per store and record them here. A link that fails is refused with a plain
+  message. A link to some other site is never saved. `other` and `apple_books` take no automatic
+  link. The owner can save an `https` link of their own for `other`, shown with its host so they
+  can see where it goes. Apple Books gets none, since it isn't on the web.
+- **How links are made:**
+  - **Imported:** from the record's `readUrl` / `pageUrl`. Prefer the reader link.
+  - **From the store's ID:** a link pattern per store (for example Kindle's web reader by ASIN).
+    Use it only once it has been checked on the owner's signed-in account, and record the check
+    here. An unchecked pattern isn't used. A link is never built from a title search.
+  - **Typed or pasted by the owner:** in manual entry and on the book page's "In a store app"
+    list (`web/src/pages/StoreBooks.tsx`), as **Add link / Change link / Remove link**.
+  - **CSV:** a new optional `url` column. Files without it still import exactly as before.
+- **Owner corrections win:** a link the owner typed, changed or removed sets `url_by_owner`.
+  Imports then never replace it, and a removed link stays removed. An import fills a link only
+  where none exists. A repeat import (outcome "already") can still add a missing link to an
+  existing location. That's how books entered earlier by CSV or by hand get their links.
+- **Where it shows:**
+  - **Read in <store> ↗** on the book page, the What next cards, the Shortlist and Library rows,
+    next to the existing "can I read it here" tick.
+  - For a book that is only in a store, it's the main action, where **Open** is for a file.
+  - For a book with both a file and a store copy, **Open** stays first while the file is present.
+    When the drive is disconnected or the file is missing, the store link comes first.
+- **How it opens:** a normal link with `target="_blank"` and `rel="noopener noreferrer"`, in the
+  owner's own browser, where they are signed in to the store. The server never fetches it. The app
+  only checks the link's form, never whether the page works (that would be a request to the store).
+- **Exports:** add the link as a column in the CSV export (`lib/export.ts`). It's the owner's own
+  data. It contains store IDs but no titles. Like all owner data, it never goes in the repo.
+- **Tests:** link rules (allowed and refused hosts, `http`, `javascript:`, other sites, typed
+  versus imported, owner removals kept), the CSV `url` column, and links showing in each place.
+  Use invented IDs only. Check with `npm run screenshots`, including the demo's store books (add
+  invented links to the demo, never real IDs that might point to a real book).
+
+**Done when:** every store book can carry a working link. The owner has clicked one for each store
+they use and it opened the right book (owner action A1b). Owner edits survive a repeat import.
 
 ## Account safety
 
@@ -195,20 +248,20 @@ logic, not that it works on the live store.
 
 **Each record:**
 
-| Field                   | Rule                                                                                                                                                                                           |
-| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `storeRecordId`         | Required. The store's own stable ID: an ASIN, Google volume ID, Kobo product ID, or GlobalComix release/collection ID. Unique only within `service` (and `accountScope`), never across stores. |
-| `idKind`                | Required. What the ID is (`asin`, `volume`, `product`, `release`, `collection`, …).                                                                                                            |
-| `title`                 | Required, as the store shows it.                                                                                                                                                               |
-| `creators`              | Optional list of `{ name, role }`. Role is `author`, `writer`, `artist` or `unknown`; never guessed.                                                                                           |
-| `kind`                  | Optional: `book`, `comic`, `manga` or `unknown`, only when the store says so.                                                                                                                  |
-| `unit`                  | Required for GlobalComix, optional elsewhere: `issue`, `volume`, `collection` or `book`. It records what was actually bought; the issues inside a collection are never added as owned.         |
-| `series`, `seriesIndex` | Optional, only as the store shows them.                                                                                                                                                        |
-| `isbn`                  | Optional, only when the store shows one. Normalised with `normIsbn`.                                                                                                                           |
-| `acquisition`           | Required: `purchase`, `free_claim`, or `uncertain`, plus the evidence (the label or field it came from). Excluded types aren't records; they're only counted.                                  |
-| `acquiredAt`            | Optional, with a precision (`day`, `month`, `year`). Otherwise left out, never invented.                                                                                                       |
-| `readingStatus`         | Optional: `not_started`, `in_progress` or `finished`, only where the store shows it reliably. `progressPercent` is optional.                                                                   |
-| `storeUrl`              | Optional link to the store's page for the book. Stored as a note only: §14 says store items show a label, not a link.                                                                          |
+| Field                   | Rule                                                                                                                                                                                                                                                                              |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `storeRecordId`         | Required. The store's own stable ID: an ASIN, Google volume ID, Kobo product ID, or GlobalComix release/collection ID. Unique only within `service` (and `accountScope`), never across stores.                                                                                    |
+| `idKind`                | Required. What the ID is (`asin`, `volume`, `product`, `release`, `collection`, …).                                                                                                                                                                                               |
+| `title`                 | Required, as the store shows it.                                                                                                                                                                                                                                                  |
+| `creators`              | Optional list of `{ name, role }`. Role is `author`, `writer`, `artist` or `unknown`; never guessed.                                                                                                                                                                              |
+| `kind`                  | Optional: `book`, `comic`, `manga` or `unknown`, only when the store says so.                                                                                                                                                                                                     |
+| `unit`                  | Required for GlobalComix, optional elsewhere: `issue`, `volume`, `collection` or `book`. It records what was actually bought; the issues inside a collection are never added as owned.                                                                                            |
+| `series`, `seriesIndex` | Optional, only as the store shows them.                                                                                                                                                                                                                                           |
+| `isbn`                  | Optional, only when the store shows one. Normalised with `normIsbn`.                                                                                                                                                                                                              |
+| `acquisition`           | Required: `purchase`, `free_claim`, or `uncertain`, plus the evidence (the label or field it came from). Excluded types aren't records; they're only counted.                                                                                                                     |
+| `acquiredAt`            | Optional, with a precision (`day`, `month`, `year`). Otherwise left out, never invented.                                                                                                                                                                                          |
+| `readingStatus`         | Optional: `not_started`, `in_progress` or `finished`, only where the store shows it reliably. `progressPercent` is optional.                                                                                                                                                      |
+| `readUrl`, `pageUrl`    | Optional. `readUrl` opens the book in the store's web reader; `pageUrl` is its page in the store or library. Only as found on the page, or built from `storeRecordId` by that adapter's checked pattern (see "Store links"). Checked on import against the store's allowed hosts. |
 
 Check every field on the server. A record with bad fields becomes a problem line, and the rest of
 the file still imports.
@@ -217,7 +270,7 @@ the file still imports.
 `row_key = '<accountScope or "default">:<idKind>:<storeRecordId>'`. The `store_csv` keys stay as
 they are.
 
-**New table** (migration `014_store_purchases.sql`, the next number; never edit `001_init.sql`):
+**New table** (migration `015_store_purchases.sql`, after `014_store_links.sql`; never edit `001_init.sql`):
 `store_purchases` holds `item_id`, `service`, `account_scope`, `store_record_id`, `id_kind`,
 `unit`, `acquisition`, `acquired_at`, its precision, `first_seen_at`, `last_seen_at`,
 `last_complete_scan_at`, `adapter_version`. Add it to the backup and to the restore regression in
@@ -277,7 +330,8 @@ that as a remaining real-account check, not as supported.
 
 For each store whose Stage 0 decision is "collector", in order of the owner's book counts: add an
 adapter, then prove it with the console script and the owner's report, then add it to the
-extension. Release a new extension version with each one. Things to check on a signed-in account:
+extension. Release a new extension version with each one. For every store, also check its reader and
+book-page link pattern ("Store links"). Things to check on a signed-in account:
 
 | Store             | Check                                                                                                                                                                                                                                                          |
 | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -312,6 +366,7 @@ these rows to PLAN.md §21 when the stage starts.
 | ID  | When                  | What the owner does (no command line)                                                                                                                                                                                                                                                                      | Time                                 |
 | --- | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ |
 | A1  | Stage 0               | Say roughly how many books you own in Kindle, Google Play Books, Kobo and GlobalComix. For each store where the agent found an official export, follow its steps to request it. When it arrives, open it and tell the agent only which columns it has and how many rows (no titles).                       | 10 min, plus waiting days for Amazon |
+| A1b | Store links           | On a few store books (one per store you use), open the book page, add the link (copy it from the store's reader or book page in your browser), and click **Read in … ↗**. Say whether it opened the right book.                                                                                            | 5 min                                |
 | A2  | Stage 1a              | Sign in to the first store in Edge or Chrome, open its library page, and paste the provided script into the browser's developer console (the steps include Chrome's "allow pasting" prompt). Wait for it to finish, then paste the **title-free report** into chat. Keep the downloaded JSON file private. | 10–15 min                            |
 | A3  | Stage 1b              | In whatBooksNext: store books → Import store purchases → choose the JSON file. Check that the preview looks right, then import. Say whether anything was wrong (no titles needed).                                                                                                                         | 10 min                               |
 | A4  | Stage 1c              | Install the extension by following `INSTALL.md` (download the zip, unzip, open the browser's extensions page, turn on Developer mode, Load unpacked). Run **Scan this library** on the same store, import the file, and check that nothing is duplicated.                                                  | 15 min                               |
@@ -337,5 +392,7 @@ store's sign-in.
   blocker. Remaining real-account checks are listed in the milestone notes as "needs checking on
   the owner's machine".
 - Importing again adds new purchases without duplicates and never overwrites the owner's changes.
+- Every store copy (imported, typed in or from CSV) can carry a checked link, and **Read in <store> ↗**
+  opens it. Owner-typed and owner-removed links survive imports.
 - `npm test`, `npm run typecheck`, `npm run lint`, `npm run format:check` and `npm run build` pass.
   `npm run screenshots` has been looked at. The restore regression covers `store_purchases`.
