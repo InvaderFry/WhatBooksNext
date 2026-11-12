@@ -99,7 +99,7 @@ export function Notice({
   kind = 'info',
   children,
 }: {
-  kind?: 'info' | 'error' | 'success' | 'warning';
+  kind?: 'info' | 'error' | 'success';
   children: ReactNode;
 }) {
   return (

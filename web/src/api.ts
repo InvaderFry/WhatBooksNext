@@ -683,6 +683,7 @@ export interface ItemOnline {
   identity: 'accepted' | 'provisional' | 'tie' | 'unidentified';
   matchConfirmed: boolean;
   autoMatchScore: number | null;
+  autoMatchThreshold: number;
   override: string | null;
   lookups: {
     source: string;

@@ -652,12 +652,12 @@ export interface LookupStartOptions {
 
 /**
  * Drops candidates from sources that no longer apply to an item (the rules changed, or the
- * owner changed its kind) and re-decides its identity. Owner decisions are kept.
+ * owner changed its kind) and re-decides its identity. Explicit sources and owner decisions stay.
  */
 export function pruneInapplicable(db: DB, sources: Sources): number {
   const rows = db
     .prepare(
-      `SELECT DISTINCT l.item_id, l.source, COALESCE(u.kind_override, i.kind) AS kind, i.issue_label
+      `SELECT DISTINCT l.item_id, l.source, COALESCE(u.kind_override, i.kind) AS kind, i.issue_label, l.manually_selected
        FROM lookup_state l JOIN items i ON i.id = l.item_id
        LEFT JOIN user_item u ON u.item_id = i.id`,
     )
@@ -666,9 +666,11 @@ export function pruneInapplicable(db: DB, sources: Sources): number {
     source: string;
     kind: string | null;
     issue_label: string | null;
+    manually_selected: number;
   }[];
   const touched = new Set<string>();
   for (const r of rows) {
+    if (r.manually_selected) continue;
     if (sources.forItem(r.kind, r.issue_label).some((s) => s.name === r.source)) continue;
     db.prepare('DELETE FROM lookup_state WHERE item_id = ? AND source = ?').run(
       r.item_id,
@@ -806,6 +808,12 @@ export async function lookUpItem(
   let results: LookupResult[] = [];
   for (let pass = 0; pass < MAX_PASSES; pass++) {
     results = await lookUpOnce(db, sources, itemId, opts);
+    // Preserve explicitly requested results across bulk cleanup, including a failed refresh
+    // that kept an earlier answer. Automatic upserts leave this owner-intent flag alone.
+    if (opts.source)
+      db.prepare(
+        'UPDATE lookup_state SET manually_selected = 1 WHERE item_id = ? AND source = ?',
+      ).run(itemId, opts.source);
     if (results.some((r) => r.outcome === 'failed')) return results;
     if (!searchChanged(db, sources, itemId, opts.only, opts.source)) return results;
   }

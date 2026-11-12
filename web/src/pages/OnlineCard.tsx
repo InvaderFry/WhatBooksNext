@@ -70,9 +70,11 @@ export function OnlineCard({ itemId, onChanged }: { itemId: string; onChanged: (
     <section aria-labelledby="online-h" className="card online-card">
       <h2 id="online-h">Ratings and details</h2>
       {typeof data.autoMatchScore === 'number' && (
-        <Notice kind="warning">
-          Automatically matched because its match score was {data.autoMatchScore}/100 (90 or
-          higher). Review, confirm or change it under Possible matches.
+        <Notice>
+          Automatically matched with a score of {data.autoMatchScore}/100
+          {typeof data.autoMatchThreshold === 'number' &&
+            ` (automatic threshold: ${data.autoMatchThreshold}/100)`}
+          .
         </Notice>
       )}
       {chosen?.coverUrl && (
@@ -226,9 +228,6 @@ export function OnlineCard({ itemId, onChanged }: { itemId: string; onChanged: (
           </ul>
         )}
       </div>
-      {!data.lookupSources && (
-        <Notice>Restart whatBooksNext to enable source selection, then reload this page.</Notice>
-      )}
       <div className="inline-form">
         <label htmlFor="online-source">Look up using</label>
         <select
@@ -254,8 +253,9 @@ export function OnlineCard({ itemId, onChanged }: { itemId: string; onChanged: (
       <p className="muted small">
         Choose a source for Look up again or search below. Metron and ComicVine cover comics;
         AniList covers manga. For a comic search, include its number (for example, Copperline #2).
-        Sources marked “set up” need credentials in Settings → Online sources. Review the results
-        and confirm the right match. Your confirmations and rejections stay.
+        Comic sources are searched only when selected. Sources marked “set up” need credentials in
+        Settings → Online sources. Review the results and confirm the right match. Your
+        confirmations and rejections stay.
       </p>
       {query !== null && (
         <form

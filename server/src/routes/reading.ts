@@ -568,6 +568,7 @@ export function registerReadingRoutes(app: Express, d: ReadingDeps): void {
       return {
         identity: i?.identity ?? 'unidentified',
         matchConfirmed: i?.matchConfirmed ?? false,
+        autoMatchThreshold: Math.round(MATCH_ACCEPT * 100),
         autoMatchScore:
           i?.identity === 'accepted' &&
           !summary.override &&
@@ -677,7 +678,6 @@ export function registerReadingRoutes(app: Express, d: ReadingDeps): void {
       const q = String(req.body?.query ?? '').trim();
       if (q.length < 2) throw new HttpError(400, 'Type at least two letters.');
       if (q.length > 200) throw new HttpError(400, 'That search is too long.');
-      const facts = matchFactsFor(db, id);
       const author =
         typeof req.body?.author === 'string' ? req.body.author.trim().slice(0, 100) : '';
       const records = [];
@@ -685,13 +685,13 @@ export function registerReadingRoutes(app: Express, d: ReadingDeps): void {
       const source = manualSource(req.body?.source);
       const searchSources = source
         ? sources.onlineSources().filter((s) => s.name === source)
-        : sources.forSearch(facts?.kind ?? null);
+        : sources.forSearch();
       const parsed = parseFilename(`${q}.pdf`);
       for (const s of searchSources) {
         try {
           const comic = s.name === 'metron' || s.name === 'comicvine';
-          const issue = parsed.issue?.value ?? facts?.issue ?? undefined;
-          const volume = parsed.volume?.value ?? facts?.volume ?? undefined;
+          const issue = parsed.issue?.value;
+          const volume = parsed.volume?.value;
           if (comic && !(s.name === 'comicvine' ? issue : issue || volume)) {
             if (source)
               errors.push(

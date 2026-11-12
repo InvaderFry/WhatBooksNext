@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createApp } from './app.ts';
 import type { DB } from './db/database.ts';
 import { createBackup } from './lib/backup.ts';
+import { MATCH_ACCEPT } from './config.ts';
 import { createStoreItem } from './lib/store.ts';
 import { mergeItems } from './lib/operations.ts';
 import { setSecret } from './sources/index.ts';
@@ -238,12 +239,120 @@ describe('lookups', () => {
     comic.mockRestore();
   });
 
+  it('keeps an unconfirmed manual source match and its rating after a bulk lookup and restore', async () => {
+    const id = createStoreItem(db, {
+      title: 'Rain Ledger #2',
+      author: 'Ivo Brandt',
+      kind: 'fiction',
+      store: 'kindle',
+    });
+    db.prepare('UPDATE items SET issue_label = ? WHERE id = ?').run('2', id);
+    setSecret(db, 'hardcover_token', 'invented-token');
+    const hardcover = vi.spyOn(made.sources.hardcover, 'search').mockResolvedValue([
+      {
+        source: 'hardcover',
+        sourceId: 'invented-rain-ledger',
+        title: 'Rain Ledger #2',
+        authors: ['Ivo Brandt'],
+        isbns: [],
+        subjects: [],
+        rating: { value: 4.5, scale: 5, count: 100, scope: 'book' },
+      },
+    ]);
+    try {
+      expect((await api.post(`/api/items/${id}/lookup`, { source: 'hardcover' })).status).toBe(200);
+      const before = (await api.get(`/api/items/${id}/online`)).body;
+      expect(before.identity).toBe('accepted');
+      expect(before.override).toBeNull();
+      expect(before.community).toMatchObject({ source: 'hardcover', raw: 4.5 });
+      expect(
+        db
+          .prepare(
+            "SELECT manually_selected FROM lookup_state WHERE item_id = ? AND source = 'hardcover'",
+          )
+          .pluck()
+          .get(id),
+      ).toBe(1);
+      expect((await api.post('/api/lookups', {})).status).toBe(200);
+      await made.lookups.wait();
+      const after = (await api.get(`/api/items/${id}/online`)).body;
+      expect(after.identity).toBe('accepted');
+      expect(after.community).toEqual(before.community);
+      expect(hardcover).toHaveBeenCalledTimes(1);
+      const backup = createBackup(db);
+      expect((await api.post('/api/restore', { backup, confirm: true })).status).toBe(200);
+      expect((await api.post('/api/lookups', {})).status).toBe(200);
+      await made.lookups.wait();
+      expect((await api.get(`/api/items/${id}/online`)).body.community).toEqual(before.community);
+    } finally {
+      hardcover.mockRestore();
+    }
+  });
+
+  it.each(['comic', 'manga'] as const)(
+    'does not spend comic-source requests during an automatic %s search',
+    async (kind) => {
+      const id = createStoreItem(db, { title: 'Copperline #2', kind, store: 'kindle' });
+      setSecret(db, 'metron_token', 'invented-token');
+      setSecret(db, 'comicvine_key', 'invented-key');
+      const metron = vi.spyOn(made.sources.metron, 'search').mockResolvedValue([]);
+      const comicvine = vi.spyOn(made.sources.comicvine, 'search').mockResolvedValue([]);
+      const anime = vi.spyOn(made.sources.anilist, 'search').mockResolvedValue([]);
+      try {
+        const response = await api.post(`/api/items/${id}/search`, { query: 'Copperline #2' });
+        expect(response.status).toBe(200);
+        expect(metron).not.toHaveBeenCalled();
+        expect(comicvine).not.toHaveBeenCalled();
+        expect(anime).toHaveBeenCalled();
+      } finally {
+        metron.mockRestore();
+        comicvine.mockRestore();
+        anime.mockRestore();
+      }
+    },
+  );
+
+  it.each(['metron', 'comicvine'] as const)(
+    'requires a typed number instead of borrowing another series’ number for %s',
+    async (source) => {
+      const id = createStoreItem(db, {
+        title: 'Copperline #2',
+        kind: 'comic',
+        series: 'Copperline',
+        number: '2',
+        store: 'kindle',
+      });
+      db.prepare('UPDATE items SET issue_label = ? WHERE id = ?').run('2', id);
+      setSecret(db, 'metron_token', 'invented-token');
+      setSecret(db, 'comicvine_key', 'invented-key');
+      const search = vi.spyOn(made.sources[source], 'search').mockResolvedValue([]);
+      try {
+        const missing = await api.post(`/api/items/${id}/search`, { query: 'Brassbound', source });
+        expect(missing.status).toBe(200);
+        expect(missing.body.errors.join(' ')).toContain('Include an issue number');
+        expect(search).not.toHaveBeenCalled();
+        const numbered = await api.post(`/api/items/${id}/search`, {
+          query: 'Brassbound #7',
+          source,
+        });
+        expect(numbered.status).toBe(200);
+        expect(numbered.body.errors).toEqual([]);
+        expect(search).toHaveBeenCalledWith(
+          expect.objectContaining({ series: 'Brassbound', issue: '7' }),
+        );
+      } finally {
+        search.mockRestore();
+      }
+    },
+  );
+
   it('reports the score of an automatic 90+ match, and clears the notice after confirmation', async () => {
     await addAndScan({ 'thetimemachine.epub': timeMachine() });
     const id = itemIdOf('thetimemachine.epub');
     const online = (await api.get(`/api/items/${id}/online`)).body;
     expect(online.identity).toBe('accepted');
-    expect(online.autoMatchScore).toBeGreaterThanOrEqual(90);
+    expect(online.autoMatchThreshold).toBe(Math.round(MATCH_ACCEPT * 100));
+    expect(online.autoMatchScore).toBeGreaterThanOrEqual(online.autoMatchThreshold);
     expect(online.autoMatchScore).toBeLessThanOrEqual(100);
     await api.post(`/api/items/${id}/match`, {
       action: 'confirm',

@@ -431,10 +431,14 @@ export function mergeItems(
     ).run(keepId, otherId, next.match_override ?? null);
     db.prepare(
       `INSERT OR IGNORE INTO lookup_state (item_id, source, version, query, looked_up_at, outcome,
-         error, accepted_source_id, rival_source_id, last_answer_at, next_eligible_at, failure_count)
+         error, accepted_source_id, rival_source_id, last_answer_at, next_eligible_at, failure_count, manually_selected)
        SELECT ?, source, version, query, looked_up_at, outcome, error, accepted_source_id,
-         rival_source_id, last_answer_at, next_eligible_at, failure_count
+         rival_source_id, last_answer_at, next_eligible_at, failure_count, manually_selected
        FROM lookup_state WHERE item_id = ?`,
+    ).run(keepId, otherId);
+    db.prepare(
+      `UPDATE lookup_state SET manually_selected = 1 WHERE item_id = ? AND source IN
+       (SELECT source FROM lookup_state WHERE item_id = ? AND manually_selected = 1)`,
     ).run(keepId, otherId);
     db.prepare('DELETE FROM items WHERE id = ?').run(otherId);
     const now = nowIso();

@@ -78,23 +78,21 @@ export class Sources {
     return true;
   }
 
+  /** The single registry used to enumerate real online adapters. */
+  private all() {
+    return [this.openlibrary, this.anilist, this.hardcover, this.metron, this.comicvine];
+  }
+
   /** Manual choices bypass the guessed kind; include unset sources to explain setup in the UI. */
   onlineSources(includeUnconfigured = false): SourceAdapter[] {
     if (this.demo) return [this.demoSource];
-    return [this.openlibrary, this.hardcover, this.anilist, this.metron, this.comicvine].filter(
-      (s) => includeUnconfigured || this.isConfigured(s.name),
-    );
+    return this.all().filter((s) => includeUnconfigured || this.isConfigured(s.name));
   }
 
-  /** For "Search and pick" in Needs review: every source that can answer now. */
-  forSearch(kind: string | null): SourceAdapter[] {
-    if (this.demo) return [this.demoSource];
-    const books: SourceAdapter[] = this.hardcover.configured()
-      ? [this.hardcover, this.openlibrary]
-      : [this.openlibrary];
-    return kind === 'manga' || kind === 'comic'
-      ? [...this.comics(), this.anilist, ...books]
-      : [...books, this.anilist];
+  /** Broad text searches use book/manga sources. Comic databases require an explicit choice
+   * and an issue/volume number, so a generic search cannot consume their limited allowances. */
+  forSearch(): SourceAdapter[] {
+    return this.onlineSources().filter((s) => s.name !== 'metron' && s.name !== 'comicvine');
   }
 
   status(): (SourceStatus & { label: string; configured: boolean; note: string })[] {
@@ -107,53 +105,29 @@ export class Sources {
           note: 'The demo uses invented data only and never goes online.',
         },
       ];
-    return [
-      {
-        ...this.openlibrary.client.status(),
-        label: SOURCE_LABELS.openlibrary,
-        configured: true,
-        note: 'No key needed. Books: search, subjects, first publication year, some ratings.',
-      },
-      {
-        ...this.anilist.client.status(),
-        label: SOURCE_LABELS.anilist,
-        configured: true,
-        note: 'No key needed. Manga: series scores, genres, publication status.',
-      },
-      {
-        ...this.hardcover.client.status(),
-        label: SOURCE_LABELS.hardcover,
-        configured: this.hardcover.configured(),
-        note: this.hardcover.configured()
-          ? `Token saved. ${this.hardcover.usageToday()} of today’s 5,000 requests used by this app (Hardcover’s own count is on its API page).`
-          : 'No token. Optional: adds book ratings with vote counts, series order and genres.',
-      },
-      {
-        ...this.metron.client.status(),
-        label: SOURCE_LABELS.metron,
-        configured: this.metron.configured(),
-        note: this.metron.configured()
-          ? `Token saved. Single comic issues: series, number, cover year, whether the series has ended. ${this.metron.usageToday()} of today’s 5,000 requests used.`
-          : 'No token. Optional: looks up single comic issues (free account).',
-      },
-      {
-        ...this.comicvine.client.status(),
-        label: SOURCE_LABELS.comicvine,
-        configured: this.comicvine.configured(),
-        note: this.comicvine.configured()
-          ? 'Key saved. Asked only for comic issues Metron can’t find (200 requests an hour).'
-          : 'No key. Optional: a fallback for comic issues Metron can’t find (free account).',
-      },
-    ];
+    const notes: Partial<Record<SourceName, string>> = {
+      openlibrary: 'No key needed. Books: search, subjects, first publication year, some ratings.',
+      anilist: 'No key needed. Manga: series scores, genres, publication status.',
+      hardcover: this.hardcover.configured()
+        ? `Token saved. ${this.hardcover.usageToday()} of today’s 5,000 requests used by this app (Hardcover’s own count is on its API page).`
+        : 'No token. Optional: adds book ratings with vote counts, series order and genres.',
+      metron: this.metron.configured()
+        ? `Token saved. Single comic issues: series, number, cover year, whether the series has ended. ${this.metron.usageToday()} of today’s 5,000 requests used.`
+        : 'No token. Optional: looks up single comic issues (free account).',
+      comicvine: this.comicvine.configured()
+        ? 'Key saved. Asked only for comic issues Metron can’t find, or when selected for a manual search (200 requests an hour).'
+        : 'No key. Optional: a fallback for comic issues Metron can’t find (free account).',
+    };
+    return this.all().map((s) => ({
+      ...s.client.status(),
+      label: SOURCE_LABELS[s.name],
+      configured: this.isConfigured(s.name),
+      note: notes[s.name] ?? '',
+    }));
   }
 
   private client(name: SourceName) {
-    if (name === 'openlibrary') return this.openlibrary.client;
-    if (name === 'anilist') return this.anilist.client;
-    if (name === 'hardcover') return this.hardcover.client;
-    if (name === 'metron') return this.metron.client;
-    if (name === 'comicvine') return this.comicvine.client;
-    return null;
+    return this.all().find((s) => s.name === name)?.client ?? null;
   }
 
   /**
@@ -170,14 +144,7 @@ export class Sources {
   }
 
   resetBreakers(): void {
-    for (const c of [
-      this.openlibrary.client,
-      this.anilist.client,
-      this.hardcover.client,
-      this.metron.client,
-      this.comicvine.client,
-    ])
-      c.resetBreaker();
+    for (const s of this.all()) s.client.resetBreaker();
   }
 
   label(name: SourceName): string {

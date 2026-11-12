@@ -1645,7 +1645,3 @@ kbd {
   justify-content: flex-end;
   margin-top: 0.5rem;
 }
-
-.notice-warning {
-  border-inline-start: 4px solid #b7791f;
-}

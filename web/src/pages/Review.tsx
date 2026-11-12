@@ -655,8 +655,8 @@ function IdentityChoices({
           </button>
           <p className="muted small">
             Metron and ComicVine cover comics; AniList covers manga. Include the issue number for a
-            comic search, for example Copperline #2. Sources marked “set up” need credentials in
-            Settings → Online sources.
+            comic search, for example Copperline #2. Comic sources are searched only when selected.
+            Sources marked “set up” need credentials in Settings → Online sources.
           </p>
         </form>
       )}

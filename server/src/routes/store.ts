@@ -62,7 +62,7 @@ export function registerStoreRoutes(
         typeof req.body?.author === 'string' ? req.body.author.trim().slice(0, 100) : '';
       const records: SourceRecord[] = [];
       const errors: string[] = [];
-      for (const s of sources.forSearch(null)) {
+      for (const s of sources.forSearch()) {
         try {
           records.push(...(await s.search({ title: q, author: author || undefined })));
         } catch (e) {
