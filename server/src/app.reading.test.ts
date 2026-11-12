@@ -94,6 +94,41 @@ const timeMachine = () =>
   makeEpub({ title: 'The Time Machine', creators: ['H. G. Wells'], chapters: [1500, 1500] });
 
 describe('lookups', () => {
+  it.each([undefined, null, [] as string[], ['An earlier source problem']])(
+    'reads a saved lookup summary with errors=%j without losing its other fields',
+    async (errors) => {
+      const summary = {
+        runId: 'old-run',
+        status: 'completed',
+        startedAt: '2026-01-01T00:00:00.000Z',
+        finishedAt: '2026-01-01T00:01:00.000Z',
+        total: 3,
+        done: 3,
+        outcomes: { matched: 3 },
+        estimateSeconds: null,
+        error: null,
+        errors,
+      };
+      const raw = JSON.stringify(summary);
+      db.prepare(
+        "INSERT INTO enrich_runs (id, status, started_at, summary) VALUES ('old-run', 'completed', ?, ?)",
+      ).run(summary.startedAt, raw);
+      const response = await api.get('/api/lookups');
+      expect(response.status).toBe(200);
+      expect(response.body.status).toEqual({ ...summary, errors: errors ?? [] });
+      expect(db.prepare("SELECT summary FROM enrich_runs WHERE id = 'old-run'").pluck().get()).toBe(
+        raw,
+      );
+    },
+  );
+
+  it('does not expose an unfinished saved summary as a usable lookup status', async () => {
+    db.prepare(
+      "INSERT INTO enrich_runs (id, status, started_at) VALUES ('interrupted-run', 'running', '2026-01-01')",
+    ).run();
+    expect((await api.get('/api/lookups')).body.status).toBeNull();
+  });
+
   it('continues with later books when a merge retires the item awaiting an online response', async () => {
     const keep = createStoreItem(db, { title: 'Rain Ledger', store: 'kindle' });
     const other = createStoreItem(db, { title: 'Rain Ledger Copy', store: 'apple_books' });

@@ -68,7 +68,7 @@ export function OnlineCard({ itemId, onChanged }: { itemId: string; onChanged: (
   return (
     <section aria-labelledby="online-h" className="card online-card">
       <h2 id="online-h">Ratings and details</h2>
-      {data.autoMatchScore !== null && (
+      {typeof data.autoMatchScore === 'number' && (
         <Notice kind="warning">
           Automatically matched because its match score was {data.autoMatchScore}/100 (90 or
           higher). Review, confirm or change it under Possible matches.
@@ -198,6 +198,9 @@ export function OnlineCard({ itemId, onChanged }: { itemId: string; onChanged: (
           </ul>
         </details>
       )}
+      {!data.lookupSources && (
+        <Notice>Restart whatBooksNext to enable source selection, then reload this page.</Notice>
+      )}
       <div className="inline-form">
         <label htmlFor="online-source">Look up using</label>
         <select
@@ -212,7 +215,7 @@ export function OnlineCard({ itemId, onChanged }: { itemId: string; onChanged: (
           }}
         >
           <option value="">Automatic sources for this item</option>
-          {data.lookupSources.map((s) => (
+          {(data.lookupSources ?? []).map((s) => (
             <option key={s.source} value={s.source} disabled={!s.configured}>
               {s.label}
               {s.configured ? '' : ' — set up in Settings'}

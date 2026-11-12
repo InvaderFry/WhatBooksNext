@@ -1131,7 +1131,11 @@ export class LookupManager {
       .prepare('SELECT summary FROM enrich_runs ORDER BY started_at DESC LIMIT 1')
       .pluck()
       .get() as string | undefined;
-    return last ? parseJson<LookupStatus | null>(last, null) : null;
+    const saved = last ? parseJson<LookupStatus | null>(last, null) : null;
+    // Older runs predate the errors list. An interrupted run can also leave the default {}.
+    // Do not return an incomplete status to the UI or rewrite the owner's lookup history.
+    if (!saved?.status) return null;
+    return { ...saved, errors: saved.errors ?? [] };
   }
 
   /**

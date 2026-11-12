@@ -69,6 +69,8 @@ export function LookupBanner({
 
   if (!data) return null;
   const s = data.status;
+  // A server left running during an update may still return the older status shape.
+  const errors = s?.errors ?? [];
   if (!running && data.pending === 0 && data.pendingSeries === 0 && !always && !pressed)
     return null;
   const outcome =
@@ -79,7 +81,7 @@ export function LookupBanner({
           s.series &&
             s.series.total > 0 &&
             `Checked published volumes for ${s.series.done.toLocaleString()} of ${s.series.total.toLocaleString()} series${
-              s.errors.length > 0 ? '; the problems are below' : ''
+              errors.length > 0 ? '; the problems are below' : ''
             }.`,
           s.status === 'cancelled' && 'Stopped.',
         ]
@@ -144,8 +146,8 @@ export function LookupBanner({
         </p>
       )}
       {s && !running && s.error && <p className="small warn">{s.error}</p>}
-      {s && !running && s.errors.length > 0 && (
-        <p className="small warn">Last run’s problems: {s.errors.join(' · ')}</p>
+      {s && !running && errors.length > 0 && (
+        <p className="small warn">Last run’s problems: {errors.join(' · ')}</p>
       )}
       {error && <Notice kind="error">{error}</Notice>}
     </div>
