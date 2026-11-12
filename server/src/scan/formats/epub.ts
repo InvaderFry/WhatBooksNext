@@ -1,4 +1,6 @@
+import { PAGE_PREVIEW_MAX_SIDE } from '../../config.ts';
 import path from 'node:path';
+import { createCanvas } from '@napi-rs/canvas';
 import { countWords, htmlToText } from './text.ts';
 import { thumbnailFromImage } from './thumbnail.ts';
 import type { EmbeddedMetadata, MetaResult } from './types.ts';
@@ -172,4 +174,73 @@ export async function epubThumbnail(file: string): Promise<Buffer | null> {
   } finally {
     zip.close();
   }
+}
+
+/** Reflowable EPUBs have no fixed pages: preview the first two non-navigation spine sections.
+ * Images are read only from this ZIP. Text gets a simple layout; no book HTML or scripts run.
+ */
+export async function epubPagePreviews(file: string): Promise<Buffer[]> {
+  const zip = await ZipReader.open(file);
+  try {
+    const opf = await readOpf(zip);
+    const pages: Buffer[] = [];
+    for (const ref of findAll(opf.doc, 'itemref')) {
+      const item = opf.manifest.get(ref.attrs.idref ?? '');
+      if (!item || item.properties.split(/\s+/).includes('nav') || NAV_NAME.test(item.href))
+        continue;
+      const name = zip.find(resolve(opf.dir, item.href));
+      if (!name) continue;
+      if (item.type.startsWith('image/')) {
+        pages.push(await thumbnailFromImage(await zip.read(name), PAGE_PREVIEW_MAX_SIDE));
+      } else if (/html|xml/.test(item.type)) {
+        const html = await zip.readText(name);
+        const doc = parseXml(html);
+        const img = findFirst(doc, 'img') ?? findFirst(doc, 'image');
+        const src = img ? (attr(img, 'src') ?? attr(img, 'href')) : undefined;
+        const text = htmlToText(html);
+        // A cover/image-only section: preserve its picture rather than replacing it with text.
+        const imageName =
+          src && !/^(?:[a-z]+:|\/\/)/i.test(src)
+            ? zip.find(resolve(path.posix.dirname(name), decodeHref(src)))
+            : undefined;
+        if (imageName && text.length < 200) {
+          pages.push(await thumbnailFromImage(await zip.read(imageName), PAGE_PREVIEW_MAX_SIDE));
+        } else {
+          pages.push(renderOpeningText(text));
+        }
+      } else continue;
+      if (pages.length === 2) break;
+    }
+    return pages;
+  } finally {
+    zip.close();
+  }
+}
+
+function renderOpeningText(text: string): Buffer {
+  const canvas = createCanvas(700, 1000);
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, 700, 1000);
+  ctx.fillStyle = '#222222';
+  ctx.font = '22px serif';
+  // Bound layout work independently of the archive-entry limits.
+  const words = (text.trim() || '(Blank section)').slice(0, 12000).split(/\s+/);
+  let line = '';
+  let y = 65;
+  for (const word of words) {
+    // Split long unbroken tokens so malformed text cannot run beyond the page.
+    for (const part of word.match(/.{1,35}/gu) ?? ['']) {
+      const next = line ? `${line} ${part}` : part;
+      if (ctx.measureText(next).width > 590 && line) {
+        ctx.fillText(line, 55, y);
+        y += 32;
+        line = part;
+      } else line = next;
+      if (y > 935) break;
+    }
+    if (y > 935) break;
+  }
+  if (y <= 935) ctx.fillText(line, 55, y);
+  return canvas.toBuffer('image/jpeg', 85);
 }

@@ -1,7 +1,7 @@
-import { comicThumbnail, readComic } from './comic.ts';
-import { epubThumbnail, readEpub } from './epub.ts';
+import { comicPagePreviews, comicThumbnail, readComic } from './comic.ts';
+import { epubPagePreviews, epubThumbnail, readEpub } from './epub.ts';
 import { fullHash, partialHash } from './hash.ts';
-import { pdfThumbnail, readPdf } from './pdf.ts';
+import { pdfPagePreviews, pdfThumbnail, readPdf } from './pdf.ts';
 import type { MetaResult } from './types.ts';
 
 /**
@@ -17,7 +17,8 @@ import type { MetaResult } from './types.ts';
 export type Task =
   | { kind: 'read'; file: string; format: string; ext: string; wantCover: boolean }
   | { kind: 'thumb'; file: string; format: string }
-  | { kind: 'full_hash'; file: string };
+  | { kind: 'full_hash'; file: string }
+  | { kind: 'previews'; file: string; format: string };
 
 export type TaskResult =
   | {
@@ -29,7 +30,8 @@ export type TaskResult =
       fullHash?: string;
     }
   | { kind: 'thumb'; jpeg: Uint8Array | null }
-  | { kind: 'full_hash'; hash: string; partialHash: string };
+  | { kind: 'full_hash'; hash: string; partialHash: string }
+  | { kind: 'previews'; pages: Uint8Array[] };
 
 export async function runTask(t: Task): Promise<TaskResult> {
   switch (t.kind) {
@@ -58,6 +60,15 @@ export async function runTask(t: Task): Promise<TaskResult> {
       else if (t.format === 'pdf') jpeg = await pdfThumbnail(t.file);
       else jpeg = await comicThumbnail(t.file, t.format);
       return { kind: 'thumb', jpeg };
+    }
+    case 'previews': {
+      const pages =
+        t.format === 'epub'
+          ? await epubPagePreviews(t.file)
+          : t.format === 'pdf'
+            ? await pdfPagePreviews(t.file)
+            : await comicPagePreviews(t.file, t.format);
+      return { kind: 'previews', pages };
     }
     case 'full_hash':
       return { kind: 'full_hash', hash: await fullHash(t.file), partialHash: partialHash(t.file) };

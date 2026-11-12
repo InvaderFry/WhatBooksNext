@@ -482,3 +482,6 @@ export const COVER_MAX_BYTES = 5 * 1024 * 1024;
 
 /** A book Open Library had no cover for is asked again after this many days (covers get added). */
 export const COVER_RETRY_DAYS = 30;
+
+/** Opening pages need legible title/credit text when enlarged; bounded to keep rendering cheap. */
+export const PAGE_PREVIEW_MAX_SIDE = 1000;

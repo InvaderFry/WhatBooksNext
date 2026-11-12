@@ -52,6 +52,7 @@ import { registerStatsRoutes } from './routes/stats.ts';
 import { loadRankData } from './lib/rankData.ts';
 import { ratingChangeReport, ratingDiagnostics } from './lib/ratingDiagnostics.ts';
 import { listFullSnapshots } from './lib/fullSnapshot.ts';
+import { PagePreviews, registerPagePreviewRoutes } from './lib/pagePreviews.ts';
 import { Sources } from './sources/index.ts';
 import { SOURCE_LABELS, type Fetcher } from './sources/types.ts';
 import { syncSeries } from './identify/series.ts';
@@ -111,6 +112,7 @@ const int = (v: unknown): number | undefined =>
 export function createApp(ctx: AppContext) {
   const { db, platform } = ctx;
   const coversDir = ctx.dataDir ? path.join(ctx.dataDir, 'covers') : null;
+  const previews = new PagePreviews(db, platform, ctx.dataDir, ctx.runner);
   const sources = new Sources(db, { demo: ctx.demo, fetcher: ctx.fetcher });
   const lookups = new LookupManager(db, sources);
   // Series rows are rebuilt from stored facts (§12.5). Doing it at start brings a database
@@ -478,6 +480,8 @@ export function createApp(ctx: AppContext) {
       };
     }),
   );
+
+  registerPagePreviewRoutes(app, previews);
 
   // ---- Covers: served from the data folder by file id only (§6.3) -----------------------------
   app.get('/api/files/:fileId/thumbnail', (req, res) => {
@@ -895,6 +899,7 @@ export function createApp(ctx: AppContext) {
       await covers.close();
       await lookups.close();
       await scans.close();
+      await previews.close();
       await platform.close();
     },
   };

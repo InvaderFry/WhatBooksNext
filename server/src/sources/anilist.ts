@@ -1,5 +1,6 @@
 import { ANILIST_MIN_INTERVAL_MS, SEARCH_RESULTS } from '../config.ts';
 import type { DB } from '../db/database.ts';
+import { sourceCoverUrl } from './covers.ts';
 import { SourceClient } from './client.ts';
 import type { Fetcher, SourceAdapter, SourceQuery, SourceRecord } from './types.ts';
 
@@ -18,6 +19,7 @@ const QUERY = `query ($s: String, $p: Int) {
     media(search: $s, type: MANGA, sort: SEARCH_MATCH) {
       id siteUrl format status volumes averageScore popularity countryOfOrigin
       startDate { year }
+      coverImage { large }
       title { romaji english native }
       synonyms genres
       tags { name rank isGeneralSpoiler }
@@ -28,6 +30,7 @@ const QUERY = `query ($s: String, $p: Int) {
 }`;
 
 interface Media {
+  coverImage?: { large?: string };
   id: number;
   siteUrl?: string;
   format?: string;
@@ -63,6 +66,7 @@ export function parseAniList(payload: unknown): SourceRecord[] {
       const r: SourceRecord = {
         source: 'anilist',
         sourceId: String(m.id),
+        coverUrl: sourceCoverUrl('anilist', m.coverImage?.large),
         title,
         authors: (m.staff?.edges ?? [])
           .filter((e) => /story|art|original/i.test(e.role))
@@ -110,7 +114,7 @@ export class AniList implements SourceAdapter {
     const payload = await this.client.json(
       'https://graphql.anilist.co',
       { method: 'POST', body: { query: QUERY, variables: { s, p: SEARCH_RESULTS } } },
-      `search:${s.toLowerCase()}`,
+      `search:covers:${s.toLowerCase()}`,
       opts,
     );
     return parseAniList(payload);

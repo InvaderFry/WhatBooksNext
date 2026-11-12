@@ -9,6 +9,8 @@ import {
 } from '../identify/items.ts';
 import { markObsoleteReviews } from '../identify/reconcile.ts';
 import { hiddenReviewKeys, identityRows, type CandidateView } from './identityReview.ts';
+import { matchFactsFor } from '../identify/lookups.ts';
+import type { EmbeddedMetadata } from '../scan/formats/types.ts';
 import { HttpError, nowIso, parseJson } from '../util.ts';
 import { syncSeries } from '../identify/series.ts';
 import { record, snapshot, titleOf } from './operations.ts';
@@ -59,6 +61,16 @@ export interface ReviewRow {
   actions: ('accept' | 'decline' | 'split')[];
   /** Identity rows: the candidates to choose from, best first. */
   candidates?: CandidateView[];
+  evidence?: ReviewEvidence;
+}
+
+export interface ReviewEvidence {
+  filename: string | null;
+  embeddedTitle: string | null;
+  publisher: string | null;
+  years: number[];
+  authors: string[];
+  coverFileId: string | null;
 }
 
 /** Tier 4 is collapsed and can be long: identity rows there are capped, with a count of the rest. */
@@ -70,6 +82,28 @@ export interface ReviewList {
   /** Rows not listed: identity rows past the tier-4 cap, and unidentified items that can wait. */
   notListed: { provisional: number; unidentified: number };
   hidden: number;
+}
+
+/** Reads stored metadata only; never opens a library file or triggers a cloud download. */
+export function reviewEvidence(db: DB, itemId: string): ReviewEvidence {
+  const file = db
+    .prepare(
+      `SELECT f.id, f.name, f.metadata, f.has_thumbnail FROM files f
+     JOIN item_files x ON x.file_id = f.id WHERE x.item_id = ?
+     ORDER BY x.is_primary DESC, f.id LIMIT 1`,
+    )
+    .get(itemId) as
+    { id: string; name: string; metadata: string | null; has_thumbnail: number } | undefined;
+  const md = parseJson<EmbeddedMetadata | null>(file?.metadata ?? null, null);
+  const facts = matchFactsFor(db, itemId);
+  return {
+    filename: file?.name ?? null,
+    embeddedTitle: md?.title ?? null,
+    publisher: md?.comic?.publisher ?? md?.publisher ?? null,
+    years: facts?.years ?? [],
+    authors: facts?.authors ?? [],
+    coverFileId: file?.has_thumbnail ? file.id : null,
+  };
 }
 
 const TITLE = `SELECT COALESCE(u.title_override, i.title) FROM items i
@@ -197,6 +231,7 @@ export function listReview(db: DB): ReviewList {
       files: [],
       actions: [],
       candidates: r.candidates,
+      evidence: reviewEvidence(db, r.itemId),
     });
   }
 

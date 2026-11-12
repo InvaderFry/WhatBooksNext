@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import {
+  PAGE_PREVIEW_MAX_SIDE,
   COMIC_ASPECT_MAX,
   COMIC_ASPECT_MIN,
   MAX_IMAGE_PIXELS,
@@ -375,11 +376,15 @@ export async function pdfThumbnail(file: string): Promise<Buffer | null> {
 
 type PdfDoc = Awaited<ReturnType<typeof openPdf>>['doc'];
 
-async function renderFirstPage(doc: PdfDoc): Promise<Buffer | null> {
+async function renderFirstPage(
+  doc: PdfDoc,
+  pageNumber = 1,
+  maxSide = THUMBNAIL_MAX_SIDE,
+): Promise<Buffer | null> {
   if (doc.numPages < 1) return null;
-  const page = await doc.getPage(1);
+  const page = await doc.getPage(pageNumber);
   const vp1 = page.getViewport({ scale: 1 });
-  const scale = THUMBNAIL_MAX_SIDE / Math.max(vp1.width, vp1.height, 1);
+  const scale = maxSide / Math.max(vp1.width, vp1.height, 1);
   const vp = page.getViewport({ scale });
   const canvas = createCanvas(Math.max(1, Math.ceil(vp.width)), Math.max(1, Math.ceil(vp.height)));
   const ctx = canvas.getContext('2d');
@@ -389,4 +394,19 @@ async function renderFirstPage(doc: PdfDoc): Promise<Buffer | null> {
   await page.render({ canvas: canvas as never, canvasContext: ctx as never, viewport: vp }).promise;
   page.cleanup();
   return canvas.toBuffer('image/jpeg', THUMBNAIL_QUALITY);
+}
+
+/** Render only the first two physical pages; range reads avoid loading the whole PDF. */
+export async function pdfPagePreviews(file: string): Promise<Buffer[]> {
+  const { doc, task } = await openPdf(file);
+  try {
+    const pages: Buffer[] = [];
+    for (let n = 1; n <= Math.min(2, doc.numPages); n++) {
+      const jpeg = await renderFirstPage(doc, n, PAGE_PREVIEW_MAX_SIDE);
+      if (jpeg) pages.push(jpeg);
+    }
+    return pages;
+  } finally {
+    await task.destroy();
+  }
 }

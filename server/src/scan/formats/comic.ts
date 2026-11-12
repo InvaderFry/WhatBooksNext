@@ -1,3 +1,4 @@
+import { PAGE_PREVIEW_MAX_SIDE } from '../../config.ts';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import { COMIC_ARCHIVE_IMAGE_SHARE, MAX_RAR_BYTES } from '../../config.ts';
@@ -56,7 +57,11 @@ async function openRar(file: string): Promise<Archive> {
     fullHash: createHash('sha256').update(data).digest('hex'),
     async read(name) {
       const out = extractor.extract({ files: [name] });
-      for (const f of out.files) if (f.extraction) return f.extraction;
+      // unrar releases the archive only when this iterator is exhausted. Returning from
+      // inside it prevents the next page (or metadata followed by cover) from being read.
+      let bytes: Uint8Array | undefined;
+      for (const f of out.files) if (f.extraction) bytes = f.extraction;
+      if (bytes) return bytes;
       throw new Error(`No entry "${name}".`);
     },
     close() {},
@@ -246,6 +251,21 @@ export async function comicThumbnail(file: string, format: string): Promise<Buff
     checkArchiveLimits(a.entries);
     const first = pageImages(a.entries)[0];
     return first ? await thumbnailFromImage(await a.read(first)) : null;
+  } finally {
+    a.close();
+  }
+}
+
+/** The first two images in reading order, with the same archive and pixel limits as scanning. */
+export async function comicPagePreviews(file: string, format: string): Promise<Buffer[]> {
+  const a = await openComicArchive(file, format);
+  if (!a) return [];
+  try {
+    checkArchiveLimits(a.entries);
+    const pages: Buffer[] = [];
+    for (const name of pageImages(a.entries).slice(0, 2))
+      pages.push(await thumbnailFromImage(await a.read(name), PAGE_PREVIEW_MAX_SIDE));
+    return pages;
   } finally {
     a.close();
   }

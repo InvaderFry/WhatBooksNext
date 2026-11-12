@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, EFFORT_LABELS, formatRange, type Candidate, type ItemOnline } from '../api.ts';
 import { Notice } from '../components.tsx';
+import { BookImage, BookPagePreviews } from './BookImages.tsx';
 import { CandidateRow } from './Review.tsx';
 import { FromEachSourceSection } from './FromEachSource.tsx';
 
@@ -14,7 +15,7 @@ import { FromEachSourceSection } from './FromEachSource.tsx';
 const IDENTITY_TEXT: Record<ItemOnline['identity'], string> = {
   accepted: 'Matched',
   provisional: 'Probably matched (unconfirmed)',
-  tie: 'Two possible matches — pick one below',
+  tie: 'Multiple possible matches — pick one below',
   unidentified: 'Not identified online',
 };
 
@@ -60,6 +61,16 @@ export function OnlineCard({ itemId, onChanged }: { itemId: string; onChanged: (
   return (
     <section aria-labelledby="online-h" className="card online-card">
       <h2 id="online-h">Ratings and details</h2>
+      {chosen?.coverUrl && (
+        <div className="book-images">
+          <BookImage
+            key={chosen.coverUrl}
+            url={chosen.coverUrl}
+            caption={`${chosen.sourceLabel} cover`}
+            label={`${chosen.sourceLabel} cover — ${chosen.title}`}
+          />
+        </div>
+      )}
       <dl className="facts">
         <dt>Identity</dt>
         <dd>
@@ -165,39 +176,42 @@ export function OnlineCard({ itemId, onChanged }: { itemId: string; onChanged: (
         <p className="muted small">Its picks note: {data.card.limitations.join(' · ')}.</p>
       )}
 
-      {data.candidates.length > 0 && (
-        <details ref={matchesRef} id="possible-matches" open={data.identity === 'tie'}>
-          <summary>Possible matches ({data.candidates.length})</summary>
-          <ul className="plain candidates">
-            {data.candidates.map((x) => (
+      <div className="visual-match-comparison">
+        <BookPagePreviews key={itemId} itemId={itemId} />
+        {data.candidates.length > 0 && (
+          <details ref={matchesRef} id="possible-matches" open={data.identity === 'tie'}>
+            <summary>Possible matches ({data.candidates.length})</summary>
+            <ul className="plain candidates">
+              {data.candidates.map((x) => (
+                <CandidateRow
+                  key={`${x.source}:${x.sourceId}`}
+                  c={x}
+                  onConfirm={() =>
+                    void match({ action: 'confirm', source: x.source, sourceId: x.sourceId })
+                  }
+                  onReject={() =>
+                    void match({ action: 'reject', source: x.source, sourceId: x.sourceId })
+                  }
+                />
+              ))}
+            </ul>
+          </details>
+        )}
+        {results && (
+          <ul className="plain candidates" aria-label="Search results">
+            {results.length === 0 && <li className="muted">Nothing found.</li>}
+            {results.map((x) => (
               <CandidateRow
                 key={`${x.source}:${x.sourceId}`}
                 c={x}
                 onConfirm={() =>
                   void match({ action: 'confirm', source: x.source, sourceId: x.sourceId })
                 }
-                onReject={() =>
-                  void match({ action: 'reject', source: x.source, sourceId: x.sourceId })
-                }
               />
             ))}
           </ul>
-        </details>
-      )}
-      {results && (
-        <ul className="plain candidates" aria-label="Search results">
-          {results.length === 0 && <li className="muted">Nothing found.</li>}
-          {results.map((x) => (
-            <CandidateRow
-              key={`${x.source}:${x.sourceId}`}
-              c={x}
-              onConfirm={() =>
-                void match({ action: 'confirm', source: x.source, sourceId: x.sourceId })
-              }
-            />
-          ))}
-        </ul>
-      )}
+        )}
+      </div>
       {query !== null && (
         <form
           className="inline-form"

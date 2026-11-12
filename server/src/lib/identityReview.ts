@@ -1,4 +1,4 @@
-import { REVIEW_DEFER_DAYS } from '../config.ts';
+import { MATCH_TIE_MARGIN, REVIEW_DEFER_DAYS } from '../config.ts';
 import type { DB } from '../db/database.ts';
 import {
   applyIdentity,
@@ -9,6 +9,7 @@ import {
   type MatchRow,
 } from '../identify/lookups.ts';
 import { rankCandidates, scoreCandidate } from '../identify/match.ts';
+import { sourceCoverUrl } from '../sources/covers.ts';
 import { SOURCE_LABELS, type SourceName, type SourceRecord } from '../sources/types.ts';
 import { HttpError, nowIso } from '../util.ts';
 import { ensureUserRow } from './progress.ts';
@@ -29,6 +30,8 @@ export interface CandidateView {
   subtitle: string | null;
   authors: string[];
   year: number | null;
+  publisher: string | null;
+  coverUrl: string | null;
   score: number;
   notes: string[];
   url: string | null;
@@ -45,6 +48,8 @@ export function candidateView(m: Pick<MatchRow, 'record' | 'score' | 'evidence'>
     subtitle: r.subtitle ?? null,
     authors: r.authors.slice(0, 4),
     year: r.firstPublishYear ?? null,
+    publisher: r.publisher ?? null,
+    coverUrl: sourceCoverUrl(r.source, r.coverUrl) ?? null,
     score: m.score,
     notes: m.evidence.notes,
     // Only http(s) links are ever shown (text from sources is untrusted, §6.3).
@@ -64,6 +69,27 @@ export interface IdentityRow {
   title: string;
   hasHistory: boolean;
   candidates: CandidateView[];
+}
+
+/** Explain the evidence shared by tied comic runs without claiming a missing fact disagrees. */
+export function tieExplanation(matches: MatchRow[]): string {
+  const ranked = rankCandidates(matches);
+  const top = ranked[0]?.record;
+  const sameIssue =
+    top?.format === 'ISSUE' &&
+    ranked
+      .slice(1)
+      .some(
+        (m) =>
+          m.record.format === 'ISSUE' &&
+          m.record.title === top.title &&
+          m.record.source === top.source &&
+          m.record.series?.id !== top.series?.id &&
+          Math.abs(m.score - ranked[0]!.score) <= MATCH_TIE_MARGIN,
+      );
+  return sameIssue
+    ? 'More than one run has this series name and issue number. The available year and creator details do not clearly distinguish them, so neither was used. Which is yours?'
+    : 'Different books match about equally well. The available details do not clearly favor one, so neither was used. Which is yours?';
 }
 
 interface ItemStateRow {
@@ -151,7 +177,7 @@ export function identityRows(db: DB): { rows: IdentityRow[]; unidentifiedOther: 
         id: `identity:${i.id}`,
         kind: 'tie',
         tier: 2,
-        why: 'Two different books match about equally well, so neither was used. Which is it?',
+        why: tieExplanation(matches),
       });
     } else if (i.identity === 'unidentified') {
       if (matters)

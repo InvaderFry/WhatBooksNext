@@ -54,6 +54,9 @@ export interface SourceRecord {
   /** Other names for the same work (AniList's romaji/English titles, Hardcover's alternatives). */
   alternativeTitles?: string[];
   authors: string[];
+  /** Public cover for visual comparison; never used to accept a match automatically. */
+  coverUrl?: string;
+  publisher?: string;
   firstPublishYear?: number;
   /**
    * Years a comic issue is known by: its cover year and its series' start year. A file's year

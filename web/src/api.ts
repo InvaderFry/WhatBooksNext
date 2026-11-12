@@ -215,6 +215,14 @@ export interface ReviewRow {
   files: ReviewFile[];
   actions: ('accept' | 'decline' | 'split')[];
   candidates?: Candidate[];
+  evidence?: {
+    filename: string | null;
+    embeddedTitle: string | null;
+    publisher: string | null;
+    years: number[];
+    authors: string[];
+    coverFileId: string | null;
+  };
 }
 
 export interface ReviewList {
@@ -644,6 +652,8 @@ export interface Candidate {
   subtitle: string | null;
   authors: string[];
   year: number | null;
+  publisher: string | null;
+  coverUrl: string | null;
   score: number;
   notes: string[];
   url: string | null;
