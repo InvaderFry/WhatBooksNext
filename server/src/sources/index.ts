@@ -78,6 +78,14 @@ export class Sources {
     return true;
   }
 
+  /** Manual choices bypass the item's guessed kind; unset sources can be shown for setup. */
+  onlineSources(includeUnconfigured = false): SourceAdapter[] {
+    if (this.demo) return [this.demoSource];
+    return [this.openlibrary, this.hardcover, this.anilist, this.metron, this.comicvine].filter(
+      (s) => includeUnconfigured || this.isConfigured(s.name),
+    );
+  }
+
   /** For "Search and pick" in Needs review: every source that can answer now. */
   forSearch(kind: string | null): SourceAdapter[] {
     if (this.demo) return [this.demoSource];

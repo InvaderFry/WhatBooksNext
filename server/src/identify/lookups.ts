@@ -747,6 +747,8 @@ export interface LookupOptions {
   background?: boolean;
   /** Ask only these sources (automatic refresh asks the ones that are due). */
   only?: SourceName[];
+  /** An explicit manual choice, even outside the item’s automatic source plan. */
+  source?: SourceName;
 }
 
 export interface LookupResult {
@@ -769,7 +771,9 @@ function askedSources(
   kind: string | null,
   issue: string | null,
   only?: SourceName[],
+  source?: SourceName,
 ): SourceAdapter[] {
+  if (source) return sources.onlineSources().filter((s) => s.name === source);
   const all = sources.forItem(kind, issue);
   return only ? all.filter((s) => only.includes(s.name)) : all;
 }
@@ -803,14 +807,14 @@ export async function lookUpItem(
   for (let pass = 0; pass < MAX_PASSES; pass++) {
     results = await lookUpOnce(db, sources, itemId, opts);
     if (results.some((r) => r.outcome === 'failed')) return results;
-    if (!searchChanged(db, sources, itemId, opts.only)) return results;
+    if (!searchChanged(db, sources, itemId, opts.only, opts.source)) return results;
   }
   // Still changing: settle on the current search, so the next run doesn't ask again.
   const facts = matchFactsFor(db, itemId);
   if (facts) {
     const qKey = JSON.stringify(buildQuery(facts));
     const now = nowIso();
-    for (const s of askedSources(sources, facts.kind, facts.issue ?? null, opts.only))
+    for (const s of askedSources(sources, facts.kind, facts.issue ?? null, opts.only, opts.source))
       db.prepare(
         `INSERT INTO lookup_state (item_id, source, version, query, looked_up_at, outcome, error, last_answer_at)
          VALUES (?, ?, ?, ?, ?, 'none', NULL, ?)
@@ -822,12 +826,18 @@ export async function lookUpItem(
 }
 
 /** Would the item be searched differently now, or by a source not asked yet? */
-function searchChanged(db: DB, sources: Sources, itemId: string, only?: SourceName[]): boolean {
+function searchChanged(
+  db: DB,
+  sources: Sources,
+  itemId: string,
+  only?: SourceName[],
+  source?: SourceName,
+): boolean {
   const facts = matchFactsFor(db, itemId);
   if (!facts) return false;
   const qKey = JSON.stringify(buildQuery(facts));
   const state = db.prepare('SELECT query FROM lookup_state WHERE item_id = ? AND source = ?');
-  return askedSources(sources, facts.kind, facts.issue ?? null, only).some((s) => {
+  return askedSources(sources, facts.kind, facts.issue ?? null, only, source).some((s) => {
     const st = state.get(itemId, s.name) as { query: string } | undefined;
     return !st || st.query !== qKey;
   });
@@ -885,7 +895,7 @@ async function lookUpOnce(
   const query = buildQuery(facts);
   const qKey = JSON.stringify(query);
   const results: LookupResult[] = [];
-  const all = askedSources(sources, facts.kind, facts.issue ?? null, opts.only);
+  const all = askedSources(sources, facts.kind, facts.issue ?? null, opts.only, opts.source);
   // Real requests per source before asking: an answer counts as "the source answered" only
   // when a request went out (a re-read of the cache is not news from the source).
   const before = new Map(all.map((s) => [s.name, sources.requestCount(s.name)]));

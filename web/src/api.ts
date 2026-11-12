@@ -665,6 +665,7 @@ export interface ItemOnline {
   fromEachSource: FromEachSource;
   identity: 'accepted' | 'provisional' | 'tie' | 'unidentified';
   matchConfirmed: boolean;
+  autoMatchScore: number | null;
   override: string | null;
   lookups: {
     source: string;
@@ -698,6 +699,7 @@ export interface ItemOnline {
   description: string | null;
   subjects: string[];
   lookupAvailable: boolean;
+  lookupSources: { source: string; label: string; configured: boolean }[];
   /** Sources due for a refresh, and ones whose last refresh failed (previous result shown). */
   refresh: { due: string[]; failed: string[] };
 }

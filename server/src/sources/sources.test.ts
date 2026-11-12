@@ -4,7 +4,13 @@ import { describe, expect, it } from 'vitest';
 import { CIRCUIT_FAILURES } from '../config.ts';
 import { kindFromEvidence, techTitle } from '../identify/kinds.ts';
 import { picturesFile } from '../identify/lookups.ts';
-import { decide, numberIn, scoreCandidate, type MatchFacts } from '../identify/match.ts';
+import {
+  decide,
+  decideRanked,
+  numberIn,
+  scoreCandidate,
+  type MatchFacts,
+} from '../identify/match.ts';
 import { memoryDb } from '../testing/helpers.ts';
 import { decodeEntities } from '../util.ts';
 import { parseAniList } from './anilist.ts';
@@ -228,6 +234,21 @@ describe('the source client', () => {
 describe('matching (§11.2)', () => {
   const tm = parseOpenLibrary(fixture('ol-search-time-machine.json'));
   const pp = parseOpenLibrary(fixture('ol-search-pride-prejudice.json'));
+
+  it('automatically accepts at 90/100, keeps lower scores provisional and close rivals for review', () => {
+    const candidate = scoreCandidate(
+      facts({ title: 'The Time Machine', authors: ['Wells, H.G.'] }),
+      tm[0]!,
+    );
+    expect(decideRanked([{ ...candidate, score: 0.9 }]).decision).toBe('accepted');
+    expect(decideRanked([{ ...candidate, score: 0.899 }]).decision).toBe('provisional');
+    expect(
+      decideRanked([
+        { ...candidate, score: 0.95 },
+        { ...candidate, record: pp[0]!, score: 0.94 },
+      ]).decision,
+    ).toBe('tie');
+  });
 
   it('accepts an exact title with an agreeing author', () => {
     const r = decide(facts({ title: 'The Time Machine', authors: ['Wells, H.G.'] }), tm);

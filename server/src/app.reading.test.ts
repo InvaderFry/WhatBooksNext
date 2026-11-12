@@ -1,12 +1,13 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import request from 'supertest';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createApp } from './app.ts';
 import type { DB } from './db/database.ts';
 import { createBackup } from './lib/backup.ts';
 import { createStoreItem } from './lib/store.ts';
 import { mergeItems } from './lib/operations.ts';
+import { setSecret } from './sources/index.ts';
 import type { Fetcher } from './sources/types.ts';
 import { makeCbz, makeEpub, makeImage, makePdf } from './testing/fixtures.ts';
 import { fakePlatformWithDrives, memoryDb, tempDir, writeFiles } from './testing/helpers.ts';
@@ -122,6 +123,99 @@ describe('lookups', () => {
     const item = (await api.get(`/api/items/${itemIdOf('thetimemachine.epub')}`)).body;
     expect(item.kind).toBe('fiction');
     expect(item.kindIsGuess).toBe(true);
+  });
+
+  it('exposes manual source choices, including comic sources that need setup', async () => {
+    const id = createStoreItem(db, { title: 'Comic collection', store: 'kindle' });
+    const online = (await api.get(`/api/items/${id}/online`)).body;
+    expect(online.lookupSources).toEqual(
+      expect.arrayContaining([
+        { source: 'openlibrary', label: 'Open Library', configured: true },
+        { source: 'metron', label: 'Metron', configured: false },
+        { source: 'comicvine', label: 'ComicVine', configured: false },
+      ]),
+    );
+    for (const endpoint of ['lookup', 'search']) {
+      for (const source of ['unknown', 'calibre', '', null, 'metron']) {
+        const response = await api.post(`/api/items/${id}/${endpoint}`, {
+          query: 'Comic #2',
+          source,
+        });
+        expect(response.status).toBe(400);
+      }
+    }
+    expect(requests).toHaveLength(0);
+  });
+
+  it('looks up only the chosen comic source outside the automatic plan, preserving confirmations', async () => {
+    await addAndScan({ 'thetimemachine.epub': timeMachine() });
+    const id = itemIdOf('thetimemachine.epub');
+    await api.post(`/api/items/${id}/match`, {
+      action: 'confirm',
+      source: 'openlibrary',
+      sourceId: '/works/OL52267W',
+    });
+    setSecret(db, 'comicvine_key', 'invented-key');
+    const comic = vi.spyOn(made.sources.comicvine, 'search').mockResolvedValue([]);
+    requests.length = 0;
+    const response = await api.post(`/api/items/${id}/lookup`, { source: 'comicvine' });
+    expect(response.status).toBe(200);
+    expect(response.body.results).toEqual([
+      expect.objectContaining({ source: 'comicvine', outcome: 'none' }),
+    ]);
+    expect(comic).toHaveBeenCalled();
+    expect(requests).toHaveLength(0);
+    const online = (await api.get(`/api/items/${id}/online`)).body;
+    expect(online.override).toBe('openlibrary:/works/OL52267W');
+    expect(online.autoMatchScore).toBeNull();
+    comic.mockRestore();
+  });
+
+  it('searches a chosen comic source with the corrected series and issue number', async () => {
+    const id = createStoreItem(db, { title: 'Bad filename', store: 'kindle' });
+    setSecret(db, 'comicvine_key', 'invented-key');
+    const comic = vi.spyOn(made.sources.comicvine, 'search').mockResolvedValue([
+      {
+        source: 'comicvine',
+        sourceId: '42',
+        title: 'Copperline #2',
+        authors: [],
+        isbns: [],
+        subjects: [],
+      },
+    ]);
+    const response = await api.post(`/api/items/${id}/search`, {
+      query: 'Copperline #2',
+      source: 'comicvine',
+    });
+    expect(response.status).toBe(200);
+    expect(comic).toHaveBeenCalledWith(
+      expect.objectContaining({ series: 'Copperline', issue: '2' }),
+    );
+    expect(response.body.candidates).toHaveLength(1);
+    expect(requests).toHaveLength(0);
+    await api.post(`/api/items/${id}/match`, {
+      action: 'confirm',
+      source: 'comicvine',
+      sourceId: '42',
+    });
+    expect((await api.get(`/api/items/${id}/online`)).body.override).toBe('comicvine:42');
+    comic.mockRestore();
+  });
+
+  it('reports the score of an automatic 90+ match, and clears the notice after confirmation', async () => {
+    await addAndScan({ 'thetimemachine.epub': timeMachine() });
+    const id = itemIdOf('thetimemachine.epub');
+    const online = (await api.get(`/api/items/${id}/online`)).body;
+    expect(online.identity).toBe('accepted');
+    expect(online.autoMatchScore).toBeGreaterThanOrEqual(90);
+    expect(online.autoMatchScore).toBeLessThanOrEqual(100);
+    await api.post(`/api/items/${id}/match`, {
+      action: 'confirm',
+      source: 'openlibrary',
+      sourceId: '/works/OL52267W',
+    });
+    expect((await api.get(`/api/items/${id}/online`)).body.autoMatchScore).toBeNull();
   });
 
   it('makes no new requests when nothing changed since the last lookup', async () => {
