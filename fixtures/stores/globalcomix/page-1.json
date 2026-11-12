@@ -1,0 +1,86 @@
+{
+  "meta": {
+    "user_id": 1,
+    "code": 200,
+    "params": { "p": "1" },
+    "path": "/v1/account/digital-purchases",
+    "host": "api.globalcomix.com",
+    "query_id": null,
+    "response_time": 0.1
+  },
+  "payload": {
+    "results": [
+      {
+        "entity_type": "ReleaseUserPurchase",
+        "id": 9100001,
+        "token": "inv00000-0000-0000-0000-000000000101",
+        "release_id": 9200001,
+        "user_id": 1,
+        "net_price": "9.99",
+        "is_downloadable": 1,
+        "create_time": "2025-03-04 18:22:10",
+        "download_url": null,
+        "release": {
+          "entity_type": "Release",
+          "id": 9200001,
+          "comic_id": 9300001,
+          "comic_name": "Starfall Academy",
+          "chapter": "1",
+          "chapter_type": "volume",
+          "title": "Volume 1",
+          "isbn": "9780000000024",
+          "release_type_name": "Volume",
+          "read_url": "https://globalcomix.com/read/inv-9200001/starfall-academy-volume-1",
+          "comic_type": { "entity_type": "ComicType", "id": 1, "name": "Comic" },
+          "user_read_status": { "is_complete": 1, "read_progress_percentage": 100 },
+          "comic": { "entity_type": "Comic", "id": 9300001, "name": "Starfall Academy" }
+        }
+      },
+      {
+        "entity_type": "ReleaseUserPurchase",
+        "id": 9100002,
+        "token": "inv00000-0000-0000-0000-000000000102",
+        "release_id": 9200002,
+        "user_id": 1,
+        "net_price": "0.00",
+        "is_downloadable": 0,
+        "create_time": "2025-06-12 09:01:00",
+        "release": {
+          "entity_type": "Release",
+          "id": 9200002,
+          "comic_id": 9300002,
+          "comic_name": "The Lantern Keepers",
+          "chapter": "3",
+          "title": "Night Over the Harbour",
+          "isbn": "",
+          "release_type_name": "Issue",
+          "read_url": "https://globalcomix.com/read/inv-9200002/lantern-keepers-3",
+          "comic_type": { "entity_type": "ComicType", "id": 2, "name": "Manga" },
+          "user_read_status": { "is_complete": 0, "read_progress_percentage": 40 },
+          "comic": { "entity_type": "Comic", "id": 9300002, "name": "The Lantern Keepers" }
+        }
+      },
+      {
+        "entity_type": "ReleaseUserPurchase",
+        "id": 9100003,
+        "release_id": 9200003,
+        "net_price": "24.99",
+        "create_time": "2025-09-30 11:11:11",
+        "release": {
+          "entity_type": "Release",
+          "id": 9200003,
+          "comic_name": "Glass Harbor",
+          "chapter": "",
+          "title": "Glass Harbor: The Complete Collection",
+          "release_type_name": "Compendium",
+          "read_url": "https://globalcomix.com/read/inv-9200003/glass-harbor-complete",
+          "comic_type": { "entity_type": "ComicType", "id": 1, "name": "Comic" },
+          "user_read_status": null
+        }
+      }
+    ],
+    "suggestions": null,
+    "pagination": { "page": 1, "per_page": 3, "total_pages": 2, "total_results": 4 }
+  },
+  "error": null
+}

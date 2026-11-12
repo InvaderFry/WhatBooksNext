@@ -39,6 +39,8 @@ export interface RankItem {
   isReference: boolean;
   creators: { name: string; role?: string }[];
   coverFileId: string | null;
+  /** An online cover for a book without a file cover (see ItemSummary). */
+  coverItemId?: string | null;
   formats: string[];
   availability: AvailabilityView;
   user: UserData;
@@ -386,6 +388,8 @@ export interface Card {
   kind: string | null;
   creators: { name: string; role?: string }[];
   coverFileId: string | null;
+  /** An online cover for a book without a file cover (see ItemSummary). */
+  coverItemId?: string | null;
   formats: string[];
   availability: AvailabilityView;
   progress: string;
@@ -559,6 +563,7 @@ export function buildCard(i: RankItem, all: RankItem[], s: Situation): Card {
     kind: i.kind,
     creators: i.displayCreators ?? i.creators,
     coverFileId: i.coverFileId,
+    coverItemId: i.coverItemId ?? null,
     formats: i.formats,
     availability: i.availability,
     progress: i.user.progress,

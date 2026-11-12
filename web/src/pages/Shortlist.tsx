@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api, PROGRESS_LABELS, type ItemSummary } from '../api.ts';
-import { AvailabilityLabels, Formats, KindText, Notice } from '../components.tsx';
+import { AvailabilityLabels, Formats, KindText, Notice, StoreLinks } from '../components.tsx';
 import { hrefFor, onLinkClick } from '../url.ts';
 
 /** An ordered "next up" queue (PLAN.md §13.9): reorder with accessible ↑/↓ buttons. */
@@ -70,6 +70,11 @@ export function Shortlist() {
                   <span>{PROGRESS_LABELS[item.user.progress]}</span>
                 </div>
                 <AvailabilityLabels a={item.availability} />
+                {item.availability.storeLinks?.length ? (
+                  <div className="row-actions wrap store-links">
+                    <StoreLinks a={item.availability} title={item.title} />
+                  </div>
+                ) : null}
               </div>
               <div className="row-actions">
                 <button

@@ -295,7 +295,9 @@ send requests to `127.0.0.1`, including the route that opens files. So:
 - **Text from files and outside sources is untrusted.** Show descriptions as plain text, or clean
   them with a maintained HTML sanitizer that keeps only a small allowlist (paragraphs, line breaks,
   emphasis, lists). Never insert raw HTML.
-- Covers are served from the data folder by id only.
+- Covers are served from the data folder by id only. A book without a file cover (store books, reading history) gets one from Open Library
+  once it is matched there with confidence (owner decision 2026-11-11; `identify/covers.ts`): by cover ID
+  through the Open Library client, saved as `covers/item-<id>.jpg`, never for a provisional or rejected match.
 
 ### 6.4 Pure scoring
 
@@ -1318,6 +1320,11 @@ use. Keep them in one config module, each with its reason in a comment.
 | Server port | 4818, overridable with `PORT` | Unlikely to clash with common dev tools. |
 | Per-file limits | 60 s (parsing, counting, thumbnails — not full hashing); uncompressed ≤ 4 GB; compression ratio ≤ 100:1; images ≤ 50 megapixels | Large comic archives are fine; zip bombs and runaway files aren't. |
 | Light-scan target | 5,000 files in under 30 s on a local SSD | A goal to measure against, not a claim. |
+| Store collectors: gap between requests | 2 s | Store purchases plan, "Account safety": about a person's pace on their own library page. |
+| Store collectors: longer pause | 30 s after every 50 requests | Same: no long bursts. |
+| Store collectors: requests per scan | at most 300 | 15,000 books at 50 a page, far beyond a personal library; reaching it stops the scan as partial. |
+| Store collectors: stalled pages | 2 in a row with nothing new | Stops a list that repeats itself instead of looping. |
+| Store purchases: "far fewer books" warning | more than 20% fewer than the last complete scan | A real library rarely loses a fifth of its books between scans; a broken collector easily does. |
 
 ## 21. Owner actions and things still to confirm
 
@@ -1334,6 +1341,12 @@ plainly at the start of your message, with what to do and roughly how long it ta
 | **End of M3** | First ~20-minute recommendation quality session (§17.2). |
 | **During M1–M6, as they come up** | Check the "needs checking on the owner's machine" items on the Windows PC. For ratings Stage 1, open the CSV in Excel to check the appended scope/match columns, accents and formula text; inspect Diagnostics tier counts. For Stage 2, spot-check chosen titles/creators, page provenance and conflicting years, including Unicode and Calibre-formatted descriptions. No new accounts or keys. |
 | **End of M6** | Try installing from the README as a stranger would. The second quality session moves to after stage 3 of the [ratings and refresh plan](docs/plans/online-ratings-and-refreshes.md), so it judges the new ratings and details. |
+| **Store purchases: Stage 0** | Done: over 12 books in each store (2026-11-11). |
+| **Store purchases: Kindle** | Done 2026-11-11: A2 (complete scan, 155 found) and A3 (import). A1b (store links) works too. The extension is deferred (owner decision 2026-11-11). |
+| **Store purchases: look around** | Done 2026-11-11 (A6) for Google Play Books, Kobo and GlobalComix. |
+| **Store purchases: Google Play Books** | Done 2026-11-11 (version 2: 23 found, imported). |
+| **Store purchases: Kobo** | Done 2026-11-11 (script run and imported). |
+| **Store purchases: GlobalComix** | Done 2026-11-11 (version 2, imported). To update any store later: run its script again from Settings → Import store purchases. |
 | **Now (after stage 4)** | The second quality session (§17.2), on the new ratings and details. Also, on the Windows PC: Settings → Online lookups → **Keeping ratings up to date** shows due books and a last batch after the app has been open 10–15 minutes; Diagnostics → Automatic refresh shows requests within the daily share. No new accounts or keys. |
 
 ### Still to confirm (not blocking)

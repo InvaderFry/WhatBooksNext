@@ -1,0 +1,51 @@
+{
+  "itemsList": [
+    {
+      "asin": "INVENTED0001",
+      "webReaderUrl": "https://read.amazon.com/?asin=INVENTED0001",
+      "productUrl": "https://images.invalid/INVENTED0001.jpg",
+      "title": "The Ember Orchard",
+      "percentageRead": 0,
+      "authors": ["Varga, Nell:"],
+      "resourceType": "EBOOK",
+      "originType": "PURCHASE",
+      "mangaOrComicAsin": false
+    },
+    {
+      "asin": "INVENTED0002",
+      "webReaderUrl": "https://read.amazon.com/?asin=INVENTED0002",
+      "productUrl": "https://images.invalid/INVENTED0002.jpg",
+      "title": "Lanterns Over Harrowgate",
+      "percentageRead": 43,
+      "authors": ["Inchcape, Pell:", "Holloway, Wenna:"],
+      "resourceType": "EBOOK",
+      "originType": "PURCHASE",
+      "mangaOrComicAsin": false
+    },
+    {
+      "asin": "INVENTED0003",
+      "webReaderUrl": "https://read.amazon.com/?asin=INVENTED0003",
+      "productUrl": "https://images.invalid/INVENTED0003.jpg",
+      "title": "A Borrowed Season",
+      "percentageRead": 0,
+      "authors": ["Brask, Ivo:"],
+      "resourceType": "EBOOK",
+      "originType": "KINDLE_UNLIMITED",
+      "mangaOrComicAsin": false
+    },
+    {
+      "asin": "INVENTED0004",
+      "webReaderUrl": "https://read.amazon.com/?asin=INVENTED0004",
+      "productUrl": "https://images.invalid/INVENTED0004.jpg",
+      "title": "Quills, Volume Two",
+      "percentageRead": 2,
+      "authors": ["Penhallow, Ada:"],
+      "resourceType": "EBOOK_SAMPLE",
+      "originType": "PURCHASE",
+      "mangaOrComicAsin": false
+    }
+  ],
+  "paginationToken": "4",
+  "libraryType": "BOOKS",
+  "sortType": "recency"
+}

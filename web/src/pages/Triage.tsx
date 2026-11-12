@@ -186,7 +186,12 @@ function OneAtATime({ params, onChanged }: { params: Params; onChanged: () => vo
       )}
       {item && (
         <article className="card triage-card" aria-labelledby="triage-title">
-          <Cover fileId={item.coverFileId} kind={item.kind} size="large" />
+          <Cover
+            fileId={item.coverFileId}
+            itemId={item.coverItemId}
+            kind={item.kind}
+            size="large"
+          />
           <div>
             <h2 id="triage-title" ref={heading} tabIndex={-1}>
               {item.title}

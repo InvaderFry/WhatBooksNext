@@ -180,6 +180,7 @@ describe('merge (§11.4)', () => {
       attached: 0,
       already: 1,
       skipped: 0,
+      links: 0,
     });
     expect((await api.post(`/api/operations/${operationId}/undo`)).status).toBe(200);
     expect(

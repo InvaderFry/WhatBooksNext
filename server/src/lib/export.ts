@@ -32,6 +32,7 @@ export const EXPORT_COLUMNS = [
   'formats',
   'where',
   'stores',
+  'store_links',
   'read_elsewhere',
   'acquired_on',
   'first_published',
@@ -62,11 +63,19 @@ const dated = (d: string | null, precision: string | null) =>
 
 export function exportCsv(db: DB, items: RankItem[]): string {
   const stores = new Map<string, string[]>();
+  // The owner's own data: store IDs inside links, never titles. Space-separated, like stores.
+  const links = new Map<string, string[]>();
   for (const r of db
-    .prepare("SELECT item_id, store FROM locations WHERE kind = 'store' ORDER BY created_at")
-    .all() as { item_id: string; store: string | null }[]) {
+    .prepare(
+      "SELECT item_id, store, url FROM locations WHERE kind = 'store' ORDER BY created_at, id",
+    )
+    .all() as { item_id: string; store: string | null; url: string | null }[]) {
     if (!stores.has(r.item_id)) stores.set(r.item_id, []);
     stores.get(r.item_id)!.push(r.store ?? 'other');
+    if (r.url) {
+      if (!links.has(r.item_id)) links.set(r.item_id, []);
+      links.get(r.item_id)!.push(r.url);
+    }
   }
   const isbns = new Map(
     (
@@ -122,6 +131,7 @@ export function exportCsv(db: DB, items: RankItem[]): string {
       formats: i.formats.join(' '),
       where: i.historyOnly ? 'read elsewhere' : (i.availability.label ?? 'on this PC'),
       stores: (stores.get(i.id) ?? []).join(' '),
+      store_links: (links.get(i.id) ?? []).join(' '),
       read_elsewhere: i.historyOnly ? 'yes' : '',
       acquired_on: acquired.get(i.id) ?? '',
       first_published: i.firstPublishYear ?? '',

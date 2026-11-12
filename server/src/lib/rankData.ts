@@ -207,6 +207,7 @@ export function loadRankData(db: DB, reach: FolderReachability): RankData {
       publisher: md?.comic?.publisher ?? md?.publisher ?? null,
       creators: ranking.creators,
       coverFileId: i.coverFileId,
+      coverItemId: i.coverItemId ?? null,
       formats: i.formats,
       availability: i.availability,
       user: i.user,

@@ -12,6 +12,7 @@ import { createStoreItem } from './lib/store.ts';
 import { applyUserPatch } from './lib/progress.ts';
 import type { Platform } from './platform/types.ts';
 import { fakePlatformWithDrives, memoryDb, tempDir } from './testing/helpers.ts';
+import { storeFile } from './testing/storeFile.ts';
 
 /** Milestone 6: restore across every table, full snapshots, the CSV export, Stats, Diagnostics. */
 
@@ -114,10 +115,34 @@ describe('restore regression across every table (§16)', () => {
     expect(
       (
         await api.post('/api/import/csv', {
-          text: 'title,author,store\nAn Invented Import,Ola Pennant,kobo\n',
+          text: 'title,author,store,url\nAn Invented Import,Ola Pennant,kobo,https://www.kobo.com/ww/en/ebook/invented-import\n',
         })
       ).status,
     ).toBe(200);
+    // Store purchases (015): one imported from an invented collector file.
+    expect(
+      (
+        await api.post('/api/import/store-purchases', {
+          text: storeFile([
+            { id: 'INVENTED0100', title: 'An Invented Purchase', author: 'Ola Pennant' },
+          ]),
+        })
+      ).status,
+    ).toBe(200);
+    // Store links (014): an imported link (above) and one the owner typed.
+    const typed = one(db, "SELECT id FROM locations WHERE store = 'kindle' LIMIT 1");
+    expect(
+      (
+        await api.patch(`/api/locations/${typed}`, {
+          url: 'https://www.amazon.com/dp/INVENTED-RESTORE',
+        })
+      ).status,
+    ).toBe(200);
+    expect(
+      ['url', 'url_kind', 'url_by_owner'].filter(
+        (c) => !one(db, `SELECT COUNT(*) FROM locations WHERE ${c} IS NOT NULL AND ${c} != 0`),
+      ),
+    ).toEqual([]);
 
     // Automatic refresh's columns (stage 4): a rival and a retry, as a refresh leaves them.
     db.prepare(

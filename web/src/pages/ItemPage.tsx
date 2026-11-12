@@ -17,7 +17,7 @@ import {
   type Progress,
   type UserData,
 } from '../api.ts';
-import { AvailabilityLabels, Cover, creatorsText, Notice } from '../components.tsx';
+import { AvailabilityLabels, Cover, creatorsText, Notice, StoreLinks } from '../components.tsx';
 import { hrefFor, onLinkClick } from '../url.ts';
 import { OnlineCard } from './OnlineCard.tsx';
 import { CollectsSection, SeriesSection } from './SeriesCard.tsx';
@@ -120,7 +120,7 @@ export function ItemPage({
         ← Back
       </a>
       <div className="item-head">
-        <Cover fileId={item.coverFileId} kind={item.kind} size="large" />
+        <Cover fileId={item.coverFileId} itemId={item.coverItemId} kind={item.kind} size="large" />
         <div className="item-head-text">
           <TitleEditor item={item} onSave={save} />
           {item.creators.length > 0 && <p className="byline">{creatorsText(item.creators)}</p>}
@@ -131,6 +131,7 @@ export function ItemPage({
           <div className="item-meta big">
             <AvailabilityLabels a={item.availability} />
           </div>
+          <ReadActions item={item} onMessage={setError} />
         </div>
       </div>
       <div className="live" aria-live="polite">
@@ -636,6 +637,51 @@ interface FileChoice {
   chosen: boolean;
   anyChosen: boolean;
   choose: (fileId: string | null) => Promise<void>;
+}
+
+/**
+ * Store links at the top of the book page (Store links). While a file is here, Open comes
+ * first and the store link after it; with the drive disconnected or the file missing, the
+ * store link is the main action.
+ */
+function ReadActions({
+  item,
+  onMessage,
+}: {
+  item: ItemDetail;
+  onMessage: (text: string | null) => void;
+}) {
+  const [opening, setOpening] = useState<string | null>(null);
+  if (!item.availability.storeLinks?.length) return null;
+  const file =
+    item.availability.state === 'present'
+      ? (item.files.find((f) => f.isPrimary && f.folderReachable && f.availability === 'present') ??
+        item.files.find((f) => f.folderReachable && f.availability === 'present'))
+      : undefined;
+  return (
+    <div className="row-actions wrap store-links">
+      {file && (
+        <button
+          type="button"
+          className="small"
+          aria-label={`Open ${file.name}`}
+          onClick={async () => {
+            onMessage(null);
+            try {
+              await api.post(`/api/files/${file.id}/open`, {});
+              setOpening('Opening in your default app…');
+            } catch (e) {
+              onMessage((e as Error).message);
+            }
+          }}
+        >
+          Open
+        </button>
+      )}
+      <StoreLinks a={item.availability} title={item.title} primary={!file} />
+      {opening && <span className="muted small">{opening}</span>}
+    </div>
+  );
 }
 
 function FileRow({

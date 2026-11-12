@@ -48,7 +48,26 @@ export interface Availability {
   label: string | null;
   alsoInICloud: boolean;
   readyToRead: boolean;
+  /** Links to read it in a store, copies the owner can read there first (Store links). */
+  storeLinks?: StoreLinkView[];
 }
+
+export interface StoreLinkView {
+  store: string;
+  url: string;
+  /** read: the store's web reader. page: its store or library page. */
+  kind: 'read' | 'page';
+  host: string;
+}
+
+export const STORE_LABELS: Record<string, string> = {
+  kindle: 'Kindle',
+  apple_books: 'Apple Books',
+  google_play: 'Google Play Books',
+  kobo: 'Kobo',
+  globalcomix: 'GlobalComix',
+  other: 'Another app',
+};
 
 export interface UserData {
   progress: Progress;
@@ -89,6 +108,8 @@ export interface ItemSummary {
   creators: { name: string; role?: string }[];
   /** File whose thumbnail is this item's cover; null when there is none. */
   coverFileId: string | null;
+  /** With no file cover: the book's own online cover, served at /api/items/<id>/cover. */
+  coverItemId?: string | null;
   formats: string[];
   fileCount: number;
   folderIds: string[];
@@ -186,7 +207,8 @@ export interface ReviewRow {
     | 'wrong_match'
     | 'unidentified'
     | 'provisional'
-    | 'check_match';
+    | 'check_match'
+    | 'store_not_seen';
   tier: number;
   why: string;
   items: { id: string; title: string; hasHistory: boolean }[];
@@ -403,6 +425,8 @@ export interface Card {
   kind: Kind | null;
   creators: { name: string; role?: string }[];
   coverFileId: string | null;
+  /** With no file cover: the book's own online cover, served at /api/items/<id>/cover. */
+  coverItemId?: string | null;
   formats: string[];
   availability: Availability;
   progress: Progress;

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { api, formatDate, type RefreshStatus } from '../api.ts';
+import { api, formatDate, STORE_LABELS, type RefreshStatus } from '../api.ts';
 import { Notice } from '../components.tsx';
 
 interface DiagFolder {
@@ -47,6 +47,15 @@ interface Diag {
   };
   lookups: { pending: number; running: boolean };
   refresh: RefreshStatus;
+  /** The last store purchases import per store: counts only, never titles. */
+  storeImports?: {
+    service: string;
+    importedAt: string;
+    adapterVersion: string;
+    completion: string;
+    reason: string;
+    counts: { seen?: number; included?: number; uncertain?: number; added?: number };
+  }[];
 }
 
 interface RatingChanges {
@@ -286,6 +295,18 @@ export function Diagnostics() {
               ))}
             </ul>
             <RefreshDiagnostics r={diag.refresh} />
+            <div className="card">
+              <h3>Store purchase imports</h3>
+              {diag.storeImports?.length ? (
+                <ul className="plain-list small">
+                  {diag.storeImports.map((s) => (
+                    <li key={s.service}>{storeImportLine(s)}</li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="small muted">None yet.</p>
+              )}
+            </div>
             <HardcoverCheck names={names} />
             <ComicCheck source="metron" title="Metron" names={names} />
             <ComicCheck source="comicvine" title="ComicVine" names={names} />
@@ -365,8 +386,15 @@ function toReport(d: Diag): string {
         `${s.label}: ${s.configured ? s.state : 'no key'}; requests this run ${s.requests}${s.lastError ? `; last error: ${s.lastError}` : ''}`,
     ),
     ...refreshLines(d.refresh),
+    ...(d.storeImports ?? []).map(storeImportLine),
   ];
   return lines.join('\n');
+}
+
+/** One store's last import, title-free: when, collector version, completeness and counts. */
+function storeImportLine(s: NonNullable<Diag['storeImports']>[number]): string {
+  const c = s.counts;
+  return `Store import ${STORE_LABELS[s.service] ?? s.service}: ${s.importedAt}; collector ${s.adapterVersion}; ${s.completion} (${s.reason}); found ${c.seen ?? '?'}, included ${c.included ?? '?'}, uncertain ${c.uncertain ?? '?'}, added ${c.added ?? 0}`;
 }
 
 /** Automatic refresh per source: due, last answer, automatic requests today, pauses, failures. */

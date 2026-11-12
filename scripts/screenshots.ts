@@ -378,6 +378,19 @@ try {
       },
     ],
     [
+      // Store links: the owner changes a store copy's link (an invented one).
+      'item-store-link',
+      '/?view=library&q=cartographer',
+      async (p) => {
+        await p
+          .getByRole('link', { name: /Cartographer of Small Rains/ })
+          .first()
+          .click();
+        await p.getByRole('button', { name: 'Change link' }).click();
+      },
+    ],
+    ['library-store-links', '/?view=library&q=cartographer', async () => {}],
+    [
       'settings-csv',
       '/?view=settings',
       async (p) => {
@@ -395,6 +408,69 @@ try {
         await p
           .getByRole('heading', { name: 'Store books from a spreadsheet' })
           .scrollIntoViewIfNeeded();
+      },
+    ],
+    [
+      // Import store purchases: the Kindle steps, then an invented collector file's preview.
+      'settings-store-purchases',
+      '/?view=settings',
+      async (p) => {
+        await p.getByLabel('The file the script downloaded').setInputFiles({
+          name: 'whatbooksnext-kindle-2026-11-11.json',
+          mimeType: 'application/json',
+          buffer: Buffer.from(
+            JSON.stringify({
+              format: 'whatBooksNext-store-purchases',
+              formatVersion: 1,
+              service: 'kindle',
+              adapterVersion: '1',
+              source: { type: 'collector' },
+              collectedAt: '2026-11-11T12:00:00.000Z',
+              region: 'read.amazon.com',
+              completion: { status: 'complete', reason: 'finished', text: 'Done.' },
+              counts: {
+                seen: 6,
+                included: 3,
+                uncertain: 1,
+                excluded: { sample: 1, subscription: 1 },
+              },
+              records: [
+                [
+                  'INVENTED-DEMO-1',
+                  'The Cartographer of Small Rains',
+                  'Wenna Holloway',
+                  'purchase',
+                ],
+                ['INVENTED-DEMO-2', 'The Orchard Ledger', 'Pim Arkwright', 'purchase'],
+                ['INVENTED-DEMO-3', 'Glass Harbor', 'Mira Vantongeren', 'purchase'],
+                ['INVENTED-DEMO-4', 'Shared Shelf Stories', 'Tobiah Renn', 'uncertain'],
+              ].map(([id, title, name, type]) => ({
+                storeRecordId: id,
+                idKind: 'asin',
+                title,
+                creators: [{ name, role: 'author' }],
+                unit: 'book',
+                acquisition: {
+                  type,
+                  evidence: `originType ${type === 'purchase' ? 'PURCHASE' : 'FAMILY_SHARE'}`,
+                },
+                readUrl: `https://read.amazon.com/?asin=${id}`,
+              })),
+            }),
+          ),
+        });
+        await p.getByRole('button', { name: 'Import selected books' }).waitFor();
+        await p.getByRole('heading', { name: 'Import store purchases' }).scrollIntoViewIfNeeded();
+      },
+    ],
+    [
+      // Google Play Books: its own script and steps (purchases only).
+      'settings-store-google',
+      '/?view=settings',
+      async (p) => {
+        await p.getByRole('radio', { name: /Google Play Books/ }).check();
+        await p.getByRole('button', { name: 'Copy the Google Play Books script' }).waitFor();
+        await p.getByRole('heading', { name: 'Import store purchases' }).scrollIntoViewIfNeeded();
       },
     ],
     ...(['goodreads', 'storygraph'] as const).map(

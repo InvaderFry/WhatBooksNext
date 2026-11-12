@@ -33,8 +33,24 @@ owner has already made. Don't reopen those decisions. Then read the latest
   choice, best details, "From each source" in `lib/fromEachSource.ts`, automatic refresh; notes in
   M6.md). **Next:** the owner's second quality session (§17.2), due now. Google Books was dropped;
   the plan says why.
-- **Store purchase imports** (`docs/plans/get-store-purchase-imports.md`): planned, not started.
-  Official exports first, then one store end to end (collector → JSON import → extension).
+- **Store purchase imports** (`docs/plans/get-store-purchase-imports.md`): every store gets
+  a collector (the owner ruled out waiting on official exports). **Store links built**
+  (`014_store_links.sql`, `checkStoreLink`/`STORE_LINK_HOSTS` in `lib/store.ts`; A1b passed).
+  **Stage 1a/1b built for Kindle (amazon.com)**: `tools/store-collector/` (core + `adapters/kindle.ts`;
+  `npm run build:collector` writes the committed `console-scripts/`, a test checks they're fresh),
+  import in `lib/storePurchases.ts` (`015_store_purchases.sql`). **Checked on the owner's account
+  2026-11-11** (A2/A3). The extension (1c) is deferred: console scripts are the supported way.
+  Stage 2 order: Google Play Books, Kobo (US), GlobalComix. Each starts from the owner's
+  look-around report (`tools/store-collector/probe/`, `console-scripts/probe.js`; A6). Build its
+  adapter from that report, never from guesses. **Google Play Books checked**
+  (`adapters/googlePlay.ts`, card-reading `scanCards`, no requests). **Kobo checked**
+  (`adapters/kobo.ts`, library HTML pages read page-side). **GlobalComix checked**
+  (`adapters/globalcomix.ts` v2, a `WatchAdapter`: reads the page's own `account/digital-purchases`
+  answers via `collectAnswers`, no requests; v1's own request got HTTP 400). All four stores done.
+  Findings per store are in the plan.
+- **Covers for books without a file cover** come from Open Library (`identify/covers.ts`, table
+  `item_covers`, migration 016): only for a confident Open Library match, by cover ID, after
+  lookup runs. Owner decision 2026-11-11; details in the store purchases plan.
 - Automatic refresh: due rules are pure in `lib/refresh.ts`; `identify/refresher.ts` runs batches
   through `lookUpItem` (never a second lookup engine). `lookup_state.accepted_source_id` remembers
   the app's own accepted match: lookups keep it (a rival goes to Needs review as "Check this

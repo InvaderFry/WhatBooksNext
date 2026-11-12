@@ -8,6 +8,7 @@ import { refreshFactsOfItems, refreshPrimary, removeOrphanItems } from './identi
 import { healthProblemCount, libraryHealth } from './lib/health.ts';
 import { actOnReview, listReview, openReviewCount } from './lib/review.ts';
 import { coverPath } from './scan/deepPass.ts';
+import { CoverFetcher, itemCoverPath } from './identify/covers.ts';
 import type { TaskRunner } from './scan/pool.ts';
 import { createBackup, previewRestore, restoreBackup, validateBackup } from './lib/backup.ts';
 import {
@@ -44,6 +45,7 @@ import { route } from './routes/route.ts';
 import { registerSeriesRoutes } from './routes/series.ts';
 import { registerOperationRoutes } from './routes/operations.ts';
 import { registerStoreRoutes } from './routes/store.ts';
+import { lastStoreImports } from './lib/storePurchases.ts';
 import { registerCalibreRoutes } from './routes/calibre.ts';
 import { registerHistoryImportRoutes } from './routes/historyImport.ts';
 import { registerStatsRoutes } from './routes/stats.ts';
@@ -116,16 +118,19 @@ export function createApp(ctx: AppContext) {
   syncSeries(db);
   // Lookups made before automatic refresh existed: when they answered, and what was accepted.
   prepareRefreshState(db);
+  // After a scan or an import, look up what's new — unless the owner turned that off (§12.1).
+  const lookUpNew = () => {
+    lookups.invalidate();
+    if (ctx.autoLookups === false || lookups.isRunning()) return;
+    if (!getSetting<boolean>(db, 'lookupsAfterScan', true)) return;
+    if (lookups.pending() > 0 || lookups.pendingSeries() > 0) lookups.start();
+  };
   const scans = new ScanManager(db, platform, {
     runner: ctx.runner,
     coversDir,
-    // After a scan, look up what's new — unless the owner turned that off (§12.1).
     onFinished: (s) => {
-      lookups.invalidate();
-      if (ctx.autoLookups === false) return;
-      if (s.status === 'failed' || lookups.isRunning()) return;
-      if (!getSetting<boolean>(db, 'lookupsAfterScan', true)) return;
-      if (lookups.pending() > 0 || lookups.pendingSeries() > 0) lookups.start();
+      if (s.status === 'failed') lookups.invalidate();
+      else lookUpNew();
     },
   });
   const refresher = new RefreshScheduler(db, sources, lookups, scans, {
@@ -133,6 +138,20 @@ export function createApp(ctx: AppContext) {
     now: ctx.clock,
     batchRequests: ctx.refreshBatch,
   });
+  // Covers for books without a file cover (store books, reading history), from Open Library, after
+  // each lookup run and once shortly after the app starts: only when lookups may run on their own.
+  const covers = new CoverFetcher(db, sources, coversDir);
+  const coversAllowed = () =>
+    !ctx.demo && ctx.autoLookups !== false && getSetting<boolean>(db, 'lookupsAfterScan', true);
+  const afterLookups = lookups.afterRun;
+  lookups.afterRun = (s) => {
+    afterLookups?.(s);
+    if (coversAllowed()) covers.start();
+  };
+  const coversAtStart = setTimeout(() => {
+    if (coversAllowed() && !lookups.isRunning()) covers.start();
+  }, 60_000);
+  coversAtStart.unref?.();
   const reach = new Reachability(ctx);
   const app = express();
   app.disable('x-powered-by');
@@ -192,7 +211,7 @@ export function createApp(ctx: AppContext) {
   registerModeRoutes(app, { db, reach: () => reach.get(), itemIdOr404 });
   registerSeriesRoutes(app, { db, sources, reach: () => reach.get(), itemIdOr404 });
   registerOperationRoutes(app, { db, scans, itemIdOr404 });
-  registerStoreRoutes(app, { db, sources, itemIdOr404 });
+  registerStoreRoutes(app, { db, sources, itemIdOr404, lookUpNew });
   registerHistoryImportRoutes(app, db);
   registerRefreshRoutes(app, { db, refresher, lookups, snapshotDir: ctx.snapshotDir });
   registerCalibreRoutes(app, { db, platform, scans, dataDir: ctx.dataDir });
@@ -472,6 +491,21 @@ export function createApp(ctx: AppContext) {
     }
     res.setHeader('Cache-Control', 'private, max-age=300');
     // dotfiles: the data folder itself may sit under a hidden folder; the path is ours alone.
+    res.sendFile(file, { dotfiles: 'allow' });
+  });
+
+  // Online covers for books without a file cover, by item id only (the path is ours alone).
+  app.get('/api/items/:id/cover', (req, res) => {
+    const id = db
+      .prepare("SELECT item_id FROM item_covers WHERE item_id = ? AND state = 'ok'")
+      .pluck()
+      .get(String(req.params.id)) as string | undefined;
+    const file = id && coversDir ? itemCoverPath(coversDir, id) : null;
+    if (!file || !fs.existsSync(file)) {
+      res.status(404).json({ error: 'No cover.' });
+      return;
+    }
+    res.setHeader('Cache-Control', 'private, max-age=300');
     res.sendFile(file, { dotfiles: 'allow' });
   });
 
@@ -798,6 +832,7 @@ export function createApp(ctx: AppContext) {
         })),
         lookups: { pending: lookups.pending(), running: lookups.isRunning() },
         refresh: refresher.status(),
+        storeImports: lastStoreImports(db),
       };
     }),
   );
@@ -851,9 +886,12 @@ export function createApp(ctx: AppContext) {
     lookups,
     sources,
     refresher,
+    covers,
     close: async () => {
+      clearTimeout(coversAtStart);
       // First, so a lookup run cancelled by closing resumes at the next start.
       await refresher.close();
+      await covers.close();
       await lookups.close();
       await scans.close();
       await platform.close();

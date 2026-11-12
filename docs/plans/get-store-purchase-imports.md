@@ -1,6 +1,16 @@
-# Import store purchases: official exports first, then a browser extension
+# Import store purchases: official exports checked, then console-script collectors
 
-Status: planned. Nothing is built yet, and no store has been checked on a signed-in account.
+Status: **Stage 0 decided** (all four stores get a collector). **Store links built and checked**
+(A1b). **Stage 1 done for Kindle on amazon.com** (A2 and A3, 2026-11-11). The extension (1c) is
+**deferred** to a nice-to-have (owner decision, 2026-11-11). **Stage 2:**
+
+- **Google Play Books** and **Kobo** are checked (2026-11-11).
+- **GlobalComix** is checked too (version 2, 2026-11-11). Version 1's own request was refused
+  (HTTP 400); version 2 reads the page's own answers.
+- **Every store in scope now has a checked collector.** Remaining real-account checks: the
+  Kindle Unlimited, Prime and loan labels; any Kobo preview or Kobo Plus marks; and the Kobo and
+  GlobalComix reports' counts, which weren't shared.
+
 Written 2026-11-11. This revises a first draft from 2026-11-10 ("console scripts, then one
 extension") after a review. The review kept the draft's rules and its order of proving extraction
 before packaging it. It added: checking each store's official export before scraping anything,
@@ -39,6 +49,18 @@ comic pages.
   "I can read these in this store now" for many books at once. That sets
   `locations.confirmed_readable`. Store items stay eligible for recommendations under the existing
   rules.
+- **Updates must be on demand, without waiting** (decided 2026-11-11, after Stage 0). Amazon's
+  "Request your data" takes a day to a week for every update, so Kindle gets a collector the owner
+  can run whenever they like. Google Play Books gets one too: Takeout is quicker (minutes to
+  hours) but is still a fresh request and download for every update. The official exports are
+  only an optional, one-time completeness check, never the way updates arrive.
+- **Console scripts are the supported way; the extension is a nice-to-have** (decided
+  2026-11-11, after Stage 1). For now only the owner uses the app, and they're happy to paste
+  the script into the console. Stage 1c and owner actions A4 and A5 move to "Later: the browser
+  extension". Every collector stays a console script built from the shared core, so an extension
+  can still wrap it later without a rewrite.
+- **Stage 2 order** (decided 2026-11-11): Google Play Books, then Kobo (kobo.com/us), then
+  GlobalComix. All three get a look-around first, in one sitting (A6).
 - **Hand over a file.** The collector downloads a JSON file and the owner chooses it in the app.
   The collector never talks to the app, so `server/src/security.ts` stays as it is, and collecting
   works while the app is closed. Sending data straight to the app is a later idea, not part of this
@@ -56,7 +78,8 @@ comic pages.
 1. **Check each store's official export before writing a scraper (Stage 0).** An official file
    or API rarely breaks, needs no scraping and has no account risk. A scraper is built only where
    the official route is missing, incomplete or too hard for the owner. Even where a scraper is
-   still needed, the official export can confirm that a scan found everything.
+   still needed, the official export can confirm that a scan found everything. (Stage 0 found
+   no store whose export suits repeated updates; the owner then chose collectors for all four.)
 2. **Build one store end to end first (Stage 1):** collector, JSON file, preview and import, and
    the extension. Only then add the other stores. That proves the whole path once, and later stores
    reuse it.
@@ -119,6 +142,52 @@ whether the format looks stable.
 many books they own in each (owner action A1). Stage 1 starts with the store that has the most
 books and needs a collector. If the owner can't say, start with Kindle.
 
+### What the research found (2026-11-11)
+
+Desk research only: public help pages, developer docs and other people's write-ups of their own
+exports. **None of it is checked on the owner's account**, and third-party write-ups can be out of
+date or describe a different country, so every "probably" below is for owner action A1 to settle.
+Fields only, never titles.
+
+| Store             | Official route                                                                                                                                                                                                                                     | What it seems to contain                                                                                                                                                                                                                                                                                                                                                  | Tells purchases apart?                                                                                                                                                                                                                                                                            | Time and steps                                                                                                                                                                    | Stable format?                                                                                                                                   |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Amazon Kindle     | **Request your data** (Account → Data and privacy / Privacy Central → Request your data), choosing the Kindle and digital-orders categories or everything. Arrives as a zip by email link, with a `FileDescription` manifest.                      | Write-ups name `Digital-Ordering.*/Digital Items.csv` (digital purchases, including Kindle books, next to `Digital Orders Monetary.csv`) and a `Digital.Content.Ownership` folder of JSON files with one record per title and an ASIN-style ID (Amazon's own ID for personal documents). Its exact columns aren't published anywhere found.                               | Probably, partly: `Digital.Content.Ownership` is described both as "all content, including samples, magazines and apps" and as "borrowed and returned content", so it seems to carry a rights or origin type per record. Whether free claims, Kindle Unlimited and loans are told apart: unknown. | Third parties say from a day (one category) to about a week (everything), up to 30 days by law in the EU/UK; the download link lasts about 30 days. About 6 clicks, then waiting. | Reasonably: it's a legal-request export that has kept the same folder names for years, but the files are undocumented and may differ by country. |
+| Google Play Books | **Google Takeout** (takeout.google.com): the "Google Play Store" and "Play Books" products. The **Books API "My Library"** (`mylibrary/bookshelves`, shelf "Purchased", id 1; "My eBooks", id 7) needs a Google Cloud project and an OAuth client. | Takeout's Play Store folder has JSON files `Library.json` (everything attached to the account: apps, films, books) and `Purchase History.json`. The Play Books folder has an HTML file per book with title, author, last opened time, a Play Books ID and a link, plus highlights and notes. The API's Purchased shelf lists exactly the volumes bought, with volume IDs. | Takeout: probably by document type in `Library.json`; Play Books' own folder mixes purchases and uploads. API: yes ("Purchased" is fixed and holds only purchases; free claims are unknown).                                                                                                      | Takeout: minutes to hours, about 8 clicks. API: a Cloud project, OAuth consent screen and client before any request: **too much setup for the owner**, so it's not pursued.       | Takeout: undocumented but long-lived. API: documented and stable.                                                                                |
+| Kobo              | No self-service export found. kobo.com's **My Books** page lists the library (with "Read now" for books the Kobo Web Reader supports). A privacy request goes by email to privacy@kobo.com (the Legal and Privacy Team).                           | Unknown: nothing public says whether a privacy reply includes purchase history, or in what format.                                                                                                                                                                                                                                                                        | Unknown.                                                                                                                                                                                                                                                                                          | An email, then up to the legal deadline (30–45 days). The format is chosen by Kobo's staff.                                                                                       | No: a hand-made reply each time.                                                                                                                 |
+| GlobalComix       | None found: no reader-side export, no public API for purchases. Its terms mention account history but no export. (A third-party catalogue scraper exists; it reads the public catalogue only, never accounts, and isn't used.)                     | —                                                                                                                                                                                                                                                                                                                                                                         | —                                                                                                                                                                                                                                                                                                 | A support or privacy request is the only route.                                                                                                                                   | —                                                                                                                                                |
+
+Sources (read 2026-11-11): Amazon export write-ups at
+[swiatczytnikow.pl](https://swiatczytnikow.pl/czy-amazon-sledzi-kazdy-nasz-ruch-na-kindle-dostalem-swoje-dane-i-oto-co-w-nich-znalazlem/),
+[hackerific.net](https://blog.hackerific.net/2026/03/26/exploring-amazon-data-exports/) and
+[note.com](https://note.com/abay_ksg/n/n23198c6fcaa4); timing from
+[takeoutday.org](https://takeoutday.org/guides/how-to-download-amazon-data) and
+[The Intercept](https://theintercept.com/2022/03/27/amazon-personal-data-request-dark-pattern/);
+Google's [Books API "Using the API"](https://developers.google.com/books/docs/v1/using) (shelf IDs);
+Takeout Play Store files from a
+[Google Play community thread](https://support.google.com/googleplay/thread/241179510/csv-list-of-google-play-books?hl=en)
+and [apppurchasevault.com](https://apppurchasevault.com/google-takeout-play-store/); the Play Books
+Takeout folder from [imbue-ai/datalib#1233](https://github.com/imbue-ai/datalib/pull/1233); Kobo's
+[privacy policy](https://authorize.kobo.com/terms/privacypolicy) and
+[Web Reader help](https://help.kobo.com/hc/en-us/articles/4408228476567); GlobalComix's
+[terms of use](https://globalcomix.com/terms-of-use).
+
+### Decision per store (2026-11-11)
+
+The owner decided that updates must come without waiting (see "Decisions the owner has made"),
+so no store uses an official export to bring books in.
+
+| Store             | Decision                                                                                                                                                                                                                                                                                                 |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Amazon Kindle     | **Collector.** "Request your data" takes a day to a week per update, which the owner ruled out. The collector reads the signed-in library page ("Manage Your Content and Devices", Books). If the owner ever has an export anyway, its counts can check one scan once; no parser is written for it.      |
+| Google Play Books | **Collector.** Takeout is a fresh request and download for every update. The collector reads the signed-in Play Books library (play.google.com/books). Takeout's `Library.json` can check one scan's count once, if the owner wants. The Books API stays out: its OAuth setup is too much for the owner. |
+| Kobo              | **Collector, or skip by count.** No self-service export. If the owner has fewer than about 10 Kobo books, use the store CSV or manual entry (decision 3). Otherwise a collector on My Books. The owner may also email a privacy request, only as a completeness check later: it's not needed to start.   |
+| GlobalComix       | **Collector, or skip by count.** No export or API. Same rule as Kobo.                                                                                                                                                                                                                                    |
+
+**A1 answered (2026-11-11):** over 12 books in each of the four stores, so none is skipped.
+The owner couldn't say which has most, so Stage 1 is **Kindle, on amazon.com**. The owner read
+the account risk notice and chose to go ahead. Google Play Books, Kobo and GlobalComix follow in
+Stage 2.
+
 ## Store links
 
 This part needs no collector, so build it **first**, right after Stage 0. It helps the store
@@ -166,6 +235,54 @@ books already in the app straight away.
 
 **Done when:** every store book can carry a working link. The owner has clicked one for each store
 they use and it opened the right book (owner action A1b). Owner edits survive a repeat import.
+
+### Built (2026-11-11)
+
+- Migration `014_store_links.sql` (`url`, `url_kind`, `url_by_owner` on `locations`), in the
+  backup with `locations`; the restore regression fills all three.
+- `lib/store.ts`: `STORE_LINK_HOSTS` (the one list), `checkStoreLink` (form only, never a request),
+  `setLocationLink` (owner wins; imports fill only an untouched empty link), `storeLinkOrProblem`
+  (imports: a refused link is left out with a problem line, the row still imports).
+- Routes: `POST /api/store/items` and `POST /api/items/:id/locations` take an optional `url` (the
+  owner's); `PATCH /api/locations/:id` takes `url` (a link, or `null` to remove it) and/or
+  `readable`; `GET /api/items/:id/locations` returns `url`, `urlKind`, `urlHost`, `urlByOwner`.
+- Store CSV: optional `url` column. A repeat import ("already") adds a missing link to the store
+  copy that is still there, never a copy the owner removed. The result counts `links` added.
+- `availability.storeLinks` on every item summary and card. UI: **Read in Kindle ↗** on the book
+  page (after **Open** while a file is here, first otherwise), What next cards (first when no file
+  is here), Shortlist and Library rows; **Add link / Change link / Remove link** under "In a store
+  app"; a link field in "Add a book you own in a store app" (none for Apple Books, which says why).
+- CSV export: `store_links` column after `stores`.
+- Tests: `server/src/app.storeLinks.test.ts`. Screenshots: `item-store`, `item-store-link`,
+  `library-store-links` (the demo Kindle book has an invented link, not in Amazon's ID form).
+
+**Hosts accepted** (https only; no user name, password or port):
+
+| Store             | Hosts                                                                                                                                                                                                                                           | Paths                                             | Reader or page                                                                            |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| Kindle            | `read.amazon.<x>`, `www.amazon.<x>`, `amazon.<x>` for x in com, ca, com.mx, com.br, co.uk, ie, de, fr, it, es, nl, se, pl, com.be, com.tr, ae, sa, eg, in, co.jp, com.au, sg (Amazon's country sites as known; not checked against a live list) | any                                               | `read.amazon.*` is the web reader; the rest are pages                                     |
+| Google Play Books | `play.google.com`                                                                                                                                                                                                                               | `/books…`, `/store/books…` (Play also sells apps) | `/books/reader` is the reader                                                             |
+| Kobo              | `kobo.com`, `www.kobo.com`, `readnow.kobo.com` (the web reader)                                                                                                                                                                                 | any                                               | `readnow.kobo.com` reads; elsewhere a `reader` / `web-reader` / `read` path segment reads |
+| GlobalComix       | `globalcomix.com`, `www.globalcomix.com`                                                                                                                                                                                                        | any                                               | as Kobo                                                                                   |
+| Another app       | any real https site (not `localhost`, a bare name or an IP address), shown with its host                                                                                                                                                        | any                                               | page                                                                                      |
+| Apple Books       | none: no web reader                                                                                                                                                                                                                             |                                                   |                                                                                           |
+
+`readnow.kobo.com` is Kobo's web reader: the owner's Kobo library links every "Read now" button
+there (look-around report, 2026-11-11), so it's accepted as a Kobo reader link.
+
+**Link patterns from a store's ID: none in use yet.** Candidates, all **unchecked** on a signed-in
+account, so the code doesn't build any of them:
+
+- Kindle: `https://read.amazon.<x>/?asin=<ASIN>` (the web reader by ASIN; not documented by
+  Amazon).
+- Google Play Books: `https://play.google.com/books/reader?id=<volume ID>` (the form the Books
+  API's `webReaderLink` uses) and `https://play.google.com/store/books/details?id=<volume ID>`.
+- Kobo: store pages use a title slug, not the product ID, so there's no ID pattern; the Web Reader
+  opens from My Books ("Read now", only for books it supports).
+- GlobalComix: not known.
+
+Each is checked against the owner's A1b report (or a collector's real page) and recorded here
+before an adapter uses it.
 
 ## Account safety
 
@@ -305,7 +422,72 @@ there too). Pick a store and it shows that store's steps, then a file picker. Ch
 tests against in-memory SQLite for each outcome, re-importing the same file, partial files, and the
 owner's data winning.
 
-### 1c. Package as a browser extension
+### Built for Kindle (2026-11-11)
+
+- **Collector core** (`tools/store-collector/core/`): `limits.ts` (the safety numbers, also in
+  PLAN.md §20), `format.ts` (the file), `adapter.ts`, `scan.ts` (the loop: pacing, dedupe by
+  store ID, stops on cancel, sign-in, 401/403/429, a redirect elsewhere, a non-JSON answer, a
+  repeated cursor, stalled pages, the request limit or a fingerprint mismatch; never retries; a
+  stopped scan is `partial`, or `failed` when nothing was found), `report.ts` (title-free).
+- **Kindle adapter** (`adapters/kindle.ts`, version 1): runs only on
+  `https://read.amazon.com/kindle-library`. It uses the request that page itself makes to list
+  the library, `GET /kindle-library/search?query=&libraryType=BOOKS&paginationToken=<n>&sortType=recency&querySize=50`.
+  That's a search: it reads and changes nothing. The paging token starts at `0` and comes back in
+  each answer; an empty `itemsList` or no token ends the list. Each item's `asin`, `title`,
+  `authors` ("Last, First:"), `originType`, `resourceType`, `percentageRead` and `webReaderUrl`
+  are read. Ownership: `PURCHASE` is a purchase (free books are $0 purchases at Amazon); Kindle
+  Unlimited, Comics Unlimited and Prime are excluded as subscriptions; samples (`SAMPLE`, or a
+  `resourceType` with SAMPLE), loans and personal documents are excluded; **any other label is
+  uncertain** and goes to the owner. Reading status is **not** taken from `percentageRead` (a
+  finished Kindle book often stops at 98%): only the percentage is kept. The reader link comes
+  only from the answer's own `webReaderUrl`.
+  **All of this is from public descriptions of the page, not checked on a signed-in account**:
+  A2 checks it, and the fingerprint (`itemsList`, and `asin` and `title` on every item) stops
+  the scan the moment the answer differs.
+- **Console script:** `npm run build:collector` bundles it with rolldown (already in the `web`
+  workspace through Vite) into `tools/store-collector/console-scripts/kindle.js`, readable and
+  committed, so the app can hand it over with no build step. A test fails if the committed file
+  differs from a fresh build. Settings → Import store purchases has a **Copy the Kindle script**
+  button and the steps.
+- **Import** (`server/src/lib/storePurchases.ts`): `readPurchaseFile` checks the envelope and each
+  record; `previewPurchases` and `importPurchases` as specified above. Migration
+  `015_store_purchases.sql` (`store_purchases` in the backup and the restore regression;
+  `store_import_runs` excluded, like `scan_runs`). Merge and undo carry `store_purchases`.
+  The run log has no titles. Needs review shows "Still yours in the store?" (tier 3) with
+  **Keep** / **Remove the store copy**. Diagnostics shows the last import per store.
+  - An unticked possible match becomes a separate book, as with the store CSV.
+  - Without an `accountScope` in the file, "This is my only Kindle account" is ticked by default.
+    Unticking it asks for a name, which keeps that account's books apart.
+- **Tests:** `server/src/storeCollector.test.ts` (adapter and scan loop on invented answers in
+  `fixtures/stores/kindle/`) and `server/src/app.storePurchases.test.ts` (routes, plus a collector
+  scan imported end to end). Screenshot: `settings-store-purchases`.
+- **Not yet:** `accountScope` (no account ID was found in the library answer), other Amazon
+  countries, and acquisition dates (not in this answer). The Kindle collector shows as
+  **Not checked yet** until A2 passes; then set `COLLECTORS.kindle` in `lib/storePurchases.ts` to
+  `checked` with the date.
+
+### Checked on the owner's account (2026-11-11)
+
+- **A2** (Chrome on Windows): a **complete** scan in 4 requests, with the layout check passing.
+  It found 155: 154 kept as purchases and 1 sample left out. Labels seen: `PURCHASE/EBOOK` and
+  `PURCHASE/EBOOK_SAMPLE` only. The fields were exactly what the adapter expects (`asin`,
+  `authors`, `mangaOrComicAsin`, `originType`, `percentageRead`, `productUrl`, `resourceType`,
+  `title`, `webReaderUrl`). Every kept book had a reader link and a progress figure, and none had
+  an ISBN. So **paging over several pages is proven on a real account**, and the sample rule
+  works.
+- **Still unproven:** the Kindle Unlimited, Prime and loan labels. The owner's library had none.
+  An unknown label goes to review as uncertain, so a wrong guess there can't add a book silently.
+- **A3:** the preview and import worked, by the owner's account (no titles shared).
+- **A1b:** a typed store link opened the right book. Kindle reader links come from the answer's
+  own `webReaderUrl`, so no link pattern needs checking for Kindle.
+- `COLLECTORS.kindle` is now **Checked on 2026-11-11**.
+- **Found after A3:** imported books had little detail until a lookup ran, and lookups started
+  only after a library scan. An import that adds books now starts lookups straight away, under
+  the same "Look up new books automatically after each scan or import" setting.
+
+### 1c. Package as a browser extension (deferred: see "Later: the browser extension")
+
+Deferred by the owner on 2026-11-11. The design below stays as the plan for when it's wanted.
 
 - One Manifest V3 extension for **Microsoft Edge and Google Chrome** (Edge is the Windows
   default). Firefox comes later; it won't keep an unsigned extension installed.
@@ -321,16 +503,23 @@ owner's data winning.
   and review process when it comes up.
 
 **Done when (Stage 1):** the first store works end to end on the owner's signed-in account. That
-means owner actions A2–A4 have been done, the title-free reports match the store's own count (or
+means owner actions A2–A3 have been done (A4 only once the extension is built), the title-free reports match the store's own count (or
 the official export's count), and tests, typecheck, lint and format pass on Ubuntu and Windows CI.
 If the owner's library fits on one page, multi-page scanning is proven only on fixtures. Record
 that as a remaining real-account check, not as supported.
 
 ## Stage 2: the remaining stores
 
-For each store whose Stage 0 decision is "collector", in order of the owner's book counts: add an
-adapter, then prove it with the console script and the owner's report, then add it to the
-extension. Release a new extension version with each one. For every store, also check its reader and
+For each store whose Stage 0 decision is "collector", in the owner's order (Google Play Books,
+Kobo, GlobalComix):
+
+1. **Look around** (A6, all three stores in one sitting). The owner runs the look-around script on
+   the store's library page while scrolling to the bottom, and pastes its report.
+2. Write the adapter from that report, with invented fixtures that copy the reported structure.
+3. Prove it with the console script and the owner's title-free report (A2 for that store), then
+   the import (A3).
+
+There's no extension version to release while the extension is deferred. For every store, also check its reader and
 book-page link pattern ("Store links"). Things to check on a signed-in account:
 
 | Store             | Check                                                                                                                                                                                                                                                          |
@@ -339,6 +528,305 @@ book-page link pattern ("Store links"). Things to check on a signed-in account:
 | Amazon Kindle     | Purchases and permanent free books, told apart from samples, personal documents, loans and Kindle Unlimited; ASINs; country-specific library pages; how it pages.                                                                                              |
 | Kobo              | Purchases, told apart from previews and Kobo Plus; product IDs; archive and library filters; how it pages; reading status.                                                                                                                                     |
 | GlobalComix       | Purchases and permanent unlocks, told apart from subscription, follows and reading lists; whether the unit is an issue, volume or collection; release/collection IDs; how it pages; reading status. A permanent unlock counts even without a downloadable PDF. |
+
+### The look-around script (built 2026-11-11)
+
+`tools/store-collector/probe/` and `console/probe.ts`, built into `console-scripts/probe.js`.
+Settings → Import store purchases shows its steps for any store without a script, with a
+**Copy the look-around script** button.
+
+- **It only watches.** It wraps the page's own `fetch` and `XMLHttpRequest` while the owner
+  scrolls, and puts them back on Finish or Cancel. It makes no request of its own and sends
+  nothing anywhere: the report stays on screen to copy.
+- **What it reports:**
+  - each kind of request: method, URL pattern, status, content type and the **shape** of the
+    answer;
+  - the requests made before it started (URL patterns only);
+  - data built into the page (Google's `AF_initDataCallback` blocks, JSON script tags,
+    `__NUXT__` and similar), as shapes;
+  - repeated page elements (likely book cards), with counts, attribute names and link patterns.
+- **The shape rules:**
+  - Answers are read as JSON, or as Google's `)]}'` batch lines. JSON inside strings is opened up.
+  - Several records of one kind are merged into one shape. Mixed arrays keep each position,
+    because Google's answers put a different field at each position.
+  - Keys that look like IDs or emails are collapsed into `<id-like keys>`.
+- **It never shows a value that could name a book, an ID or the owner:**
+  - Strings show only as a description (`text(10–50)`, `id-like(17)`, `digits(13)`, `date text`,
+    `link <pattern>`).
+  - The exceptions are known label words (purchase, sample, free…) and UPPER_SNAKE labels like
+    `PURCHASE_TYPE_SAMPLE`.
+  - URLs show as patterns: ID and slug segments become `:id` and `:slug`, and query values are
+    hidden except `rpcids` and a few paging settings.
+- **Tests:** `server/src/storeProbe.test.ts` feeds it invented answers full of titles, IDs and an
+  email, and checks that none reaches the report.
+
+### What the look-around reports showed (A6, 2026-11-11)
+
+Structure and counts only; the reports themselves stay out of the repo.
+
+- **Google Play Books**, on `play.google.com/books?source=purchases`. The owner uses the
+  Purchases filter because their own uploads are in the same library.
+  - The page loads the whole library at the start, from Google's internal
+    `playbooks-pa.clients6.google.com` services (`SyncUserLibrary`, `GetLicenses`,
+    `ListFreeBooksForLicense` and others). It made no requests while scrolling.
+  - It renders one `gpb-volume-card` per book: 23, of which 22 had `div.card.ebook` and one had
+    another card type. Each card has `a.title` and `a.cover-link` to
+    `play.google.com/books/reader?id=<volume ID>`, and `a.author` to an author page.
+- **Kobo** (`kobo.com/us/en/library/books`, Firefox):
+  - The library is server-rendered HTML, paged as `?pageNumber=N`; scrolling fetched 3 more
+    pages as HTML.
+  - Cards are `li.item-wrapper.book` with a `data-track-info` attribute.
+  - Each card has a "Read now" link to `readnow.kobo.com/<id>`, "view details" to
+    `/us/en/ebook/<slug>`, and an author link.
+  - **Missing:** what tells a purchase from a preview, a free book or Kobo Plus, and what
+    `data-track-info` holds. The first look-around didn't outline cards or read HTML pages.
+- **GlobalComix** (`globalcomix.com/my-shelf/purchases`, Firefox):
+  - About 30 cards linking `/c/<comic>/r/<release>`.
+  - While scrolling, the page fetched 5 release-detail answers from
+    `api.globalcomix.com/v1/…?releaseDetails=…`. Each holds one release with `comic_name`,
+    `title`, `release_type_name` ("Volume"), `chapter`, `isbn` and per-page panel data. That's
+    about 1.7 MB for 5, too heavy to fetch per book.
+  - `window.__INITIAL_STATE__` holds react-query results. The ones shown were site settings,
+    including the reading statuses "reading" and "finished".
+  - **Missing:** the request or data that lists the purchases themselves. It was loaded before
+    the script started.
+
+### The look-around script, version 2 (2026-11-11)
+
+Built for A6b:
+
+- It outlines one book card in detail: tags, classes, attribute names, the shape of any JSON in
+  attributes such as `data-track-info`, and label words in texts like "Preview" or "Kobo Plus".
+- It reads the HTML pages the store's page fetches (Kobo) and outlines their repeated elements
+  and one card.
+- It resolves relative request addresses (Kobo's showed as `invalid.example`).
+- It no longer repeats the same shape over and over.
+- It gives longer output for data built into the page.
+- Its steps now say to click away and back to the books list once after starting, so a
+  single-page site like GlobalComix loads its list again while the script watches.
+
+### Google Play Books (built 2026-11-11, not yet checked)
+
+- `adapters/googlePlay.ts` (version 1) and `console/google_play.ts`, built into
+  `console-scripts/google_play.js`.
+- It runs only on `play.google.com/books…?source=purchases`, so uploads stay out.
+- The core gained a second loop, `scanCards`. It scrolls the page about a screen at a time
+  (same pacing and limits as Kindle) and reads the cards, keeping every card seen. **It makes no
+  requests at all.** It ends complete when the end of the list brings nothing new twice running.
+  It stops if the tab leaves the page (sign-in or anything else), and never reports an empty page
+  as an empty library.
+- **Reading:** each card gives the volume ID from its reader link, the title, the authors, and a
+  reader link reduced to `play.google.com/books/reader?id=<volume ID>`.
+  - An `ebook` card on the Purchases filter is a purchase.
+  - **Any other card type** (like the report's one non-ebook card) is uncertain, with the card
+    type as evidence, so the owner decides.
+  - No reading status, ISBN or acquisition date is shown on the card, so none is recorded.
+- **Not known yet:** whether Purchases includes free books the owner claimed (they'd come in as
+  purchases, which is what the plan wants), and what the non-ebook card is. The A2 report's
+  labels line will show the card types.
+- Settings shows Google as **Not checked yet** with its steps. Tests: `storeCollector.test.ts`
+  (cards and the scrolling loop on invented cards in `fixtures/stores/google_play/`) and
+  `app.storePurchases.test.ts` (imported end to end).
+
+### Google Play Books, first run, and version 2 (2026-11-11)
+
+- **Version 1** stopped on its first look at the page with `layout_changed`: "a book card
+  without a reader link". It made 1 step and found nothing.
+- **Most likely cause:** cards below the first screen are empty until scrolled into view. The
+  look-around ran after the owner had scrolled, so it saw every card filled in.
+- **Version 2:**
+  - Cards with neither a link nor a title are skipped and read later, as the scroll fills them in.
+  - Any `play.google.com` book link with an `id` counts. A reader link becomes `readUrl`; any
+    other link, such as an audiobook's, becomes `pageUrl`.
+  - A failure now names the parts the card had (field names only).
+  - The empty-library check moved to the end of the scan.
+  - Labels are counted once per book, as card type plus link path (for example
+    `ebook via /books/reader`), so the next report shows what the one non-ebook card is.
+
+### Second look-around (A6b, 2026-11-11)
+
+- **Kobo:**
+  - The library pages hold 24 books each. Scrolling fetched three, with 24, 24 and 14 books, so
+    about 62 in all. The page shown at the end held one page of 14.
+  - Each book has its "Read now" link (`readnow.kobo.com/<id>`) three times and "view details"
+    (`/us/en/ebook/<slug>`) twice, apparently desktop and mobile copies.
+  - The card outline picked the cover box (`div.item-image`) instead of the whole card, so
+    title, author and any Preview / Kobo Plus label are still unseen. The `data-track-info` on
+    that box is about the shelf (`description`, `totalBooks`), not the book.
+- **GlobalComix:**
+  - **Each card shows the label "Purchased".** Cards link to `/c/<comic>/r/<release>` and show
+    two texts, one 50–200 characters and one under 10.
+  - The detail answers (`api.globalcomix.com/v1/…?releaseDetails=…`) hold a
+    `release_user_purchase` record (purchase time, price, `is_downloadable`), plus
+    `release_type_name` ("Volume"), `isbn`, `comic_name`, `title`, `contributors` with type
+    IDs, and `read_url` (`globalcomix.com/read/<id>/<slug>`). They are heavy (about 460 KB each,
+    with page panel data), so they won't be fetched per book.
+  - The list of purchases still didn't show. It's most likely in `__INITIAL_STATE__`'s react-query
+    queries, which were cut off after the first, site-settings query. Clicking away and back
+    reused cached data, so no new request was made.
+
+### Look-around version 3 (2026-11-11)
+
+- Outlines **one whole card**: the biggest repeated element with a link and an image that
+  doesn't contain another element like itself.
+- Relative links in outlines show the page's own host.
+- `__INITIAL_STATE__`-style react-query state is listed **one query at a time**, each with its
+  key. Plain words in the key are shown; anything with digits, spaces or hyphens is only
+  described.
+
+### Google Play Books checked (A2, 2026-11-11)
+
+- **Version 2** ran in Firefox: complete in 3 steps, 23 found, with the layout check passing.
+  22 cards were `ebook via /books/reader` (purchases). One was `audiobook via /books/listen`,
+  which goes to the owner as uncertain with a page link. No ISBNs, no progress.
+- **A3:** imported. `COLLECTORS.google_play` is **Checked on 2026-11-11**.
+- **Found during A3:**
+  - **The same title twice:** two separate Google volumes with the same title and author (most
+    likely two editions) came in as two books. The preview now marks a later book in the same file
+    with the same title and author as **"Same title and author as another book in this file
+    (another edition?)"**. Ticked, both store records join one library book; unticked, they stay
+    separate, as before. Books already doubled can be joined with **Merge with another entry** on
+    the book's page.
+  - **Lookups:** since the import-starts-lookups change, no "Look them up now" prompt appears
+    after an import. Books whose lookup finds several close editions (classics) go to Needs review
+    as "Two possible matches" rather than being guessed.
+
+### Third look-around (A6c, 2026-11-11), and Kobo built
+
+- **Kobo:** the whole card, `li.item-wrapper.book`, is now outlined.
+  - Its `data-track-info` JSON holds `productId` (36 characters), `title`, `readStatus`,
+    `isSearchResult` and the store's `totalBooks`.
+  - `h2.title a` holds the title and links `/us/en/ebook/<slug>`.
+  - `p.authors a.contributor-name` gives one author each.
+  - `a.button.readnow` links `readnow.kobo.com/<id>`. Its `data-*` attributes repeat the title and
+    contributors, with empty series fields.
+  - `span.item-status` shows "Unread", and `span.date-added` the date added.
+  - The card's menu holds actions (mark as finished, remove from library, archive). The collector
+    never touches them.
+  - The owner opens `kobo.com/us/en/library/books`, not `/library`, to see the books.
+- **Kobo collector** (`adapters/kobo.ts` version 1, `console/kobo.ts`, `console-scripts/kobo.js`):
+  - **Paging:** it fetches `library/books?pageNumber=1, 2, …`, the same HTML pages the library
+    page fetches while scrolling, and reads them with the browser's own HTML parser. It never
+    presses a card's buttons. It ends at a page with no books, or one that brings nothing new (a
+    page past the end may repeat the last).
+  - **The scan core** gained HTML answers (`answer: 'html'` plus the page side's `fromHtml`) and
+    `endsWhenNothingNew`. Every loop now refuses to call an empty library complete.
+  - **Ownership:** a card whose classes are just `item-wrapper book`, with no preview, sample,
+    Kobo Plus, subscription, loan or rental mark in its badges or classes, is owned (bought or
+    claimed free: the Books library holds both). Anything else is uncertain, with the marks as
+    evidence. Kobo's preview and Kobo Plus marks haven't been seen yet, because the owner's cards
+    showed none; A2's labels line will show any. **This is the one inference in Stage 2**: owned
+    is read from the absence of a not-owned mark on the owner's own Books library page.
+  - **Reading status:** Kobo's explicit status text ("Unread", "Finished", "Reading") is read.
+    It only fills what's empty, as always.
+  - **Links:** the reader link loses its tracking parameters (`readnow.kobo.com/<id>`); the
+    book's page link is `/us/en/ebook/<slug>`.
+  - **The report** shows the store's own count (`totalBooks`) next to what was found, so the owner
+    can check completeness at a glance.
+- **GlobalComix:**
+  - Cards were outlined as rows of five (`data-index`) holding release cards linking
+    `/c/<comic>/r/<release>`.
+  - Before the script started, the page called `api.globalcomix.com/v1/account/<word>?p=<n>`,
+    most likely the purchases list. It was masked because the path word was hyphenated, and its
+    answer wasn't seen.
+  - `__INITIAL_STATE__` wasn't on the page this time.
+  - **Look-around version 4:** paths made only of plain API words (`my-shelf`,
+    `digital-purchases` and the like) are shown. For GlobalComix, the steps now start on the home
+    page and reach Purchases through the site's own menu, so the list request happens while the
+    script watches (A6d).
+
+### Kobo checked; GlobalComix built (2026-11-11)
+
+- **Kobo:** the owner ran the Kobo script and imported ("seems to work").
+  - The report wasn't shared, so its counts and labels (including whether any preview or Kobo
+    Plus marks appeared) aren't recorded.
+  - `COLLECTORS.kobo` is **Checked on 2026-11-11**.
+  - **Still open:** confirm on a later run that the found count matches the store's own count, and
+    note any labels other than `book`.
+- **Fourth look-around (A6d):** started on the home page and reached through the menu, with the
+  owner's uBlock extension on (it didn't get in the way).
+  - The purchases list is `GET api.globalcomix.com/v1/account/digital-purchases?p=N`: one page
+    of 30 (about 680 KB). Its `payload.results` are purchase records: `id`, `token`, `release_id`,
+    `net_price`, `is_downloadable`, `create_time`.
+  - Each record holds its `release`: `id`, `title`, `comic_name`, `chapter`, `release_type_name`
+    ("Volume"), `isbn`, `read_url`, `comic_type`, the publisher's channel as `artist`, and
+    `user_read_status` (`is_complete`, `read_progress_percentage`, last read date). It has no
+    contributor list: authors aren't in this answer.
+  - The answer's `pagination` was past the report's cut; other list answers on the site carry
+    `page` and `total_pages`.
+  - Other requests seen: the site's home sections, `account/library?p=` (the reading library,
+    empty for this owner), and per-comic `releases`, `similar` and `read` answers.
+- **GlobalComix collector** (`adapters/globalcomix.ts` version 1, `console/globalcomix.ts`,
+  `console-scripts/globalcomix.js`):
+  - It runs only on `globalcomix.com/my-shelf/purchases` and asks for the same
+    `digital-purchases?p=1, 2, …` list as the page, with the browser's own sign-in (cookies). It
+    changes nothing. It follows `pagination` when present, otherwise it stops at a page that is
+    empty or brings nothing new.
+  - **Ownership:** every record is in the store's own list of digital purchases. A `net_price` of
+    0 is a free unlock (`free_claim`); anything else is a purchase. Gold subscription reading isn't
+    in this list, so nothing is excluded.
+  - **Unit** from `release_type_name`:
+    - Volume → `volume`
+    - Issue, Chapter or Episode → `issue`
+    - Collection, Omnibus, Compendium, Trade, TPB or Bundle → `collection`
+    - anything else → `book`
+      The report's labels line shows the types seen.
+  - **Title:** the release title. When that's only a number ("Volume 1", "#3"), it becomes
+    "Series, Volume 1". The series is `comic_name`, and the number is `chapter` when numeric.
+  - **Also read:** the ISBN; comic or manga from `comic_type`; the purchase date (day precision)
+    as `acquiredAt`; reading status (`is_complete` → finished, otherwise in progress when
+    progress is above 0) and the percentage; and `read_url` as the reader link.
+  - **Version 1's first run (A2):** its own request got **HTTP 400** at once. It stopped with
+    nothing read and didn't retry. The site adds something of its own to its requests. Copying that
+    would mean handling the site's sign-in, which "Account safety" rules out.
+- **GlobalComix version 2: it makes no requests.**
+  - The owner opens the home page fresh, pastes the script, and goes to My Shelf → Purchases with
+    the site's own menu.
+  - The script wraps the page's `fetch` and `XMLHttpRequest`, as the look-around does. It keeps
+    the answers from `api.globalcomix.com/v1/account/digital-purchases`, and puts everything back
+    when it ends.
+  - The new core function `collectAnswers` (pure) reads them with the same parser.
+  - It's complete only when the answers cover every page, from 1 to one that is the last (by
+    `pagination`, else a page shorter than `per_page` / `filters.perpage`). It finishes by itself
+    then, or when the owner clicks Finish. In that case a list not fully seen is partial ("pages
+    seen: …"). Nothing seen fails, with the steps.
+  - `checkPage` refuses to start on `/my-shelf`, because there the list has already loaded.
+  - `WatchAdapter` joins `Adapter` and `CardAdapter` as the third kind of collector.
+- **The same title twice** and **imports start lookups:** see "Google Play Books checked" above.
+
+### GlobalComix checked (2026-11-11)
+
+The owner ran version 2 (home page, then My Shelf → Purchases) and imported. The volumes came in
+with series and numbers, reading progress, and Read in GlobalComix links ("I think that worked").
+The report wasn't shared. `COLLECTORS.globalcomix` is **Checked on 2026-11-11**.
+
+### Covers for store books (owner decision 2026-11-11)
+
+The owner noticed that imported books had no pictures. Covers came only from files, and the app
+shows only pictures it holds itself (its own CSP, `img-src 'self' data:`). Asked how to add them,
+the owner chose **covers from Open Library**, not from the stores.
+
+- **Which books:** any book without a file cover (store books and reading history alike) whose Open
+  Library match is confident. That means the owner's confirmed match (`match_override`), or the
+  app's own accepted one (`lookup_state.accepted_source_id`), and not rejected. A provisional match
+  never gets a cover: a wrong picture is worse than none.
+- **How:** the work record (`/works/OL…W.json`, cached) gives the cover IDs. The first is fetched by
+  ID (`covers.openlibrary.org/b/id/<id>-M.jpg`). Open Library rate-limits covers by ISBN, not by ID.
+  Both requests go through the Open Library client, so they share its 1-a-second pace, its
+  pause after failures and its User-Agent. Adding `cover_i` to the search fields would have changed
+  every cached search, so it wasn't done. The picture is scaled like a file cover and saved as
+  `covers/item-<id>.jpg`.
+- **What's remembered:** `item_covers` (migration 016) records ok / none / failed. "None" and
+  "failed" are asked again after 30 days (`COVER_RETRY_DAYS`). Being offline records nothing, so
+  the next run carries on. The table is left out of backups, like the pictures, and refills after
+  a restore.
+- **When:** after every lookup run, and once a minute after the app starts, only when automatic
+  lookups are allowed (not in the demo or tests). Served at `/api/items/<id>/cover`.
+  `coverItemId` travels with item summaries and cards, and the `Cover` component uses it when
+  there's no file cover.
+- **Expect:** comics are often missing on Open Library, and an unconfirmed match gets no cover until
+  the owner confirms it.
+- **Tests:** `server/src/app.covers.test.ts`.
 
 **A collector that hasn't been checked is never shown as working.** In the extension and the app,
 each store is **Checked on <date>**, **Not checked yet**, or **Not supported** (with the reason).
@@ -363,14 +851,18 @@ each store is **Checked on <date>**, **Not checked yet**, or **Not supported** (
 Tell the owner plainly, at the start of the message, when each is due (as PLAN.md §21 asks). Add
 these rows to PLAN.md §21 when the stage starts.
 
-| ID  | When                  | What the owner does (no command line)                                                                                                                                                                                                                                                                      | Time                                 |
-| --- | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ |
-| A1  | Stage 0               | Say roughly how many books you own in Kindle, Google Play Books, Kobo and GlobalComix. For each store where the agent found an official export, follow its steps to request it. When it arrives, open it and tell the agent only which columns it has and how many rows (no titles).                       | 10 min, plus waiting days for Amazon |
-| A1b | Store links           | On a few store books (one per store you use), open the book page, add the link (copy it from the store's reader or book page in your browser), and click **Read in … ↗**. Say whether it opened the right book.                                                                                            | 5 min                                |
-| A2  | Stage 1a              | Sign in to the first store in Edge or Chrome, open its library page, and paste the provided script into the browser's developer console (the steps include Chrome's "allow pasting" prompt). Wait for it to finish, then paste the **title-free report** into chat. Keep the downloaded JSON file private. | 10–15 min                            |
-| A3  | Stage 1b              | In whatBooksNext: store books → Import store purchases → choose the JSON file. Check that the preview looks right, then import. Say whether anything was wrong (no titles needed).                                                                                                                         | 10 min                               |
-| A4  | Stage 1c              | Install the extension by following `INSTALL.md` (download the zip, unzip, open the browser's extensions page, turn on Developer mode, Load unpacked). Run **Scan this library** on the same store, import the file, and check that nothing is duplicated.                                                  | 15 min                               |
-| A5  | Each new store or fix | Install the new extension version the same way (or click Reload on the extensions page after replacing the folder), run a scan, and paste the report.                                                                                                                                                      | 10 min per store                     |
+| ID  | When                          | What the owner does (no command line)                                                                                                                                                                                                                                                                                                                          | Time                 |
+| --- | ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------- |
+| A1  | Stage 0                       | Say roughly how many books you own in Kindle, Google Play Books, Kobo and GlobalComix. No export requests are needed (decided 2026-11-11).                                                                                                                                                                                                                     | 2 min                |
+| A1b | Store links                   | On a few store books (one per store you use), open the book page, add the link (copy it from the store's reader or book page in your browser), and click **Read in … ↗**. Say whether it opened the right book. Also say, without the ID itself, what shape the reader's address has (for example `read.amazon.com/?asin=…`), so link patterns can be checked. | 5 min                |
+| A2  | Stage 1a                      | Sign in to the first store in Edge or Chrome, open its library page, and paste the script (Settings → Import store purchases → **Copy the Kindle script**) into the browser's developer console (the steps include the "allow pasting" prompt). Wait for it to finish, then paste the **title-free report** into chat. Keep the downloaded JSON file private.  | 10–15 min            |
+| A3  | Stage 1b                      | In whatBooksNext: Settings → Import store purchases → choose the JSON file. Check that the preview looks right, then import. Say whether anything was wrong (no titles needed).                                                                                                                                                                                | 10 min               |
+| A6  | Stage 2 start                 | In one sitting, on each of Google Play Books, Kobo (kobo.com/us) and GlobalComix: open your library page signed in, run the look-around script (Settings → Import store purchases → pick the store → **Copy the look-around script**), scroll to the bottom, click **Finish**, and paste the report into chat. It has no titles or IDs.                        | 15 min for all three |
+| A6b | Stage 2, Kobo and GlobalComix | Run the look-around again (it's improved) on Kobo's library and on GlobalComix's purchases. After starting it, click away and back to your books once, then scroll to the bottom, Finish, and paste both reports.                                                                                                                                              | 10 min               |
+| A6c | Stage 2, Kobo and GlobalComix | Run the look-around once more (version 3) on Kobo's library and on GlobalComix's purchases. Scroll to the bottom, click Finish, and paste both reports.                                                                                                                                                                                                        | 10 min               |
+| A6d | Stage 2, GlobalComix          | Open GlobalComix's home page (not Purchases), paste the look-around script there, then use the site's menu to go to My Shelf → Purchases. Scroll to the bottom, Finish, and paste the report.                                                                                                                                                                  | 5 min                |
+| A4  | Later (extension)             | Install the extension by following `INSTALL.md` (download the zip, unzip, open the browser's extensions page, turn on Developer mode, Load unpacked). Run **Scan this library** on the same store, import the file, and check that nothing is duplicated.                                                                                                      | 15 min               |
+| A5  | Each new store or fix         | Copy the store's script again from Settings (it's always the latest), run it, and paste the report. Once there's an extension: install the new version instead.                                                                                                                                                                                                | 10 min per store     |
 
 Never share in chat: the JSON file, book titles, account names, emails, or anything from the
 store's sign-in.

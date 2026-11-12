@@ -1,0 +1,32 @@
+[
+  {
+    "classes": ["card", "ebook"],
+    "href": "https://play.google.com/books/reader?id=invEmberOrch01",
+    "title": "The Ember Orchard",
+    "authors": ["Nell Varga"]
+  },
+  {
+    "classes": ["card", "ebook"],
+    "href": "https://play.google.com/books/reader?id=invTidewright02",
+    "title": "Tidewright",
+    "authors": ["Osric Lane"]
+  },
+  {
+    "classes": ["card", "ebook"],
+    "href": "https://play.google.com/books/reader?id=invLanterns003",
+    "title": "Lanterns Over Harrowgate",
+    "authors": ["Pell Inchcape", "Wenna Holloway"]
+  },
+  {
+    "classes": ["card", "audiobook"],
+    "href": "https://play.google.com/books/reader?id=invQuietMach04",
+    "title": "A Field Guide to Quiet Machines",
+    "authors": ["Tobiah Renn"]
+  },
+  {
+    "classes": ["card", "ebook"],
+    "href": "https://play.google.com/books/reader?id=invOrchardLed05&hl=en",
+    "title": "The Orchard Ledger",
+    "authors": []
+  }
+]

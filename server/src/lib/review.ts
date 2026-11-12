@@ -12,6 +12,7 @@ import { hiddenReviewKeys, identityRows, type CandidateView } from './identityRe
 import { HttpError, nowIso, parseJson } from '../util.ts';
 import { syncSeries } from '../identify/series.ts';
 import { record, snapshot, titleOf } from './operations.ts';
+import { notSeenRows, SERVICE_LABELS } from './storePurchases.ts';
 
 /**
  * Needs review (PLAN.md §11.4), as far as M2 goes: what the deep pass finds — candidate moves,
@@ -48,7 +49,8 @@ export interface ReviewRow {
     | 'wrong_match'
     | 'unidentified'
     | 'provisional'
-    | 'check_match';
+    | 'check_match'
+    | 'store_not_seen';
   tier: number;
   why: string;
   items: ReviewItemRef[];
@@ -160,6 +162,20 @@ export function listReview(db: DB): ReviewList {
       why: f.pdf_type_evidence ?? 'The PDF type is uncertain.',
       items: [item],
       files: [file],
+      actions: [],
+    });
+  }
+  // Store purchases a complete scan didn't find (computed): Keep or Remove the store copy.
+  for (const r of notSeenRows(db)) {
+    const item = toItem(r.itemId);
+    if (!item) continue;
+    rows.push({
+      id: r.id,
+      kind: 'store_not_seen',
+      tier: 3,
+      why: `Not seen in your latest ${SERVICE_LABELS[r.service]} scan: returned, refunded or removed?`,
+      items: [item],
+      files: [],
       actions: [],
     });
   }

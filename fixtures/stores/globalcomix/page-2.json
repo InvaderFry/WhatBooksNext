@@ -1,0 +1,28 @@
+{
+  "meta": { "user_id": 1, "code": 200, "params": { "p": "2" } },
+  "payload": {
+    "results": [
+      {
+        "entity_type": "ReleaseUserPurchase",
+        "id": 9100004,
+        "release_id": 9200004,
+        "net_price": "4.99",
+        "create_time": "2026-01-02 10:00:00",
+        "release": {
+          "entity_type": "Release",
+          "id": 9200004,
+          "comic_name": "Starfall Academy",
+          "chapter": "2",
+          "title": "Volume 2",
+          "release_type_name": "Volume",
+          "read_url": "https://globalcomix.com/read/inv-9200004/starfall-academy-volume-2",
+          "comic_type": { "entity_type": "ComicType", "id": 1, "name": "Comic" },
+          "user_read_status": null
+        }
+      }
+    ],
+    "suggestions": null,
+    "pagination": { "page": 2, "per_page": 3, "total_pages": 2, "total_results": 4 }
+  },
+  "error": null
+}

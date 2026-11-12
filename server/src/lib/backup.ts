@@ -36,6 +36,7 @@ export const BACKUP_TABLES = [
   'pick_feedback',
   'collection_coverage',
   'import_keys',
+  'store_purchases',
 ] as const;
 
 /**
@@ -54,6 +55,7 @@ const ADDED_IN: Record<string, number> = {
   series_publications: 9,
   collection_coverage: 6,
   import_keys: 8,
+  store_purchases: 15,
 };
 
 /**
@@ -79,6 +81,11 @@ export const BACKUP_EXCLUDED: Record<string, string> = {
   // Published-volume checks that failed, kept only to avoid asking again every run. A restore
   // simply checks those series again.
   series_publication_problems: 'retry notes, rebuilt by the next lookup',
+  // Operational log of store purchase imports (counts only, no titles), like scan_runs.
+  store_import_runs: 'import history only',
+  // Which online cover each file-less book has; the pictures aren't in backups either, and both
+  // are fetched again after a restore.
+  item_covers: 'online covers, fetched again',
 };
 
 export interface Backup {

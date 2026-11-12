@@ -38,6 +38,7 @@ const KIND_TITLES: Record<ReviewRow['kind'], string> = {
   unidentified: 'Not found online',
   provisional: 'Unconfirmed match',
   check_match: 'Check this match',
+  store_not_seen: 'Still yours in the store?',
 };
 
 export function Review({ onChanged }: { onChanged: () => void }) {
@@ -323,8 +324,10 @@ function ReviewCard({
   setPdfType,
   match,
   later,
+  run,
 }: {
   row: ReviewRow;
+  run: (fn: () => Promise<unknown>, message: string) => Promise<void>;
   act: (row: ReviewRow, action: string, fileId?: string, message?: string) => Promise<void>;
   setPdfType: (row: ReviewRow, type: string) => Promise<void>;
   match: (row: ReviewRow, body: object, message: string) => Promise<void>;
@@ -437,6 +440,40 @@ function ReviewCard({
           </>
         )}
         {row.candidates && <IdentityChoices row={row} match={match} />}
+        {row.kind === 'store_not_seen' && (
+          <>
+            <button
+              type="button"
+              className="small"
+              onClick={() =>
+                void run(
+                  () =>
+                    api.post(`/api/store-purchases/${row.id.replace('notseen:', '')}/not-seen`, {
+                      action: 'keep',
+                    }),
+                  'Kept',
+                )
+              }
+            >
+              Keep
+            </button>
+            <button
+              type="button"
+              className="small secondary"
+              onClick={() =>
+                void run(
+                  () =>
+                    api.post(`/api/store-purchases/${row.id.replace('notseen:', '')}/not-seen`, {
+                      action: 'remove',
+                    }),
+                  'Store copy removed',
+                )
+              }
+            >
+              Remove the store copy
+            </button>
+          </>
+        )}
         {row.kind === 'pdf_type' && (
           <>
             <button type="button" className="small" onClick={() => void setPdfType(row, 'comic')}>

@@ -1,5 +1,12 @@
 import { useState, type ReactNode } from 'react';
-import { FORMAT_LABELS, KIND_LABELS, type Availability, type ItemSummary } from './api.ts';
+import {
+  FORMAT_LABELS,
+  KIND_LABELS,
+  STORE_LABELS,
+  type Availability,
+  type ItemSummary,
+  type StoreLinkView,
+} from './api.ts';
 
 /** Availability shown as text plus an icon — never colour alone (PLAN.md §13.4). */
 export function AvailabilityLabels({ a }: { a: Availability }) {
@@ -17,6 +24,53 @@ export function AvailabilityLabels({ a }: { a: Availability }) {
         </span>
       )}
     </span>
+  );
+}
+
+/** "Read in Kindle", or "Read in another app (example.com)" so the owner sees where it goes. */
+export function storeLinkText(l: Pick<StoreLinkView, 'store' | 'host'>): string {
+  return l.store === 'other'
+    ? `Read in another app (${l.host})`
+    : `Read in ${STORE_LABELS[l.store] ?? l.store}`;
+}
+
+/**
+ * Read in Kindle ↗ (Store links): a plain link that opens in the owner's own browser, where
+ * they're signed in to the store. The server never fetches it. `primary`: the main action,
+ * for a book with no file present here (when a file is present, Open comes first).
+ */
+export function StoreLinks({
+  a,
+  title,
+  primary = false,
+}: {
+  a: Availability;
+  title: string;
+  primary?: boolean;
+}) {
+  const links = a.storeLinks ?? [];
+  if (links.length === 0) return null;
+  return (
+    <>
+      {links.map((l, i) => (
+        <a
+          key={l.url}
+          className={`button small store-link${primary && i === 0 ? '' : ' secondary'}`}
+          href={l.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          title={
+            l.kind === 'read'
+              ? `Opens it in ${STORE_LABELS[l.store] ?? 'the store'}’s web reader`
+              : `Opens its page at ${l.host}`
+          }
+        >
+          {storeLinkText(l)}
+          <span aria-hidden="true"> ↗</span>
+          <span className="visually-hidden"> ({title}, opens in a new tab)</span>
+        </a>
+      ))}
+    </>
   );
 }
 
@@ -61,15 +115,23 @@ export function Notice({
  */
 export function Cover({
   fileId,
+  itemId,
   kind,
   size = 'small',
 }: {
   fileId: string | null;
+  /** A book without a file cover: its own online cover, when it has one. */
+  itemId?: string | null;
   kind?: string | null;
   size?: 'small' | 'large';
 }) {
   const [failed, setFailed] = useState(false);
-  if (!fileId || failed)
+  const src = fileId
+    ? `/api/files/${encodeURIComponent(fileId)}/thumbnail`
+    : itemId
+      ? `/api/items/${encodeURIComponent(itemId)}/cover`
+      : null;
+  if (!src || failed)
     return (
       <span
         className={`cover cover-${size} cover-none`}
@@ -80,7 +142,7 @@ export function Cover({
   return (
     <img
       className={`cover cover-${size}`}
-      src={`/api/files/${encodeURIComponent(fileId)}/thumbnail`}
+      src={src}
       alt=""
       loading="lazy"
       decoding="async"

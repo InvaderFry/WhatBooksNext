@@ -168,7 +168,7 @@ describe('store CSV (§14)', () => {
   it('imports as previewed, and a second import duplicates nothing and keeps the owner’s edits', async () => {
     const tide = itemOf('tidewright.epub');
     const r1 = (await api.post('/api/import/csv', { text: CSV, attach: [4], keepNew: true })).body;
-    expect(r1).toEqual({ added: 2, attached: 2, already: 0, skipped: 0 });
+    expect(r1).toEqual({ added: 2, attached: 2, already: 0, skipped: 0, links: 0 });
     expect((await api.get(`/api/items/${tide}`)).body.user.progress).toBe('into_it');
     const lantern = db
       .prepare("SELECT id FROM items WHERE title = 'Lanterns Over Harrowgate'")
@@ -200,7 +200,7 @@ describe('store CSV (§14)', () => {
 
   it('skips rows matching nothing when asked, and puts the series number in place', async () => {
     const r = (await api.post('/api/import/csv', { text: CSV, attach: [], keepNew: false })).body;
-    expect(r).toEqual({ added: 0, attached: 1, already: 0, skipped: 3 });
+    expect(r).toEqual({ added: 0, attached: 1, already: 0, skipped: 3, links: 0 });
     await api.post('/api/import/csv', { text: CSV, attach: [], keepNew: true });
     const quills = db
       .prepare("SELECT series_position FROM items WHERE title = 'Quills, Volume Two'")
@@ -225,6 +225,7 @@ describe('store CSV (§14)', () => {
       attached: 0,
       already: 1,
       skipped: 0,
+      links: 0,
     });
     expect((await api.get(`/api/items/${id}`)).body.user).toMatchObject({
       progress: 'not_started',

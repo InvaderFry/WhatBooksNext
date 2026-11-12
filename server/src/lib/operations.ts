@@ -36,6 +36,7 @@ const ITEM_TABLES: [table: string, key: string][] = [
   ['candidates_rejected', 'item_id'],
   ['collection_coverage', 'item_id'],
   ['import_keys', 'item_id'],
+  ['store_purchases', 'item_id'],
 ];
 
 export interface Snapshot {
@@ -140,6 +141,7 @@ function stampOf(db: DB, id: string): string {
       ['locations', 'id'],
       ['collection_coverage', 'id'],
       ['import_keys', 'source, row_key'],
+      ['store_purchases', 'id'],
       ['candidates_rejected', 'source, source_id'],
     ].map(([table, order]) =>
       db.prepare(`SELECT * FROM ${table} WHERE item_id = ? ORDER BY ${order}`).all(id),
@@ -409,6 +411,7 @@ export function mergeItems(
     );
     db.prepare('UPDATE locations SET item_id = ? WHERE item_id = ?').run(keepId, otherId);
     db.prepare('UPDATE import_keys SET item_id = ? WHERE item_id = ?').run(keepId, otherId);
+    db.prepare('UPDATE store_purchases SET item_id = ? WHERE item_id = ?').run(keepId, otherId);
     db.prepare('UPDATE collection_coverage SET item_id = ? WHERE item_id = ?').run(keepId, otherId);
     db.prepare(
       `INSERT OR IGNORE INTO candidates_rejected (item_id, source, source_id, score, created_at)

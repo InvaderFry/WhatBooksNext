@@ -9,6 +9,7 @@ import {
 } from '../api.ts';
 import {
   AvailabilityLabels,
+  StoreLinks,
   Cover,
   creatorsText,
   Formats,
@@ -484,7 +485,7 @@ function PickCard({
 
   return (
     <li className="card pick" aria-labelledby={headingId}>
-      <Cover fileId={card.coverFileId} kind={card.kind} />
+      <Cover fileId={card.coverFileId} itemId={card.coverItemId} kind={card.kind} />
       <div className="pick-main">
         <h3 id={headingId}>
           <a
@@ -535,6 +536,12 @@ function PickCard({
         )}
         <AvailabilityLabels a={{ ...card.availability, label: null }} />
         <div className="row-actions wrap">
+          {/* A store copy's link: the main action when no file is here to open. */}
+          <StoreLinks
+            a={card.availability}
+            title={card.title}
+            primary={card.availability.state !== 'present'}
+          />
           <button
             type="button"
             className={`secondary small star-button${shortlisted ? ' on' : ''}`}
@@ -686,7 +693,7 @@ function RelevanceCard({
   };
   return (
     <li className="card pick" aria-labelledby={headingId}>
-      <Cover fileId={card.coverFileId} kind={card.kind} />
+      <Cover fileId={card.coverFileId} itemId={card.coverItemId} kind={card.kind} />
       <div className="pick-main">
         <h3 id={headingId}>
           <a
