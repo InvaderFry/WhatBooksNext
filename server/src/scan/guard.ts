@@ -53,6 +53,12 @@ export async function guardedRead(
     return { ok: false, refused: 'gone' };
   }
   // Changed since the light pass listed it: the next scan sees the new version first.
-  if (st.size !== file.size) return { ok: false, refused: 'changed' };
+  if (
+    st.size !== file.size ||
+    (task.kind === 'previews' &&
+      file.modified_ms !== null &&
+      Math.round(st.mtimeMs) !== file.modified_ms)
+  )
+    return { ok: false, refused: 'changed' };
   return { ok: true, result: await runner.run(task, opts) };
 }

@@ -173,8 +173,39 @@ always stay.
 
 When a match isn't certain, the book is still recommended, marked "unconfirmed", and listed in
 **Needs review**, where you can confirm it, pick another, search, or leave it unidentified. Your
-answers always win over later lookups. A book with no rating or length counts as average, never
-last.
+answers always win over later lookups. Needs review shows **Your copy** above the choices:
+its filename, embedded title and publisher, detected years, creators, and cached cover when
+available. Candidate cards show the publisher when the source supplies it. **Match score** is
+for comparing candidates, not a percentage confidence. Tied comic runs explain why the available
+evidence could not distinguish them.
+
+**Compare pages and covers.** In Needs review or a book's **Ratings and details**, expand
+**Your copy: first two pages**, then press **Generate page previews**. PDFs and CBZ/CBR comics
+show their first two physical pages/images in reading order. EPUBs show their first two opening
+spine sections, using embedded pictures or a simplified text layout; EPUBs have no fixed page
+numbers. Choose a local file when the book has more than one. Click a page or source cover to
+enlarge it; Escape or **Close image** returns to the comparison. On wider screens, opening
+pages sit beside the candidate covers.
+
+Previews are generated on demand in a worker, go through the same fresh file-attribute check
+and limits as scanning, and are cached under `data/page-previews`. Online-only files aren't
+downloaded; connect the drive or download the file in its cloud app first. Cached previews can
+be viewed with the drive disconnected and are invalidated when a scan records changed file
+facts. They are disposable and aren't included in backups or full snapshots. Store/history
+imports without local files have no local pages; their online covers can still be compared.
+Formats that scanning only lists by name (such as CB7) don't gain page previews.
+
+Candidate covers from Hardcover, Metron, ComicVine, Open Library and AniList appear when the
+source supplies a supported public image URL. Images load from the source's image host in the
+browser, with no referrer; your files are never uploaded. A source's cover can represent a
+different edition (or a whole series), so visual similarity never confirms a match automatically.
+Older stored candidates may need **Look up again** to obtain their cover URLs.
+
+These display changes make reviews easier; restarting alone does not settle an ambiguous match.
+For older candidates missing publisher details, use **Look up again** on the book's page (or
+**Settings → Online lookups → Look up all books again**). Confirming the right candidate clears
+its identity review and remains your choice on later lookups. A book with no rating or length
+counts as average, never last.
 
 **Hardcover token:** make a free account at hardcover.app, then create a token in its account
 settings with only the "read catalog" permission (Settings links straight to that form). Paste

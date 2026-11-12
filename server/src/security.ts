@@ -1,3 +1,4 @@
+import { COVER_ORIGINS } from './sources/covers.ts';
 import type { NextFunction, Request, Response } from 'express';
 
 /**
@@ -51,7 +52,7 @@ export function securityHeaders(_req: Request, res: Response, next: NextFunction
   res.setHeader('Referrer-Policy', 'no-referrer');
   res.setHeader(
     'Content-Security-Policy',
-    "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
+    `default-src 'self'; img-src 'self' data: ${COVER_ORIGINS.join(' ')}; style-src 'self'; script-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'`,
   );
   next();
 }

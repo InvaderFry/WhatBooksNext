@@ -1,6 +1,7 @@
 import { COMICVINE_MIN_INTERVAL_MS } from '../config.ts';
 import type { DB } from '../db/database.ts';
 import { titleCompareKey } from '../identify/filename.ts';
+import { sourceCoverUrl } from './covers.ts';
 import { SourceClient } from './client.ts';
 import {
   SourceError,
@@ -42,6 +43,7 @@ interface CvEnvelope<T> {
 }
 
 interface CvVolume {
+  publisher?: { name?: string };
   id?: number;
   name?: string;
   start_year?: string | number | null;
@@ -49,6 +51,7 @@ interface CvVolume {
 }
 
 interface CvIssue {
+  image?: { small_url?: string; medium_url?: string; original_url?: string };
   id?: number;
   issue_number?: string | null;
   name?: string | null;
@@ -104,8 +107,15 @@ export function parseComicVineIssues(
     const rec: SourceRecord = {
       source: 'comicvine',
       sourceId: String(i.id),
+      coverUrl: sourceCoverUrl(
+        'comicvine',
+        i.image?.medium_url ?? i.image?.small_url ?? i.image?.original_url,
+      ),
       title: `${vname} #${i.issue_number}`,
       authors: [],
+      ...(typeof v?.publisher?.name === 'string'
+        ? { publisher: v.publisher.name.trim() || undefined }
+        : {}),
       isbns: [],
       subjects: ['Comics'],
       format: 'ISSUE',
@@ -180,10 +190,10 @@ export class ComicVine implements SourceAdapter {
       {
         // Commas, colons and bars are the filter syntax's own separators.
         filter: `name:${series.replace(/[,:|]/g, ' ').trim()}`,
-        field_list: 'id,name,start_year,count_of_issues',
+        field_list: 'id,name,start_year,count_of_issues,publisher',
         limit: '20',
       },
-      `volumes:${series.toLowerCase()}`,
+      `volumes:publisher:${series.toLowerCase()}`,
       refresh,
     );
     const want = titleCompareKey(series);
@@ -196,10 +206,10 @@ export class ComicVine implements SourceAdapter {
       'issues',
       {
         filter: `volume:${runs.map((v) => v.id).join('|')},issue_number:${q.issue}`,
-        field_list: 'id,issue_number,name,cover_date,store_date,site_detail_url,volume',
+        field_list: 'id,issue_number,name,cover_date,store_date,site_detail_url,volume,image',
         limit: '20',
       },
-      `issues:${runs.map((v) => v.id).join('|')}|${q.issue.toLowerCase()}`,
+      `issues:covers:${runs.map((v) => v.id).join('|')}|${q.issue.toLowerCase()}`,
       refresh,
     );
     return parseComicVineIssues(issues, new Map(runs.map((v) => [v.id!, v])));

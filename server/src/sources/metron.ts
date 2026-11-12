@@ -9,6 +9,7 @@ import {
   type SourceQuery,
   type SourceRecord,
 } from './types.ts';
+import { sourceCoverUrl } from './covers.ts';
 import { DailyUsage } from './usage.ts';
 
 /**
@@ -36,15 +37,18 @@ export const METRON_API = 'https://metron.cloud/api';
 export const METRON_SITE = 'https://metron.cloud/';
 
 interface MetronIssue {
+  image?: string | null;
   id?: number;
   number?: string;
   issue?: string;
   cover_date?: string | null;
   store_date?: string | null;
+  publisher?: { name?: string };
   series?: { id?: number; name?: string; volume?: number; year_began?: number };
 }
 
 interface MetronSeries {
+  publisher?: { name?: string };
   id?: number;
   name?: string;
   status?: string;
@@ -101,8 +105,12 @@ export function parseMetronIssues(
     const rec: SourceRecord = {
       source: 'metron',
       sourceId: String(i.id),
+      coverUrl: sourceCoverUrl('metron', i.image),
       title: collected ? `${i.series.name} Vol. ${i.number}` : `${i.series.name} #${i.number}`,
       authors: [],
+      ...(typeof (s?.publisher?.name ?? i.publisher?.name) === 'string'
+        ? { publisher: (s?.publisher?.name ?? i.publisher?.name)!.trim() || undefined }
+        : {}),
       isbns: [],
       // Says it's a comic, so the matching treats it as one (comicLike).
       subjects: ['Comics', ...(s?.series_type?.name ? [s.series_type.name] : [])],

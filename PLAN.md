@@ -1318,6 +1318,7 @@ use. Keep them in one config module, each with its reason in a comment.
 | Pre-migration snapshots kept | 5 | A few versions back, without filling the disk. |
 | Pre-restore snapshots kept | 3, separately | A restore must never push out the migration snapshots, or the other way round. |
 | Server port | 4818, overridable with `PORT` | Unlikely to clash with common dev tools. |
+| Opening-page preview size (`PAGE_PREVIEW_MAX_SIDE`) | 1,000 px maximum side | Enough to compare title and credit pages when enlarged without rendering full-resolution scans. Generated on demand, two pages per file. |
 | Per-file limits | 60 s (parsing, counting, thumbnails — not full hashing); uncompressed ≤ 4 GB; compression ratio ≤ 100:1; images ≤ 50 megapixels | Large comic archives are fine; zip bombs and runaway files aren't. |
 | Light-scan target | 5,000 files in under 30 s on a local SSD | A goal to measure against, not a claim. |
 | Store collectors: gap between requests | 2 s | Store purchases plan, "Account safety": about a person's pace on their own library page. |

@@ -1079,6 +1079,19 @@ kbd {
 .bulk-bar {
   margin-bottom: 0.75rem;
 }
+.review-evidence {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.65rem;
+  margin: 0.5rem 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.review-evidence > div {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
 .candidates {
   margin: 0.5rem 0;
   display: flex;
@@ -1095,6 +1108,7 @@ kbd {
   padding: 0.5rem 0.65rem;
 }
 .candidate > div:first-child {
+  overflow-wrap: anywhere;
   flex: 1 1 18rem;
   min-width: 0;
 }
@@ -1509,4 +1523,125 @@ kbd {
 .bookmarklet {
   cursor: grab;
   margin: 0.2rem 0;
+}
+
+/* Local opening pages and source covers share the same enlargement controls. */
+.book-page-previews {
+  margin: 0.75rem 0;
+  width: 100%;
+}
+.book-page-previews summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.book-page-previews select {
+  max-width: 100%;
+}
+.preview-filename {
+  overflow-wrap: anywhere;
+}
+.book-images {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin: 0.75rem 0;
+}
+.book-image-button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  max-width: 100%;
+  padding: 0.4rem;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+.book-image-button img {
+  width: 140px;
+  height: 200px;
+  object-fit: contain;
+}
+.book-image-button span {
+  max-width: 160px;
+  overflow-wrap: anywhere;
+}
+.book-image-dialog {
+  max-width: 96vw;
+  max-height: 95vh;
+  padding: 0.75rem;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.book-image-dialog::backdrop {
+  background: rgb(0 0 0 / 65%);
+}
+.book-image-dialog form {
+  margin-bottom: 0.5rem;
+}
+.book-image-dialog img {
+  display: block;
+  max-width: 85vw;
+  max-height: 80vh;
+  object-fit: contain;
+}
+.candidate-content {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+.candidate-content > .muted {
+  flex-basis: 100%;
+}
+.candidate-details {
+  flex: 1 1 15rem;
+  min-width: 0;
+}
+
+.identity {
+  width: 100%;
+  min-width: 0;
+}
+.visual-match-comparison {
+  min-width: 0;
+}
+.visual-match-comparison > * {
+  min-width: 0;
+}
+@media (min-width: 900px) {
+  .visual-match-comparison:has(> .book-page-previews[open]) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr);
+    gap: 1rem;
+    align-items: start;
+  }
+  .visual-match-comparison > .book-page-previews[open] {
+    position: sticky;
+    top: 1rem;
+  }
+}
+
+.candidate:has(.book-image-button) {
+  display: block;
+}
+.candidate-content:has(.book-image-button) {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr);
+}
+.candidate .book-image-button {
+  max-width: 110px;
+}
+.candidate .book-image-button img {
+  width: 90px;
+  height: 135px;
+}
+.candidate .book-image-button span {
+  max-width: 90px;
+}
+.candidate:has(.book-image-button) > .row-actions {
+  justify-content: flex-end;
+  margin-top: 0.5rem;
 }

@@ -10,8 +10,9 @@ import {
   type ReviewList,
   type ReviewRow,
 } from '../api.ts';
-import { Notice } from '../components.tsx';
+import { Cover, Notice } from '../components.tsx';
 import { hrefFor, onLinkClick } from '../url.ts';
+import { BookImage, BookPagePreviews } from './BookImages.tsx';
 import { OperationsList } from './MergeSplit.tsx';
 
 /**
@@ -33,7 +34,7 @@ const KIND_TITLES: Record<ReviewRow['kind'], string> = {
   copy_conflict: 'The same file is on two books',
   cross_folder: 'The same book twice?',
   pdf_type: 'What kind of PDF is this?',
-  tie: 'Two possible matches',
+  tie: 'Multiple possible matches',
   wrong_match: 'You said this was the wrong book',
   unidentified: 'Not found online',
   provisional: 'Unconfirmed match',
@@ -524,33 +525,57 @@ function IdentityChoices({
   const list = results ?? row.candidates ?? [];
   return (
     <div className="identity">
-      {list.length > 0 && (
-        <ul className="plain candidates">
-          {list.map((c) => (
-            <CandidateRow
-              key={`${c.source}:${c.sourceId}`}
-              c={c}
-              onConfirm={() =>
-                void match(
-                  row,
-                  { action: 'confirm', source: c.source, sourceId: c.sourceId },
-                  `Matched to ${c.title}`,
-                )
-              }
-              onReject={
-                results
-                  ? undefined
-                  : () =>
-                      void match(
-                        row,
-                        { action: 'reject', source: c.source, sourceId: c.sourceId },
-                        `${c.title} won’t be suggested again`,
-                      )
-              }
-            />
-          ))}
-        </ul>
+      {row.evidence && (
+        <div className="review-evidence">
+          {row.evidence.coverFileId && <Cover fileId={row.evidence.coverFileId} />}
+          <div>
+            <strong>Your copy</strong>
+            {row.evidence.filename && <div className="small">File: {row.evidence.filename}</div>}
+            {row.evidence.embeddedTitle && (
+              <div className="small">Title inside file: {row.evidence.embeddedTitle}</div>
+            )}
+            <div className="small">
+              Publisher inside file: {row.evidence.publisher || 'Not recorded'}
+            </div>
+            <div className="small">
+              Detected years (files or folder): {row.evidence.years.join(', ') || 'Not recorded'}
+            </div>
+            <div className="small">
+              Creators: {row.evidence.authors.join(', ') || 'Not recorded'}
+            </div>
+          </div>
+        </div>
       )}
+      <div className="visual-match-comparison">
+        <BookPagePreviews key={item.id} itemId={item.id} />
+        {list.length > 0 && (
+          <ul className="plain candidates">
+            {list.map((c) => (
+              <CandidateRow
+                key={`${c.source}:${c.sourceId}`}
+                c={c}
+                onConfirm={() =>
+                  void match(
+                    row,
+                    { action: 'confirm', source: c.source, sourceId: c.sourceId },
+                    `Matched to ${c.title}`,
+                  )
+                }
+                onReject={
+                  results
+                    ? undefined
+                    : () =>
+                        void match(
+                          row,
+                          { action: 'reject', source: c.source, sourceId: c.sourceId },
+                          `${c.title} won’t be suggested again`,
+                        )
+                }
+              />
+            ))}
+          </ul>
+        )}
+      </div>
       {results && results.length === 0 && <p className="muted small">Nothing found.</p>}
       {searchError && <p className="small warn">{searchError}</p>}
       {query === null ? (
@@ -611,28 +636,43 @@ export function CandidateRow({
 }) {
   return (
     <li className="candidate">
-      <div>
-        <strong>{c.title}</strong>
-        {c.subtitle && <span>: {c.subtitle}</span>}
-        <span className="muted small">
-          {c.authors.length > 0 && ` · ${c.authors.join(', ')}`}
-          {c.year && ` · ${c.year}`} · {c.sourceLabel}
-          {c.rating && ` · rated ${c.rating}`} · match {Math.round(c.score * 100)}
-        </span>
-        {c.notes.length > 0 && <div className="muted small">{c.notes.join(' ')}</div>}
-        {c.url && (
-          <a className="small" href={c.url} target="_blank" rel="noreferrer noopener">
-            View on {c.sourceLabel}
-            <span className="visually-hidden"> (opens in a new tab)</span>
-          </a>
+      <div className="candidate-content">
+        {c.coverUrl && (
+          <BookImage
+            key={c.coverUrl}
+            url={c.coverUrl}
+            caption={`${c.sourceLabel} cover`}
+            label={`${c.sourceLabel} cover — ${c.title}${c.year ? ` (${c.year})` : ''}`}
+          />
         )}
+        {!c.coverUrl && <span className="muted small">No cover supplied by {c.sourceLabel}.</span>}
+        <div className="candidate-details">
+          <strong>{c.title}</strong>
+          {c.subtitle && <span>: {c.subtitle}</span>}
+          <span className="muted small">
+            {c.authors.length > 0 && ` · ${c.authors.join(', ')}`}
+            {c.year && ` · ${c.year}`}
+            {c.publisher && ` · ${c.publisher}`} · {c.sourceLabel}
+            {c.rating && ` · rated ${c.rating}`} ·{' '}
+            <span title="A score for comparing matches, not a percentage confidence.">
+              Match score {Math.round(c.score * 100)}/100
+            </span>
+          </span>
+          {c.notes.length > 0 && <div className="muted small">{c.notes.join(' ')}</div>}
+          {c.url && (
+            <a className="small" href={c.url} target="_blank" rel="noreferrer noopener">
+              View on {c.sourceLabel}
+              <span className="visually-hidden"> (opens in a new tab)</span>
+            </a>
+          )}
+        </div>
       </div>
       <div className="row-actions">
         <button
           type="button"
           className="small"
           onClick={onConfirm}
-          aria-label={`This is it: ${c.title}`}
+          aria-label={`This is it: ${c.title}${c.year ? `, ${c.year}` : ''}${c.publisher ? `, ${c.publisher}` : ''}`}
         >
           This is it
         </button>
@@ -641,7 +681,7 @@ export function CandidateRow({
             type="button"
             className="secondary small"
             onClick={onReject}
-            aria-label={`Not this one: ${c.title}`}
+            aria-label={`Not this one: ${c.title}${c.year ? `, ${c.year}` : ''}${c.publisher ? `, ${c.publisher}` : ''}`}
           >
             Not this one
           </button>

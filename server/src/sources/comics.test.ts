@@ -65,6 +65,31 @@ describe('Metron (§12.1)', () => {
     expect(second!.years).toEqual([2023]);
   });
 
+  it('keeps publishers from series details, falling back to an issue publisher', () => {
+    const payload = {
+      results: [
+        {
+          id: 1,
+          number: '1',
+          series: { id: 10, name: 'Copperline' },
+          publisher: { name: 'Issue Press' },
+        },
+        {
+          id: 2,
+          number: '1',
+          series: { id: 20, name: 'Copperline' },
+          publisher: { name: 'Lantern House' },
+        },
+        { id: 3, number: '1', series: { id: 30, name: 'Copperline' } },
+      ],
+    };
+    const recs = parseMetronIssues(
+      payload,
+      new Map([[10, { publisher: { name: 'Four Color Press' } }]]),
+    );
+    expect(recs.map((r) => r.publisher)).toEqual(['Four Color Press', 'Lantern House', undefined]);
+  });
+
   it('counts a cancelled series as ended and a hiatus as ongoing', () => {
     expect(metronStatus('Completed')).toBe('finished');
     expect(metronStatus('Cancelled')).toBe('finished');
@@ -120,6 +145,19 @@ describe('Metron (§12.1)', () => {
 });
 
 describe('ComicVine (§12.1)', () => {
+  it('keeps the volume publisher and leaves missing publishers unknown', () => {
+    const recs = parseComicVineIssues(
+      {
+        results: [
+          { id: 1, issue_number: '1', volume: { id: 10, name: 'Copperline' } },
+          { id: 2, issue_number: '1', volume: { id: 20, name: 'Copperline' } },
+        ],
+      },
+      new Map([[10, { publisher: { name: 'Lantern House' } }]]),
+    );
+    expect(recs.map((r) => r.publisher)).toEqual(['Lantern House', undefined]);
+  });
+
   it('finds the run by name, then the issue in it, keeping the key out of the cache', async () => {
     const db = await memoryDb();
     const { fetcher, calls } = router({

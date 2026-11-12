@@ -1,6 +1,7 @@
 import { decodeEntities } from '../util.ts';
 import { OPENLIBRARY_MIN_INTERVAL_MS, SEARCH_RESULTS } from '../config.ts';
 import type { DB } from '../db/database.ts';
+import { sourceCoverUrl } from './covers.ts';
 import { SourceClient } from './client.ts';
 import type { Fetcher, SourceAdapter, SourceQuery, SourceRecord } from './types.ts';
 
@@ -8,12 +9,13 @@ import type { Fetcher, SourceAdapter, SourceQuery, SourceRecord } from './types.
  * Open Library (§12.1): keyless book search. Rules verified November 2026 at
  * openlibrary.org/developers/api: identify the app in the User-Agent, about 1 request a second
  * without a contact email, cache, use search.json rather than many single-book requests, and
- * no bulk downloading. Covers come from the files themselves; a book without a file cover gets one
- * by cover ID through this client (identify/covers.ts, owner decision 2026-11-11). Covers by ISBN,
+ * no bulk downloading. Covers by ID are shown on review candidates. A book without a file
+ * cover also gets a cached cover after a confident match (identify/covers.ts). Covers by ISBN,
  * the rate-limited kind, aren't used.
  */
 
 const FIELDS = [
+  'cover_i',
   'key',
   'title',
   'subtitle',
@@ -30,6 +32,7 @@ const FIELDS = [
 ].join(',');
 
 interface OlDoc {
+  cover_i?: number;
   key?: string;
   title?: string;
   subtitle?: string;
@@ -55,7 +58,7 @@ export function openLibraryUrl(q: SourceQuery): { url: string; key: string } {
   const key = q.isbn
     ? `isbn:${q.isbn}`
     : `search:title=${q.title.toLowerCase()}|author=${(q.author ?? '').toLowerCase()}`;
-  return { url: `https://openlibrary.org/search.json?${p.toString()}`, key };
+  return { url: `https://openlibrary.org/search.json?${p.toString()}`, key: `covers:${key}` };
 }
 
 export function parseOpenLibrary(payload: unknown): SourceRecord[] {
@@ -66,6 +69,13 @@ export function parseOpenLibrary(payload: unknown): SourceRecord[] {
     if (!d.key || !d.title) continue;
     const r: SourceRecord = {
       source: 'openlibrary',
+      coverUrl:
+        Number.isSafeInteger(d.cover_i) && d.cover_i! > 0
+          ? sourceCoverUrl(
+              'openlibrary',
+              `https://covers.openlibrary.org/b/id/${d.cover_i}-M.jpg?default=false`,
+            )
+          : undefined,
       sourceId: d.key,
       title: decodeEntities(d.title),
       authors: (d.author_name ?? []).map(decodeEntities),

@@ -25,7 +25,8 @@ import { normalizeForCompare, titleCompareKey } from './filename.ts';
  * of the title, with nothing else agreeing, are "not found" rather than a tie; one book listed
  * twice with a misspelt or HTML-encoded author name is one book.
  */
-export const MATCH_VERSION = 13;
+// Version 15 carries publishers and source covers into visual candidate comparisons.
+export const MATCH_VERSION = 15;
 
 export interface MatchFacts {
   title: string;

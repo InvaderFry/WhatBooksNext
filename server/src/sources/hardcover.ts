@@ -9,6 +9,7 @@ import type { DB } from '../db/database.ts';
 import { titleCompareKey } from '../identify/filename.ts';
 import { decodeEntities, todayLocal } from '../util.ts';
 import { SourceClient } from './client.ts';
+import { sourceCoverUrl } from './covers.ts';
 import { DailyUsage } from './usage.ts';
 import {
   SourceError,
@@ -148,6 +149,8 @@ export function parsePublishedSeries(
 }
 
 interface HcDocument {
+  image?: { url?: string } | string | null;
+  image_url?: string;
   id?: number | string;
   title?: string;
   subtitle?: string;
@@ -198,6 +201,12 @@ export function parseHardcover(payload: unknown): SourceRecord[] {
     const rec: SourceRecord = {
       source: 'hardcover',
       sourceId: String(d.id),
+      coverUrl: sourceCoverUrl(
+        'hardcover',
+        typeof d.image === 'string'
+          ? ((safeJson(d.image) as { url?: string } | null)?.url ?? d.image)
+          : (d.image?.url ?? d.image_url),
+      ),
       title: decodeEntities(d.title),
       authors: (d.author_names ?? []).map(decodeEntities),
       isbns: (d.isbns ?? []).slice(0, 20),
