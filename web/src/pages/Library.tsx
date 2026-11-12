@@ -4,6 +4,7 @@ import {
   FORMAT_LABELS,
   KIND_LABELS,
   PROGRESS_LABELS,
+  STORE_LABELS,
   type AppState,
   type Folder,
   type ItemSummary,
@@ -42,6 +43,7 @@ export function Library({
   const [adding, setAdding] = useState(false);
   const [items, setItems] = useState<ItemSummary[] | null>(null);
   const [total, setTotal] = useState(0);
+  const [storeCounts, setStoreCounts] = useState<Record<string, number>>({});
   const [limit, setLimit] = useState(PAGE);
   const [folders, setFolders] = useState<Folder[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -55,6 +57,7 @@ export function Library({
       format: params.format,
       availability: params.availability,
       folder: params.folder,
+      store: params.store,
       ready: params.ready,
       shortlisted: params.shortlisted,
       sort: params.sort,
@@ -65,11 +68,14 @@ export function Library({
   useEffect(() => {
     let stale = false;
     api
-      .get<{ total: number; items: ItemSummary[] }>(`/api/items?${query}&limit=${limit}`)
+      .get<{ total: number; items: ItemSummary[]; storeCounts?: Record<string, number> }>(
+        `/api/items?${query}&limit=${limit}`,
+      )
       .then((r) => {
         if (stale) return;
         setItems(r.items);
         setTotal(r.total);
+        setStoreCounts(r.storeCounts ?? {});
       })
       .catch((e: Error) => setError(e.message));
     return () => {
@@ -120,6 +126,7 @@ export function Library({
     params.progress ||
     params.format ||
     params.availability ||
+    params.store ||
     params.folder ||
     params.ready ||
     params.shortlisted,
@@ -170,6 +177,20 @@ export function Library({
           label="Availability"
           value={params.availability}
           options={AVAILABILITY_OPTIONS}
+        />
+        {/* Where it's owned (owner decision 2026-11-12): beside Availability, which is about files. */}
+        <Select
+          id="store"
+          label="Store"
+          value={params.store}
+          options={Object.fromEntries(
+            [...Object.keys(STORE_LABELS), 'none']
+              .filter((k) => (storeCounts[k] ?? 0) > 0 || params.store === k)
+              .map((k) => [
+                k,
+                `${k === 'none' ? 'Not in a store (your files)' : STORE_LABELS[k]} (${(storeCounts[k] ?? 0).toLocaleString()})`,
+              ]),
+          )}
         />
         {folders.length > 1 && (
           <Select
@@ -236,6 +257,7 @@ export function Library({
                 progress: '',
                 format: '',
                 availability: '',
+                store: '',
                 folder: '',
                 ready: '',
                 shortlisted: '',

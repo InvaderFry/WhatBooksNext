@@ -1500,3 +1500,13 @@ kbd {
 .store-name {
   white-space: nowrap;
 }
+
+/* Bookmark buttons: look like a button, dragged to the bookmarks bar; on their own line. */
+.bookmark-row {
+  display: block;
+  margin: 0.35rem 0;
+}
+.bookmarklet {
+  cursor: grab;
+  margin: 0.2rem 0;
+}

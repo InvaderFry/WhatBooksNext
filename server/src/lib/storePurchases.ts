@@ -1,3 +1,7 @@
+import { GLOBALCOMIX_VERSION } from '../../../tools/store-collector/adapters/globalcomix.ts';
+import { GOOGLE_PLAY_VERSION } from '../../../tools/store-collector/adapters/googlePlay.ts';
+import { KINDLE_VERSION } from '../../../tools/store-collector/adapters/kindle.ts';
+import { KOBO_VERSION } from '../../../tools/store-collector/adapters/kobo.ts';
 import { STORE_FILE_MAX_RECORDS, STORE_SHRINK_WARNING } from '../config.ts';
 import type { DB } from '../db/database.ts';
 import { titleCompareKey } from '../identify/filename.ts';
@@ -39,6 +43,14 @@ export const SERVICE_LABELS: Record<Service, string> = {
   google_play: 'Google Play Books',
   kobo: 'Kobo',
   globalcomix: 'GlobalComix',
+};
+
+/** The version each store's script reports (its adapter's), shown next to its bookmark button. */
+export const COLLECTOR_VERSIONS: Record<Service, string> = {
+  kindle: KINDLE_VERSION,
+  google_play: GOOGLE_PLAY_VERSION,
+  kobo: KOBO_VERSION,
+  globalcomix: GLOBALCOMIX_VERSION,
 };
 
 /**
