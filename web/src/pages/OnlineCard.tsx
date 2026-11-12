@@ -23,6 +23,7 @@ export function OnlineCard({ itemId, onChanged }: { itemId: string; onChanged: (
   const [data, setData] = useState<ItemOnline | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [source, setSource] = useState('');
   const matchesRef = useRef<HTMLDetailsElement>(null);
   const [query, setQuery] = useState<string | null>(null);
   const [results, setResults] = useState<Candidate[] | null>(null);
@@ -35,6 +36,13 @@ export function OnlineCard({ itemId, onChanged }: { itemId: string; onChanged: (
   useEffect(() => {
     void load();
   }, [load]);
+  useEffect(() => {
+    setSource('');
+    setQuery(null);
+    setResults(null);
+    setChanges(null);
+    setError(null);
+  }, [itemId]);
 
   const run = async (fn: () => Promise<unknown>) => {
     setBusy(true);
@@ -61,6 +69,12 @@ export function OnlineCard({ itemId, onChanged }: { itemId: string; onChanged: (
   return (
     <section aria-labelledby="online-h" className="card online-card">
       <h2 id="online-h">Ratings and details</h2>
+      {typeof data.autoMatchScore === 'number' && (
+        <Notice kind="warning">
+          Automatically matched because its match score was {data.autoMatchScore}/100 (90 or
+          higher). Review, confirm or change it under Possible matches.
+        </Notice>
+      )}
       {chosen?.coverUrl && (
         <div className="book-images">
           <BookImage
@@ -212,6 +226,37 @@ export function OnlineCard({ itemId, onChanged }: { itemId: string; onChanged: (
           </ul>
         )}
       </div>
+      {!data.lookupSources && (
+        <Notice>Restart whatBooksNext to enable source selection, then reload this page.</Notice>
+      )}
+      <div className="inline-form">
+        <label htmlFor="online-source">Look up using</label>
+        <select
+          id="online-source"
+          value={source}
+          disabled={busy}
+          onChange={(e) => {
+            setSource(e.target.value);
+            setResults(null);
+            setChanges(null);
+            setError(null);
+          }}
+        >
+          <option value="">Automatic sources for this item</option>
+          {(data.lookupSources ?? []).map((s) => (
+            <option key={s.source} value={s.source} disabled={!s.configured}>
+              {s.label}
+              {s.configured ? '' : ' — set up in Settings'}
+            </option>
+          ))}
+        </select>
+      </div>
+      <p className="muted small">
+        Choose a source for Look up again or search below. Metron and ComicVine cover comics;
+        AniList covers manga. For a comic search, include its number (for example, Copperline #2).
+        Sources marked “set up” need credentials in Settings → Online sources. Review the results
+        and confirm the right match. Your confirmations and rejections stay.
+      </p>
       {query !== null && (
         <form
           className="inline-form"
@@ -219,10 +264,11 @@ export function OnlineCard({ itemId, onChanged }: { itemId: string; onChanged: (
             e.preventDefault();
             void (async () => {
               setBusy(true);
+              setError(null);
               try {
                 const r = await api.post<{ candidates: Candidate[]; errors: string[] }>(
                   `/api/items/${itemId}/search`,
-                  { query },
+                  { query, ...(source ? { source } : {}) },
                 );
                 setResults(r.candidates);
                 if (r.errors.length) setError(r.errors.join(' · '));
@@ -246,19 +292,25 @@ export function OnlineCard({ itemId, onChanged }: { itemId: string; onChanged: (
       <div className="row-actions wrap">
         {query === null && (
           <button type="button" className="secondary small" onClick={() => setQuery('')}>
-            Search for the right book…
+            Search for the right match…
           </button>
         )}
-        {data.lookupAvailable && (
+        {(data.lookupAvailable || source) && (
           <button
             type="button"
             className="secondary small"
             disabled={busy}
-            title="Asks every source again and lets the app choose its matches afresh. Your confirmations, rejections and edits stay."
+            title="Asks the selected source, or the automatic sources, again. Your confirmations, rejections and edits stay."
             onClick={() =>
               void run(async () => {
                 setChanges(null);
-                const r = await api.post<{ changes: string[] }>(`/api/items/${itemId}/lookup`, {});
+                const r = await api.post<{
+                  changes: string[];
+                  results: { sourceLabel: string; outcome: string; error?: string }[];
+                }>(`/api/items/${itemId}/lookup`, source ? { source } : {});
+                const failures = r.results.filter((x) => x.outcome === 'failed');
+                if (failures.length)
+                  setError(failures.map((x) => `${x.sourceLabel}: ${x.error}`).join(' · '));
                 setChanges(r.changes);
               })
             }

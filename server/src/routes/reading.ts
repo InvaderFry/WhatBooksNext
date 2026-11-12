@@ -1,5 +1,5 @@
 import type { Express, Request } from 'express';
-import { READ_NEXT_PAGE, RECENT_DAYS, TRIAGE_SESSION } from '../config.ts';
+import { MATCH_ACCEPT, READ_NEXT_PAGE, RECENT_DAYS, TRIAGE_SESSION } from '../config.ts';
 import type { DB } from '../db/database.ts';
 import {
   lookUpItem,
@@ -10,6 +10,7 @@ import {
   type LookupManager,
 } from '../identify/lookups.ts';
 import { buildQuery, decide } from '../identify/match.ts';
+import { parseFilename } from '../identify/filename.ts';
 import {
   applyMatchAction,
   itemMatchSummary,
@@ -508,6 +509,18 @@ export function registerReadingRoutes(app: Express, d: ReadingDeps): void {
     }),
   );
 
+  const manualSource = (value: unknown): SourceName | undefined => {
+    if (value === undefined) return undefined;
+    const source = sources.onlineSources(true).find((s) => s.name === value);
+    if (!source) throw new HttpError(400, 'Choose a valid online source.');
+    if (!sources.isConfigured(source.name))
+      throw new HttpError(
+        400,
+        `Set up ${SOURCE_LABELS[source.name]} in Settings → Online sources first.`,
+      );
+    return source.name;
+  };
+
   /** What "Look up again" may change, to say afterwards what did. */
   const lookupSnapshot = async (id: string): Promise<LookupSnapshot> => {
     const data = loadRankData(db, await d.reach());
@@ -547,10 +560,21 @@ export function registerReadingRoutes(app: Express, d: ReadingDeps): void {
         string | null;
       const kind = i?.kind ?? null;
       const summary = itemMatchSummary(db, id);
+      const identityScore = db
+        .prepare('SELECT identity_score FROM items WHERE id = ?')
+        .pluck()
+        .get(id) as number | null;
       const details = chosen && { ...chosen, subjects: chosen.subjects.slice(0, SUBJECTS_SHOWN) };
       return {
         identity: i?.identity ?? 'unidentified',
         matchConfirmed: i?.matchConfirmed ?? false,
+        autoMatchScore:
+          i?.identity === 'accepted' &&
+          !summary.override &&
+          identityScore !== null &&
+          identityScore >= MATCH_ACCEPT
+            ? Math.round(identityScore * 100)
+            : null,
         ...summary,
         community: i?.community ?? null,
         duration: i?.duration ?? null,
@@ -564,6 +588,11 @@ export function registerReadingRoutes(app: Express, d: ReadingDeps): void {
         description: details?.description?.value ?? null,
         subjects: details?.subjects.map((s) => s.value) ?? [],
         lookupAvailable: sources.forItem(kind, issue).length > 0,
+        lookupSources: sources.onlineSources(true).map((s) => ({
+          source: s.name,
+          label: SOURCE_LABELS[s.name],
+          configured: sources.isConfigured(s.name),
+        })),
         // "Refresh due" and "Refresh failed; showing the previous result" (stage 4).
         refresh: (() => {
           const rows = loadRefreshRows(db, sources, id);
@@ -628,9 +657,10 @@ export function registerReadingRoutes(app: Express, d: ReadingDeps): void {
         throw new HttpError(409, 'Lookups are running; this book will be included.');
       // Asks every source again and lets the app choose this book's matches afresh; confirmed
       // matches, rejections and the owner's edits stay. No automatic batch runs alongside.
+      const source = manualSource(req.body?.source);
       const before = await lookupSnapshot(id);
       const r = await d.refresher.hold(() =>
-        lookUpItem(db, sources, id, { refresh: true, fresh: true }),
+        lookUpItem(db, sources, id, { refresh: true, fresh: true, source }),
       );
       const after = await lookupSnapshot(id);
       return {
@@ -652,10 +682,31 @@ export function registerReadingRoutes(app: Express, d: ReadingDeps): void {
         typeof req.body?.author === 'string' ? req.body.author.trim().slice(0, 100) : '';
       const records = [];
       const errors: string[] = [];
-      for (const s of sources.forSearch(facts?.kind ?? null)) {
+      const source = manualSource(req.body?.source);
+      const searchSources = source
+        ? sources.onlineSources().filter((s) => s.name === source)
+        : sources.forSearch(facts?.kind ?? null);
+      const parsed = parseFilename(`${q}.pdf`);
+      for (const s of searchSources) {
         try {
+          const comic = s.name === 'metron' || s.name === 'comicvine';
+          const issue = parsed.issue?.value ?? facts?.issue ?? undefined;
+          const volume = parsed.volume?.value ?? facts?.volume ?? undefined;
+          if (comic && !(s.name === 'comicvine' ? issue : issue || volume)) {
+            if (source)
+              errors.push(
+                `${SOURCE_LABELS[s.name]}: Include an issue number (for example, Copperline #2)${s.name === 'metron' ? ' or a volume number' : ''}.`,
+              );
+            continue;
+          }
           records.push(
-            ...(await s.search({ title: q, author: author || undefined, series: undefined })),
+            ...(await s.search({
+              title: q,
+              author: author || undefined,
+              ...(comic
+                ? { series: parsed.series?.value ?? parsed.title.value, issue, volume }
+                : {}),
+            })),
           );
         } catch (e) {
           errors.push(
