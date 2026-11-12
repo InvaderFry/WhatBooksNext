@@ -1,7 +1,15 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { bundleCollector, COLLECTOR_SCRIPTS, scriptPath } from '../../scripts/buildCollector.ts';
+import {
+  BOOKMARKLET_MAX_CHARS,
+  BOOKMARKLETS,
+  bookmarkletPath,
+  bundleBookmarklet,
+  bundleCollector,
+  COLLECTOR_SCRIPTS,
+  scriptPath,
+} from '../../scripts/buildCollector.ts';
 import {
   googlePlay,
   parsePlayCards,
@@ -697,5 +705,16 @@ describe('the console scripts', () => {
   it('are committed exactly as a fresh build makes them (run npm run build:collector)', async () => {
     for (const name of COLLECTOR_SCRIPTS)
       expect(fs.readFileSync(scriptPath(name), 'utf8')).toBe(await bundleCollector(name));
+  });
+
+  it('have bookmark versions that match a fresh build and stay well within bookmark length', async () => {
+    for (const name of BOOKMARKLETS) {
+      const mark = fs.readFileSync(bookmarkletPath(name), 'utf8');
+      expect(mark).toBe(await bundleBookmarklet(name));
+      expect(mark.startsWith('javascript:')).toBe(true);
+      expect(mark.length).toBeLessThan(BOOKMARKLET_MAX_CHARS);
+      // A bookmark that returned a value would replace the page: the script must end undefined.
+      expect(decodeURIComponent(mark.slice('javascript:'.length)).trim()).toMatch(/\}\)\(\);?$/);
+    }
   });
 });

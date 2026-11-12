@@ -391,6 +391,7 @@ export function createApp(ctx: AppContext) {
         format: str(req.query.format),
         availability: str(req.query.availability),
         folder: str(req.query.folder),
+        store: str(req.query.store),
         shortlisted: bool(req.query.shortlisted),
         readyToRead: bool(req.query.ready),
         showHidden: bool(req.query.hidden),

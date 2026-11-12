@@ -18,6 +18,7 @@ import {
 } from '../lib/store.ts';
 import {
   actOnNotSeen,
+  COLLECTOR_VERSIONS,
   COLLECTORS,
   importPurchases,
   previewPurchases,
@@ -330,6 +331,30 @@ export function registerStoreRoutes(
   app.get(
     '/api/store-collectors',
     route(() => SERVICES.map((s) => ({ service: s, ...COLLECTORS[s] }))),
+  );
+  /**
+   * Each store's bookmark button (owner decision 2026-11-12): `javascript:` plus the minified
+   * script, committed in tools/store-collector/bookmarklets. Its version is the one the report shows.
+   */
+  const BOOKMARKS = path.join(
+    import.meta.dirname,
+    '..',
+    '..',
+    '..',
+    'tools',
+    'store-collector',
+    'bookmarklets',
+  );
+  app.get(
+    '/api/store-collectors/:service/bookmarklet',
+    route((req) => {
+      const s = String(req.params.service);
+      const c = (COLLECTORS as Record<string, (typeof COLLECTORS)[keyof typeof COLLECTORS]>)[s];
+      const version = (COLLECTOR_VERSIONS as Record<string, string>)[s];
+      if (!c || c.state === 'not_built' || !version)
+        throw new HttpError(404, 'There’s no bookmark button for that store.');
+      return { href: fs.readFileSync(path.join(BOOKMARKS, `${s}.txt`), 'utf8'), version };
+    }),
   );
   app.get(
     '/api/store-collectors/:service/script',

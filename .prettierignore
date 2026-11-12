@@ -10,3 +10,4 @@ LICENSE
 screenshots
 tools/probe/*.bat
 tools/store-collector/console-scripts
+tools/store-collector/bookmarklets

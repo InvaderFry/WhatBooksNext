@@ -340,6 +340,10 @@ describe('the collectors in the app', () => {
       'digital-purchases',
     );
     expect((await api.get('/api/store-collectors/apple_books/script')).status).toBe(404);
+    const mark = (await api.get('/api/store-collectors/kobo/bookmarklet')).body;
+    expect(mark.href.startsWith('javascript:')).toBe(true);
+    expect(mark.version).toBe('1');
+    expect((await api.get('/api/store-collectors/apple_books/bookmarklet')).status).toBe(404);
     // The look-around script for stores with no collector yet.
     expect((await api.get('/api/store-collectors/probe/script')).body.script).toContain(
       'look-around report',
@@ -531,5 +535,21 @@ describe('the collectors in the app', () => {
     expect(item.user.progress).toBe('finished');
     expect(item.availability.storeLinks[0]).toMatchObject({ store: 'globalcomix', kind: 'read' });
     expect(one('SELECT series_hint FROM items WHERE id = ?', vol)).toBe('Starfall Academy');
+  });
+
+  it('filters the Library by store, with each store’s count, and finds books in no store', async () => {
+    await importFile(storeFile(BOOKS.slice(2, 3)));
+    const all = (await api.get('/api/items')).body;
+    // The epub is in no store; Tidewright was typed in as Kindle; Lanterns came from the file.
+    expect(all.storeCounts).toEqual({ none: 1, kindle: 2 });
+    const kindle = (await api.get('/api/items?store=kindle')).body;
+    expect(kindle.items.map((i: { title: string }) => i.title).sort()).toEqual([
+      'Lanterns Over Harrowgate',
+      'Tidewright',
+    ]);
+    const none = (await api.get('/api/items?store=none')).body;
+    expect(none.items.map((i: { title: string }) => i.title)).toEqual(['The Ember Orchard']);
+    expect((await api.get('/api/items?store=kobo')).body.total).toBe(0);
+    expect(kindle.items[0].stores).toEqual(['kindle']);
   });
 });

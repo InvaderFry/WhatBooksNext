@@ -46,7 +46,10 @@ owner has already made. Don't reopen those decisions. Then read the latest
   (`adapters/googlePlay.ts`, card-reading `scanCards`, no requests). **Kobo checked**
   (`adapters/kobo.ts`, library HTML pages read page-side). **GlobalComix checked**
   (`adapters/globalcomix.ts` v2, a `WatchAdapter`: reads the page's own `account/digital-purchases`
-  answers via `collectAnswers`, no requests; v1's own request got HTTP 400). All four stores done.
+  answers via `collectAnswers`, no requests; v1's own request got HTTP 400). All four stores done. Owners
+  run them as **bookmark buttons** (`tools/store-collector/bookmarklets/`, owner decision 2026-11-12;
+  the extension stays a later option). The Library has a **Store** filter (`LibraryQuery.store`,
+  with `storeCounts`).
   Findings per store are in the plan.
 - **Covers for books without a file cover** come from Open Library (`identify/covers.ts`, table
   `item_covers`, migration 016): only for a confident Open Library match, by cover ID, after

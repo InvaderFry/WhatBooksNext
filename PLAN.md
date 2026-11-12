@@ -1347,6 +1347,7 @@ plainly at the start of your message, with what to do and roughly how long it ta
 | **Store purchases: Google Play Books** | Done 2026-11-11 (version 2: 23 found, imported). |
 | **Store purchases: Kobo** | Done 2026-11-11 (script run and imported). |
 | **Store purchases: GlobalComix** | Done 2026-11-11 (version 2, imported). To update any store later: run its script again from Settings → Import store purchases. |
+| **Store purchases: bookmark buttons (when convenient)** | In Settings → Import store purchases, pick each store and drag its **whatBooksNext: …** button to your bookmarks bar (Ctrl+Shift+B shows the bar). From then on, click the bookmark on the store's page instead of pasting into the console. Drag them again after an update. |
 | **Now (after stage 4)** | The second quality session (§17.2), on the new ratings and details. Also, on the Windows PC: Settings → Online lookups → **Keeping ratings up to date** shows due books and a last batch after the app has been open 10–15 minutes; Diagnostics → Automatic refresh shows requests within the daily share. No new accounts or keys. |
 
 ### Still to confirm (not blocking)

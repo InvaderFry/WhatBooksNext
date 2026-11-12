@@ -390,6 +390,8 @@ try {
       },
     ],
     ['library-store-links', '/?view=library&q=cartographer', async () => {}],
+    // The Store filter (owner decision 2026-11-12): only the Kindle books, with each store's count.
+    ['library-store-filter', '/?view=library&store=kindle', async () => {}],
     [
       'settings-csv',
       '/?view=settings',
@@ -469,7 +471,8 @@ try {
       '/?view=settings',
       async (p) => {
         await p.getByRole('radio', { name: /Google Play Books/ }).check();
-        await p.getByRole('button', { name: 'Copy the Google Play Books script' }).waitFor();
+        // The bookmark button: its address is set after render, so wait for it.
+        await p.locator('a.bookmarklet[href^="javascript:"]').waitFor();
         await p.getByRole('heading', { name: 'Import store purchases' }).scrollIntoViewIfNeeded();
       },
     ],

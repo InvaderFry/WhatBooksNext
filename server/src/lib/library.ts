@@ -113,6 +113,8 @@ export interface ItemSummary {
   availability: AvailabilityView;
   user: UserData;
   firstSeenAt: string;
+  /** The stores it's owned in (store names; owner decision 2026-11-12, for the Store filter). */
+  stores?: string[];
 }
 
 export interface AvailabilityView {
@@ -495,6 +497,7 @@ export function loadLibrary(db: DB, reach: FolderReachability, onlyIds?: string[
       ),
       user,
       firstSeenAt: fs.map((f) => f.firstSeenAt).sort()[0] ?? i.created_at,
+      stores: [...new Set(stores.map((l) => l.store ?? 'other'))],
     };
   });
   return { items: out, folders, details, rankingFacts, detailInputs };
@@ -507,6 +510,8 @@ export interface LibraryQuery {
   format?: string;
   availability?: string;
   folder?: string;
+  /** A store name, or "none": books with files and no store copy (owner decision 2026-11-12). */
+  store?: string;
   shortlisted?: boolean;
   readyToRead?: boolean;
   showHidden?: boolean;
@@ -522,9 +527,16 @@ const collator = new Intl.Collator(undefined, { sensitivity: 'base', numeric: tr
 export function queryLibrary(
   items: ItemSummary[],
   q: LibraryQuery,
-): { total: number; items: ItemSummary[] } {
+): { total: number; items: ItemSummary[]; storeCounts: Record<string, number> } {
   let list = items;
   if (!q.showHidden) list = list.filter((i) => !i.user.hidden);
+  // How many books each store holds, over the whole (visible) library: shown in the Store filter.
+  const storeCounts: Record<string, number> = { none: 0 };
+  for (const i of list) {
+    const s = i.stores ?? [];
+    if (s.length === 0 && i.fileCount > 0) storeCounts.none!++;
+    for (const x of s) storeCounts[x] = (storeCounts[x] ?? 0) + 1;
+  }
   if (q.q) {
     // Spaces and punctuation are ignored, so "mapmaking" finds "Map Making" and vice versa.
     const needle = normalizeForCompare(q.q);
@@ -540,6 +552,12 @@ export function queryLibrary(
   if (q.format) list = list.filter((i) => i.formats.includes(q.format!));
   if (q.availability) list = list.filter((i) => i.availability.state === q.availability);
   if (q.folder) list = list.filter((i) => i.folderIds.includes(q.folder!));
+  if (q.store)
+    list = list.filter((i) =>
+      q.store === 'none'
+        ? (i.stores ?? []).length === 0 && i.fileCount > 0
+        : (i.stores ?? []).includes(q.store!),
+    );
   if (q.shortlisted) list = list.filter((i) => i.user.shortlistPosition !== null);
   if (q.readyToRead) list = list.filter((i) => i.availability.readyToRead);
 
@@ -565,7 +583,7 @@ export function queryLibrary(
   });
   const offset = q.offset ?? 0;
   const limit = Math.min(q.limit ?? 100, 1000);
-  return { total: list.length, items: list.slice(offset, offset + limit) };
+  return { total: list.length, items: list.slice(offset, offset + limit), storeCounts };
 }
 
 /** Items only read elsewhere: a history location, no files and no store copy (§7). */

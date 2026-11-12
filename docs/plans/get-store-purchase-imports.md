@@ -59,6 +59,24 @@ comic pages.
   the script into the console. Stage 1c and owner actions A4 and A5 move to "Later: the browser
   extension". Every collector stays a console script built from the shared core, so an extension
   can still wrap it later without a rewrite.
+- **Bookmark buttons, not an extension, for now** (decided 2026-11-12). Each store's script is
+  also a `javascript:` bookmark: the owner drags it from Settings to the bookmarks bar once, then
+  clicks it on the store's page. It's the same code, minified, from
+  `tools/store-collector/bookmarklets/` (built by `npm run build:collector`, and checked by a test
+  for freshness and length). It needs nothing installed, works the same in Firefox and Chrome, and
+  needs no Mozilla account. The console paste stays as a fallback. A command-line or headless
+  collector was considered and ruled out: it would have to sign in to each store itself, and stores
+  challenge automated sign-ins. The extension remains a later option. If it's wanted: Firefox
+  first, signed through the owner's own Mozilla Add-ons account (they're fine with that), and how
+  results reach the app is still undecided (files, or sent straight to the app with a pairing
+  code).
+- **Permanent purchases only, free-for-good included** (confirmed 2026-11-12). GlobalComix
+  comics unlocked free for good count as owned (`free_claim`), as do free books claimed at the
+  other stores.
+- **A Store filter on the Library page** (decided 2026-11-12), beside Availability, not replacing
+  it. Availability is about files (on this PC, drive not connected, missing) and drives "Ready to
+  read". Store answers "where do I own this?" (Kindle, Google Play Books, Kobo, GlobalComix, Apple
+  Books, another app, or "Not in a store (your files)"), with each store's count.
 - **Stage 2 order** (decided 2026-11-11): Google Play Books, then Kobo (kobo.com/us), then
   GlobalComix. All three get a look-around first, in one sitting (A6).
 - **Hand over a file.** The collector downloads a JSON file and the owner chooses it in the app.

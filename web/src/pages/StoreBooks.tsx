@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, KIND_LABELS, STORE_LABELS } from '../api.ts';
 import { Notice, storeLinkText } from '../components.tsx';
 import { navigate } from '../url.ts';
@@ -817,7 +817,7 @@ const SCRIPT_STEPS: Record<string, { where: string; shown: string; pace: string;
     where: 'GlobalComix’s home page',
     shown:
       'globalcomix.com, not your purchases yet: start here so the page loads your list while the script watches',
-    pace: 'now use the site’s own menu to go to My Shelf → Purchases, and scroll to the bottom. The script makes no requests of its own: it reads the list the page loads, and finishes by itself once it has all of it (or click Finish)',
+    pace: 'after clicking OK, use the site’s own menu to go to My Shelf → Purchases, and scroll to the bottom. The script makes no requests of its own: it reads the list the page loads, and finishes by itself once it has all of it (or click Finish)',
     file: 'whatbooksnext-globalcomix-…json',
   },
   google_play: {
@@ -829,66 +829,130 @@ const SCRIPT_STEPS: Record<string, { where: string; shown: string; pace: string;
 };
 
 /** The steps for one store's console script. Written for someone who has never used one. */
+/**
+ * A store's bookmark button (owner decision 2026-11-12): dragged to the bookmarks bar once, then
+ * clicked on the store's page. React won't render a `javascript:` link, so its address is set after
+ * render; a click here does nothing (and the app's own security policy wouldn't run it anyway).
+ */
+function BookmarkButton({ service, label }: { service: string; label: string }) {
+  const ref = useRef<HTMLAnchorElement>(null);
+  const [mark, setMark] = useState<{ href: string; version: string } | null>(null);
+  const [note, setNote] = useState<string | null>(null);
+  useEffect(() => {
+    void api
+      .get<{ href: string; version: string }>(`/api/store-collectors/${service}/bookmarklet`)
+      .then(setMark)
+      .catch(() => setMark(null));
+  }, [service]);
+  useEffect(() => {
+    if (ref.current && mark) ref.current.setAttribute('href', mark.href);
+  }, [mark]);
+  if (!mark) return null;
+  return (
+    <span className="bookmark-row">
+      <a
+        ref={ref}
+        className="button small bookmarklet"
+        draggable
+        title="Drag me to your bookmarks bar"
+        onClick={(e) => {
+          e.preventDefault();
+          setNote('Drag the button to your bookmarks bar; clicking it here does nothing.');
+        }}
+      >
+        whatBooksNext: {label}
+      </a>{' '}
+      <button
+        type="button"
+        className="link-button small"
+        onClick={async () => {
+          try {
+            await navigator.clipboard.writeText(mark.href);
+            setNote(
+              'Copied. Right-click the bookmarks bar, choose Add Bookmark, name it, and paste this as its address (URL).',
+            );
+          } catch (err) {
+            setNote(`Couldn’t copy: ${(err as Error).message}`);
+          }
+        }}
+      >
+        Can’t drag? Copy its address
+      </button>{' '}
+      <span className="muted small">(script version {mark.version})</span>
+      {note && (
+        <span className="small" role="status">
+          {' '}
+          {note}
+        </span>
+      )}
+    </span>
+  );
+}
+
+/** The steps for one store's script. Written for someone who has never used one. */
 function ScriptSteps({ service, page }: { service: string; page: string }) {
   const [copied, setCopied] = useState<string | null>(null);
   const label = STORE_LABELS[service] ?? service;
   const t = SCRIPT_STEPS[service];
   if (!t) return null;
   return (
-    <ol className="steps">
-      <li>
-        In Edge or Chrome, open{' '}
-        <a href={page} target="_blank" rel="noopener noreferrer">
-          {t.where}
-          <span aria-hidden="true"> ↗</span>
-          <span className="visually-hidden"> (opens in a new tab)</span>
-        </a>{' '}
-        ({t.shown}) and sign in if asked.
-      </li>
-      <li>
-        Copy the script:{' '}
-        <button
-          type="button"
-          className="small secondary"
-          onClick={async () => {
-            try {
-              const r = await api.get<{ script: string }>(
-                `/api/store-collectors/${service}/script`,
-              );
-              await navigator.clipboard.writeText(r.script);
-              setCopied(`Copied. Now go to the ${label} tab.`);
-            } catch (e) {
-              setCopied(`Couldn’t copy: ${(e as Error).message}`);
-            }
-          }}
-        >
-          Copy the {label} script
-        </button>{' '}
-        {copied && (
-          <span className="small" role="status">
-            {copied}
-          </span>
-        )}
-      </li>
-      <li>
-        On the {label} tab, press <kbd>F12</kbd> (or <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>J</kbd>)
-        and choose the <strong>Console</strong> tab.
-      </li>
-      <li>
-        Paste with <kbd>Ctrl</kbd>+<kbd>V</kbd> and press <kbd>Enter</kbd>. If the browser warns
-        about pasting, type <code>allow pasting</code>, press <kbd>Enter</kbd>, then paste again.
-      </li>
-      <li>
-        Read the notice and click <strong>OK</strong>. Leave the tab open: {t.pace}. It shows its
-        progress in the corner.
-      </li>
-      <li>
-        When it’s done, a file called <code>{t.file}</code> is in your Downloads folder. Keep it
-        private. If you’re asked for the report, click <strong>Copy report (no titles)</strong> and
-        paste it into chat.
-      </li>
-      <li>Choose that file below.</li>
-    </ol>
+    <>
+      <ol className="steps">
+        <li>
+          Once: show your bookmarks bar (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd> in Firefox,
+          Chrome and Edge) and drag this button onto it:{' '}
+          <BookmarkButton service={service} label={label} /> When whatBooksNext is updated, drag it
+          again, so your bookmark has the newest version.
+        </li>
+        <li>
+          Open{' '}
+          <a href={page} target="_blank" rel="noopener noreferrer">
+            {t.where}
+            <span aria-hidden="true"> ↗</span>
+            <span className="visually-hidden"> (opens in a new tab)</span>
+          </a>{' '}
+          ({t.shown}) and sign in if asked.
+        </li>
+        <li>
+          Click the <strong>whatBooksNext: {label}</strong> bookmark. Read the notice and click{' '}
+          <strong>OK</strong>. Leave the tab open: {t.pace}. It shows its progress in the corner.
+        </li>
+        <li>
+          When it’s done, a file called <code>{t.file}</code> is in your Downloads folder. Keep it
+          private. If you’re asked for the report, click <strong>Copy report (no titles)</strong>{' '}
+          and paste it into chat.
+        </li>
+        <li>Choose that file below.</li>
+      </ol>
+      <details className="small">
+        <summary>Or paste the script into the browser’s console instead</summary>
+        <p>
+          <button
+            type="button"
+            className="small secondary"
+            onClick={async () => {
+              try {
+                const r = await api.get<{ script: string }>(
+                  `/api/store-collectors/${service}/script`,
+                );
+                await navigator.clipboard.writeText(r.script);
+                setCopied(`Copied. Now go to the ${label} tab.`);
+              } catch (e) {
+                setCopied(`Couldn’t copy: ${(e as Error).message}`);
+              }
+            }}
+          >
+            Copy the {label} script
+          </button>{' '}
+          {copied && <span role="status">{copied}</span>}
+        </p>
+        <p>
+          On the {label} tab, press <kbd>F12</kbd> and choose the <strong>Console</strong> tab.
+          Paste with <kbd>Ctrl</kbd>+<kbd>V</kbd> and press <kbd>Enter</kbd> (if the browser warns
+          about pasting, type <code>allow pasting</code> first). Then carry on from step 3.
+        </p>
+      </details>
+    </>
   );
 }
 
