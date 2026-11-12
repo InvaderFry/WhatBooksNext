@@ -365,6 +365,42 @@ describe('Needs review: identities (§11.4)', () => {
     ],
   });
 
+  it('offers the same sources in review and lets a source-specific search resolve a review row', async () => {
+    olByTitle['the glass bell'] = twoWorks;
+    await addAndScan({ 'theglassbell.pdf': 30_000 });
+    const id = itemIdOf('theglassbell.pdf');
+    const review = (await api.get('/api/review')).body;
+    const online = (await api.get(`/api/items/${id}/online`)).body;
+    expect(review.lookupSources).toEqual(online.lookupSources);
+    expect(review.lookupSources).toContainEqual({
+      source: 'comicvine',
+      label: 'ComicVine',
+      configured: false,
+    });
+    requests.length = 0;
+    const search = await api.post(`/api/items/${id}/search`, {
+      query: 'The Time Machine',
+      source: 'openlibrary',
+    });
+    expect(search.status).toBe(200);
+    expect(search.body.candidates).toContainEqual(
+      expect.objectContaining({ source: 'openlibrary', sourceId: '/works/OL52267W' }),
+    );
+    expect(requests.length).toBeGreaterThan(0);
+    expect(requests.every((url) => new URL(url).hostname === 'openlibrary.org')).toBe(true);
+    const confirmed = await api.post(`/api/items/${id}/match`, {
+      action: 'confirm',
+      source: 'openlibrary',
+      sourceId: '/works/OL52267W',
+    });
+    expect(confirmed.status).toBe(200);
+    expect(
+      (await api.get('/api/review')).body.rows.some(
+        (r: { id: string }) => r.id === `identity:${id}`,
+      ),
+    ).toBe(false);
+  });
+
   it('leaves tied candidates provisional and shows both in tier 2 (scenario 18)', async () => {
     olByTitle['the glass bell'] = twoWorks;
     await addAndScan({ 'theglassbell.pdf': 30_000 });
