@@ -455,12 +455,17 @@ export function previewPurchases(
   };
 }
 
-/** Books found by the last complete scan of this account (from the run log), or null. */
+/**
+ * Books found by the last complete scan of this account (from the run log), or null. A scan that
+ * raised the "far fewer books" warning and wasn't confirmed is not a baseline: otherwise importing
+ * the same shrunken file twice would send the missing books to review without asking.
+ */
 function lastComplete(db: DB, service: Service, scope: string): number | null {
   const c = db
     .prepare(
       `SELECT counts FROM store_import_runs WHERE service = ? AND account_scope = ?
-         AND completion = 'complete' ORDER BY imported_at DESC LIMIT 1`,
+         AND completion = 'complete' AND COALESCE(json_extract(counts, '$.shrinkHeld'), 0) = 0
+       ORDER BY imported_at DESC LIMIT 1`,
     )
     .pluck()
     .get(service, scope) as string | undefined;
@@ -650,7 +655,11 @@ export function importPurchases(
       file.collectedAt,
       file.completion.status,
       file.completion.reason,
-      JSON.stringify({ ...file.counts, ...counts }),
+      JSON.stringify({
+        ...file.counts,
+        ...counts,
+        ...(complete && preview.shrink && !opts.confirmShrink ? { shrinkHeld: true } : {}),
+      }),
     );
     syncSeries(db);
     return counts;

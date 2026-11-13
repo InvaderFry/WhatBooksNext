@@ -250,6 +250,9 @@ describe('importing a store purchases file', () => {
     const p = await preview(later);
     expect(p).toMatchObject({ notSeen: 1, shrink: { before: 3, now: 2 } });
     expect((await importFile(later)).notSeen).toBe(0);
+    // The same short file again, unconfirmed: still warned, still nothing sent to review.
+    expect(await preview(later)).toMatchObject({ shrink: { before: 3, now: 2 } });
+    expect((await importFile(later)).notSeen).toBe(0);
     expect((await importFile(later, { confirmShrink: true })).notSeen).toBe(1);
 
     const rows = (await api.get('/api/review')).body.rows.filter(
