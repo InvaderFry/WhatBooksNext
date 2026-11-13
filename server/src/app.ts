@@ -8,7 +8,14 @@ import { refreshFactsOfItems, refreshPrimary, removeOrphanItems } from './identi
 import { healthProblemCount, libraryHealth } from './lib/health.ts';
 import { actOnReview, listReview, openReviewCount } from './lib/review.ts';
 import { coverPath } from './scan/deepPass.ts';
-import { CoverFetcher, coverCandidates, itemCoverPath } from './identify/covers.ts';
+import {
+  CoverFetcher,
+  coverCandidates,
+  itemCoverPath,
+  onlineCoverOf,
+  rejectCover,
+  restoreCovers,
+} from './identify/covers.ts';
 import type { TaskRunner } from './scan/pool.ts';
 import { createBackup, previewRestore, restoreBackup, validateBackup } from './lib/backup.ts';
 import {
@@ -449,6 +456,15 @@ export function createApp(ctx: AppContext) {
         ...item,
         details: lib.details.get(id),
         redirectedFrom: id !== req.params.id ? req.params.id : undefined,
+        // Where the online cover came from ("Wrong cover?"), and how many were turned down.
+        onlineCover: (() => {
+          const c = onlineCoverOf(db, id);
+          return {
+            source: item.coverItemId ? c.source : null,
+            sourceLabel: item.coverItemId && c.source ? SOURCE_LABELS[c.source] : null,
+            rejected: c.rejected,
+          };
+        })(),
         parse: itemParse(db, id),
         titleSource: db.prepare('SELECT title_source FROM items WHERE id = ?').pluck().get(id),
         files: files.map((f) => ({
@@ -527,6 +543,28 @@ export function createApp(ctx: AppContext) {
     res.setHeader('Cache-Control', 'private, max-age=300');
     res.sendFile(file, { dotfiles: 'allow' });
   });
+
+  // "Wrong cover" on a book's page: the online cover goes, and its match never gives this book a
+  // cover again; the fetch tries the book's other confident matches. DELETE undoes it.
+  app.post(
+    '/api/items/:id/cover/wrong',
+    route((req) => {
+      const id = itemIdOr404(String(req.params.id));
+      if (!rejectCover(db, coversDir, id))
+        throw new HttpError(409, 'This book doesn’t show an online cover.');
+      if (coversAllowed()) covers.start();
+      return { ok: true };
+    }),
+  );
+  app.delete(
+    '/api/items/:id/cover/wrong',
+    route((req) => {
+      const id = itemIdOr404(String(req.params.id));
+      restoreCovers(db, id);
+      if (coversAllowed()) covers.start();
+      return { ok: true };
+    }),
+  );
 
   // Owner correction of a file's PDF type (§11.4 "Fix PDF type"). null returns to the detected one.
   app.patch(

@@ -805,6 +805,11 @@ legend {
   flex: 1;
   min-width: 0;
 }
+/* In search results: "Matched series: …" when the row doesn't already show why */
+.search-hit {
+  font-style: italic;
+}
+
 .item-head-text p {
   margin: 0.2rem 0;
 }

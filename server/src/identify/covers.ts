@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { COVER_MAX_BYTES, COVER_RETRY_DAYS } from '../config.ts';
 import type { DB } from '../db/database.ts';
+import { ensureUserRow } from '../lib/progress.ts';
 import { thumbnailFromImage } from '../scan/formats/thumbnail.ts';
 import { sourceCoverUrl } from '../sources/covers.ts';
 import type { Sources } from '../sources/index.ts';
@@ -53,7 +54,8 @@ function splitKey(k: string): { source: string; ref: string } | null {
 function plansByItem(db: DB): Map<string, CoverPlan[]> {
   const items = db
     .prepare(
-      `SELECT i.id, i.identity, i.match_source, i.match_source_id, u.match_override FROM items i
+      `SELECT i.id, i.identity, i.match_source, i.match_source_id, u.match_override,
+         u.cover_rejected FROM items i
        LEFT JOIN user_item u ON u.item_id = i.id
        WHERE NOT EXISTS (SELECT 1 FROM item_files x JOIN files f ON f.id = x.file_id
                          WHERE x.item_id = i.id AND f.has_thumbnail = 1)
@@ -65,6 +67,7 @@ function plansByItem(db: DB): Map<string, CoverPlan[]> {
     match_source: string | null;
     match_source_id: string | null;
     match_override: string | null;
+    cover_rejected: string | null;
   }[];
   const accepted = new Map<string, string[]>();
   for (const r of db
@@ -105,9 +108,10 @@ function plansByItem(db: DB): Map<string, CoverPlan[]> {
           ...(accepted.get(i.id) ?? []),
         ];
     const plans: CoverPlan[] = [];
+    const wrongCovers = new Set(rejectedCovers(i.cover_rejected));
     for (const k of new Set(keys)) {
-      // A match the owner rejected is never used.
-      if (rejected.has(`${i.id}|${k}`)) continue;
+      // A match the owner rejected is never used, nor a cover they called wrong.
+      if (rejected.has(`${i.id}|${k}`) || wrongCovers.has(k)) continue;
       const m = splitKey(k);
       if (!m) continue;
       if (m.source === 'openlibrary') {
@@ -124,6 +128,65 @@ function plansByItem(db: DB): Map<string, CoverPlan[]> {
     out.set(i.id, plans);
   }
   return out;
+}
+
+/** The covers the owner turned down for a book ("Wrong cover"), as source:record keys. */
+function rejectedCovers(raw: string | null | undefined): string[] {
+  const list = parseJson<unknown>(raw, []);
+  return Array.isArray(list) ? list.filter((x): x is string => typeof x === 'string') : [];
+}
+
+/** The online cover a book shows now, and how many the owner turned down. */
+export function onlineCoverOf(
+  db: DB,
+  itemId: string,
+): { source: SourceName | null; rejected: number } {
+  const source = db
+    .prepare("SELECT source FROM item_covers WHERE item_id = ? AND state = 'ok'")
+    .pluck()
+    .get(itemId) as SourceName | undefined;
+  const raw = db
+    .prepare('SELECT cover_rejected FROM user_item WHERE item_id = ?')
+    .pluck()
+    .get(itemId) as string | null | undefined;
+  return { source: source ?? null, rejected: rejectedCovers(raw).length };
+}
+
+/**
+ * "Wrong cover": the owner turns down the book's online cover. The picture goes at once, its match
+ * is never asked for a cover again for this book, and the next fetch tries the book's other
+ * confident matches. False when the book shows no online cover.
+ */
+export function rejectCover(db: DB, coversDir: string | null, itemId: string): boolean {
+  const c = db
+    .prepare("SELECT source, source_ref FROM item_covers WHERE item_id = ? AND state = 'ok'")
+    .get(itemId) as { source: string; source_ref: string } | undefined;
+  if (!c) return false;
+  db.transaction(() => {
+    ensureUserRow(db, itemId);
+    const raw = db
+      .prepare('SELECT cover_rejected FROM user_item WHERE item_id = ?')
+      .pluck()
+      .get(itemId) as string | null;
+    const list = [...new Set([...rejectedCovers(raw), key(c.source, c.source_ref)])];
+    db.prepare('UPDATE user_item SET cover_rejected = ?, updated_at = ? WHERE item_id = ?').run(
+      JSON.stringify(list),
+      nowIso(),
+      itemId,
+    );
+    db.prepare('DELETE FROM item_covers WHERE item_id = ?').run(itemId);
+  })();
+  if (coversDir) fs.rmSync(itemCoverPath(coversDir, itemId), { force: true });
+  return true;
+}
+
+/** "Show online covers again": forgets the covers the owner turned down for this book. */
+export function restoreCovers(db: DB, itemId: string): void {
+  db.prepare(
+    'UPDATE user_item SET cover_rejected = NULL, updated_at = ? WHERE item_id = ? AND cover_rejected IS NOT NULL',
+  ).run(nowIso(), itemId);
+  // Ask again on the next fetch, whatever was last answered.
+  db.prepare("DELETE FROM item_covers WHERE item_id = ? AND state <> 'ok'").run(itemId);
 }
 
 /**
@@ -173,6 +236,8 @@ export class CoverFetcher {
   private readonly coversDir: string | null;
   private running: Promise<void> | null = null;
   private stop = false;
+  /** Asked to start while a run was going: its list was made before, so run once more. */
+  private again = false;
 
   constructor(db: DB, sources: Sources, coversDir: string | null) {
     this.db = db;
@@ -186,9 +251,18 @@ export class CoverFetcher {
 
   /** Starts a run unless one is going; it ends by itself when nothing is left. */
   start(): void {
-    if (this.running || !this.coversDir) return;
+    if (!this.coversDir) return;
+    if (this.running) {
+      this.again = true;
+      return;
+    }
     this.stop = false;
-    this.running = this.run().finally(() => {
+    this.running = (async () => {
+      do {
+        this.again = false;
+        await this.run();
+      } while (this.again && !this.stop);
+    })().finally(() => {
       this.running = null;
     });
   }

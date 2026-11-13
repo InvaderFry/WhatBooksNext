@@ -54,6 +54,8 @@ owner has already made. Don't reopen those decisions. Then read the latest
 - **Covers for books without a file cover** come from Open Library (`identify/covers.ts`, table
   `item_covers`, migration 016): only for a confident Open Library match, by cover ID, after
   lookup runs. Owner decision 2026-11-11; details in the store purchases plan.
+  "Wrong cover?" on a book's page turns one down (`user_item.cover_rejected`, migration 018,
+  an owner correction): the fetcher skips it and tries the book's other confident matches.
 - Automatic refresh: due rules are pure in `lib/refresh.ts`; `identify/refresher.ts` runs batches
   through `lookUpItem` (never a second lookup engine). `lookup_state.accepted_source_id` remembers
   the app's own accepted match: lookups keep it (a rival goes to Needs review as "Check this
