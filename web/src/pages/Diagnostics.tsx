@@ -30,6 +30,14 @@ interface Diag {
   placeholderDetection: string;
   folders: DiagFolder[];
   deepScan: { filesRead: number; filesHashed: number; problems: number; covers: number };
+  onlineCovers: {
+    bySource: Record<string, number>;
+    none: number;
+    failed: number;
+    waiting: number;
+    running: boolean;
+    automatic: boolean;
+  };
   sources: {
     label: string;
     configured: boolean;
@@ -153,6 +161,22 @@ interface HardcoverTest {
   requestsToday: number;
 }
 
+/** Saved online covers, by source: "12 from Hardcover, 3 from Open Library". */
+function coversSaved(d: Diag): string {
+  const parts = Object.entries(d.onlineCovers.bySource).map(
+    ([source, n]) => `${n.toLocaleString()} from ${SOURCE_NAMES[source] ?? source}`,
+  );
+  return parts.length ? parts.join(', ') : 'none saved yet';
+}
+
+const SOURCE_NAMES: Record<string, string> = {
+  openlibrary: 'Open Library',
+  hardcover: 'Hardcover',
+  metron: 'Metron',
+  comicvine: 'ComicVine',
+  anilist: 'AniList',
+};
+
 /** Plain-language checks any user can run, with a copyable report (PLAN.md §15). */
 export function Diagnostics() {
   const [names, setNames] = useState(false);
@@ -161,12 +185,13 @@ export function Diagnostics() {
   const [error, setError] = useState<string | null>(null);
   const [ratingChanges, setRatingChanges] = useState<RatingChanges | null>(null);
 
+  const [reloadKey, setReloadKey] = useState(0);
   useEffect(() => {
     api
       .get<Diag>(`/api/diagnostics${names ? '?names=1' : ''}`)
       .then(setDiag)
       .catch((e: Error) => setError(e.message));
-  }, [names]);
+  }, [names, reloadKey]);
 
   const report = diag
     ? [toReport(diag), ...(ratingChanges ? ['', ...ratingChangeLines(ratingChanges)] : [])].join(
@@ -234,6 +259,35 @@ export function Diagnostics() {
                 {diag.deepScan.filesHashed.toLocaleString()} fingerprinted,{' '}
                 {diag.deepScan.covers.toLocaleString()} covers, {diag.deepScan.problems} with
                 problems (see Library health)
+              </li>
+              <li>
+                Online covers (books without a file cover): {coversSaved(diag)}
+                {diag.onlineCovers.none > 0 && `, ${diag.onlineCovers.none} with no cover online`}
+                {diag.onlineCovers.failed > 0 &&
+                  `, ${diag.onlineCovers.failed} couldn’t be used`},{' '}
+                {diag.onlineCovers.waiting.toLocaleString()} waiting
+                {diag.onlineCovers.running && ' (getting covers now)'}
+                {!diag.onlineCovers.automatic &&
+                  '. Automatic lookups are off, so covers come only when you ask'}
+                {diag.onlineCovers.waiting > 0 && !diag.onlineCovers.running && (
+                  <>
+                    {' '}
+                    <button
+                      type="button"
+                      className="small"
+                      onClick={async () => {
+                        try {
+                          await api.post('/api/covers/fetch', {});
+                          setReloadKey((k) => k + 1);
+                        } catch (e) {
+                          setError((e as Error).message);
+                        }
+                      }}
+                    >
+                      Get covers now
+                    </button>
+                  </>
+                )}
               </li>
               <li>
                 Books waiting for an online lookup: {diag.lookups.pending.toLocaleString()}
@@ -374,6 +428,7 @@ function toReport(d: Diag): string {
     ]),
     '',
     `Deep scan: ${d.deepScan.filesRead} read, ${d.deepScan.filesHashed} hashed, ${d.deepScan.covers} covers, ${d.deepScan.problems} problems`,
+    `Online covers: ${coversSaved(d)}, ${d.onlineCovers.none} none, ${d.onlineCovers.failed} unusable, ${d.onlineCovers.waiting} waiting${d.onlineCovers.running ? ' (running)' : ''}${d.onlineCovers.automatic ? '' : ' (automatic lookups off)'}`,
     `Lookups waiting: ${d.lookups.pending}${d.lookups.running ? ' (running)' : ''}`,
     ...Object.entries(d.ratings.tiers).map(
       ([tier, count]) => `Rating tier ${tier} (${RATING_TIERS[tier]}): ${count}`,

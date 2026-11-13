@@ -335,3 +335,18 @@ describe('covers from other sources', () => {
     expect(db.prepare('SELECT item_id FROM item_covers').pluck().all()).toEqual([b]);
   });
 });
+
+describe('online covers in Diagnostics', () => {
+  it('counts saved covers by source and gets covers when the owner asks', async () => {
+    const id = await storeBook('Asked For');
+    candidate(id, 'hardcover', '508', 'https://cdn.hardcover.app/asked.jpg');
+    override(id, 'hardcover:508');
+    hosted['https://cdn.hardcover.app/asked.jpg'] = picture();
+    const before = (await api.get('/api/diagnostics')).body.onlineCovers;
+    expect(before).toMatchObject({ bySource: {}, waiting: 1, automatic: false });
+    expect((await api.post('/api/covers/fetch')).status).toBe(200);
+    await made.covers.wait();
+    const after = (await api.get('/api/diagnostics')).body.onlineCovers;
+    expect(after).toMatchObject({ bySource: { hardcover: 1 }, waiting: 0, running: false });
+  });
+});
