@@ -8,7 +8,7 @@ import { refreshFactsOfItems, refreshPrimary, removeOrphanItems } from './identi
 import { healthProblemCount, libraryHealth } from './lib/health.ts';
 import { actOnReview, listReview, openReviewCount } from './lib/review.ts';
 import { coverPath } from './scan/deepPass.ts';
-import { CoverFetcher, itemCoverPath } from './identify/covers.ts';
+import { CoverFetcher, coverCandidates, itemCoverPath } from './identify/covers.ts';
 import type { TaskRunner } from './scan/pool.ts';
 import { createBackup, previewRestore, restoreBackup, validateBackup } from './lib/backup.ts';
 import {
@@ -503,6 +503,16 @@ export function createApp(ctx: AppContext) {
     res.sendFile(file, { dotfiles: 'allow' });
   });
 
+  // The owner's "Get covers now" (Diagnostics): runs even when automatic lookups are off.
+  app.post('/api/covers/fetch', (_req, res) => {
+    if (ctx.demo) {
+      res.status(409).json({ error: 'The demo library doesn’t fetch covers.' });
+      return;
+    }
+    covers.start();
+    res.json({ ok: true, running: covers.isRunning() });
+  });
+
   // Online covers for books without a file cover, by item id only (the path is ours alone).
   app.get('/api/items/:id/cover', (req, res) => {
     const id = db
@@ -835,6 +845,25 @@ export function createApp(ctx: AppContext) {
             .get(),
           problems: healthProblemCount(db),
           covers: db.prepare('SELECT COUNT(*) FROM files WHERE has_thumbnail = 1').pluck().get(),
+        },
+        onlineCovers: {
+          // Covers for books without a file cover, from their confident match (counts only).
+          bySource: Object.fromEntries(
+            db
+              .prepare(
+                "SELECT source, COUNT(*) AS n FROM item_covers WHERE state = 'ok' GROUP BY source",
+              )
+              .all()
+              .map((x) => [(x as { source: string }).source, (x as { n: number }).n]),
+          ),
+          none: db.prepare("SELECT COUNT(*) FROM item_covers WHERE state = 'none'").pluck().get(),
+          failed: db
+            .prepare("SELECT COUNT(*) FROM item_covers WHERE state = 'failed'")
+            .pluck()
+            .get(),
+          waiting: coverCandidates(db).length,
+          running: covers.isRunning(),
+          automatic: coversAllowed(),
         },
         sources: sources.status().map((x) => ({
           label: x.label,
