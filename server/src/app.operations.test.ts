@@ -109,6 +109,32 @@ function stateOf(ids: string[]) {
 }
 
 describe('merge (§11.4)', () => {
+  it.each([false, true])(
+    'keeps a manual source choice through merge and undo (existing source: %s)',
+    async (existing) => {
+      const keepId = itemOf('harrowfield.epub');
+      const otherId = itemOf('Harrowfield (Anniversary).epub');
+      const insert =
+        db.prepare(`INSERT INTO lookup_state (item_id, source, version, query, looked_up_at, outcome, manually_selected)
+      VALUES (?, 'anilist', 1, '{}', '2026-01-01', 'none', ?)`);
+      if (existing) insert.run(keepId, 0);
+      insert.run(otherId, 1);
+      const merged = await api.post('/api/merge', { keepId, otherId, choices: {} });
+      expect(merged.status).toBe(200);
+      const selected = (id: string) =>
+        db
+          .prepare(
+            "SELECT manually_selected FROM lookup_state WHERE item_id = ? AND source = 'anilist'",
+          )
+          .pluck()
+          .get(id);
+      expect(selected(keepId)).toBe(1);
+      expect((await api.post(`/api/operations/${merged.body.operationId}/undo`)).status).toBe(200);
+      expect(selected(otherId)).toBe(1);
+      expect(selected(keepId)).toBe(existing ? 0 : undefined);
+    },
+  );
+
   it('shows only what conflicts, and refuses to guess', async () => {
     const a = itemOf('harrowfield.epub');
     const b = itemOf('Harrowfield (Anniversary).epub');

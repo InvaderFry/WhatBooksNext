@@ -652,12 +652,12 @@ export interface LookupStartOptions {
 
 /**
  * Drops candidates from sources that no longer apply to an item (the rules changed, or the
- * owner changed its kind) and re-decides its identity. Owner decisions are kept.
+ * owner changed its kind) and re-decides its identity. Explicit sources and owner decisions stay.
  */
 export function pruneInapplicable(db: DB, sources: Sources): number {
   const rows = db
     .prepare(
-      `SELECT DISTINCT l.item_id, l.source, COALESCE(u.kind_override, i.kind) AS kind, i.issue_label
+      `SELECT DISTINCT l.item_id, l.source, COALESCE(u.kind_override, i.kind) AS kind, i.issue_label, l.manually_selected
        FROM lookup_state l JOIN items i ON i.id = l.item_id
        LEFT JOIN user_item u ON u.item_id = i.id`,
     )
@@ -666,9 +666,11 @@ export function pruneInapplicable(db: DB, sources: Sources): number {
     source: string;
     kind: string | null;
     issue_label: string | null;
+    manually_selected: number;
   }[];
   const touched = new Set<string>();
   for (const r of rows) {
+    if (r.manually_selected) continue;
     if (sources.forItem(r.kind, r.issue_label).some((s) => s.name === r.source)) continue;
     db.prepare('DELETE FROM lookup_state WHERE item_id = ? AND source = ?').run(
       r.item_id,
@@ -747,6 +749,8 @@ export interface LookupOptions {
   background?: boolean;
   /** Ask only these sources (automatic refresh asks the ones that are due). */
   only?: SourceName[];
+  /** Explicit manual choice, independent of the automatic source plan. */
+  source?: SourceName;
 }
 
 export interface LookupResult {
@@ -769,7 +773,9 @@ function askedSources(
   kind: string | null,
   issue: string | null,
   only?: SourceName[],
+  source?: SourceName,
 ): SourceAdapter[] {
+  if (source) return sources.onlineSources().filter((s) => s.name === source);
   const all = sources.forItem(kind, issue);
   return only ? all.filter((s) => only.includes(s.name)) : all;
 }
@@ -802,15 +808,21 @@ export async function lookUpItem(
   let results: LookupResult[] = [];
   for (let pass = 0; pass < MAX_PASSES; pass++) {
     results = await lookUpOnce(db, sources, itemId, opts);
+    // Preserve explicitly requested results across bulk cleanup, including a failed refresh
+    // that kept an earlier answer. Automatic upserts leave this owner-intent flag alone.
+    if (opts.source)
+      db.prepare(
+        'UPDATE lookup_state SET manually_selected = 1 WHERE item_id = ? AND source = ?',
+      ).run(itemId, opts.source);
     if (results.some((r) => r.outcome === 'failed')) return results;
-    if (!searchChanged(db, sources, itemId, opts.only)) return results;
+    if (!searchChanged(db, sources, itemId, opts.only, opts.source)) return results;
   }
   // Still changing: settle on the current search, so the next run doesn't ask again.
   const facts = matchFactsFor(db, itemId);
   if (facts) {
     const qKey = JSON.stringify(buildQuery(facts));
     const now = nowIso();
-    for (const s of askedSources(sources, facts.kind, facts.issue ?? null, opts.only))
+    for (const s of askedSources(sources, facts.kind, facts.issue ?? null, opts.only, opts.source))
       db.prepare(
         `INSERT INTO lookup_state (item_id, source, version, query, looked_up_at, outcome, error, last_answer_at)
          VALUES (?, ?, ?, ?, ?, 'none', NULL, ?)
@@ -822,12 +834,18 @@ export async function lookUpItem(
 }
 
 /** Would the item be searched differently now, or by a source not asked yet? */
-function searchChanged(db: DB, sources: Sources, itemId: string, only?: SourceName[]): boolean {
+function searchChanged(
+  db: DB,
+  sources: Sources,
+  itemId: string,
+  only?: SourceName[],
+  source?: SourceName,
+): boolean {
   const facts = matchFactsFor(db, itemId);
   if (!facts) return false;
   const qKey = JSON.stringify(buildQuery(facts));
   const state = db.prepare('SELECT query FROM lookup_state WHERE item_id = ? AND source = ?');
-  return askedSources(sources, facts.kind, facts.issue ?? null, only).some((s) => {
+  return askedSources(sources, facts.kind, facts.issue ?? null, only, source).some((s) => {
     const st = state.get(itemId, s.name) as { query: string } | undefined;
     return !st || st.query !== qKey;
   });
@@ -885,7 +903,7 @@ async function lookUpOnce(
   const query = buildQuery(facts);
   const qKey = JSON.stringify(query);
   const results: LookupResult[] = [];
-  const all = askedSources(sources, facts.kind, facts.issue ?? null, opts.only);
+  const all = askedSources(sources, facts.kind, facts.issue ?? null, opts.only, opts.source);
   // Real requests per source before asking: an answer counts as "the source answered" only
   // when a request went out (a re-read of the cache is not news from the source).
   const before = new Map(all.map((s) => [s.name, sources.requestCount(s.name)]));
@@ -1121,7 +1139,10 @@ export class LookupManager {
       .prepare('SELECT summary FROM enrich_runs ORDER BY started_at DESC LIMIT 1')
       .pluck()
       .get() as string | undefined;
-    return last ? parseJson<LookupStatus | null>(last, null) : null;
+    const saved = last ? parseJson<LookupStatus | null>(last, null) : null;
+    // Older summaries lack errors; an interrupted run may leave the default empty object.
+    if (!saved?.status) return null;
+    return { ...saved, errors: saved.errors ?? [] };
   }
 
   /**

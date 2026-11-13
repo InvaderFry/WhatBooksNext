@@ -146,7 +146,7 @@ describe('restore regression across every table (§16)', () => {
 
     // Automatic refresh's columns (stage 4): a rival and a retry, as a refresh leaves them.
     db.prepare(
-      `UPDATE lookup_state SET rival_source_id = 'invented-rival', failure_count = 2,
+      `UPDATE lookup_state SET rival_source_id = 'invented-rival', failure_count = 2, manually_selected = 1,
          next_eligible_at = '2026-11-12T00:00:00.000Z'
        WHERE rowid = (SELECT rowid FROM lookup_state WHERE accepted_source_id IS NOT NULL LIMIT 1)`,
     ).run();
@@ -156,6 +156,7 @@ describe('restore regression across every table (§16)', () => {
       'last_answer_at',
       'next_eligible_at',
       'failure_count',
+      'manually_selected',
     ].filter(
       (c) => !one(db, `SELECT COUNT(*) FROM lookup_state WHERE ${c} IS NOT NULL AND ${c} != 0`),
     );

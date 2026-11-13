@@ -7,6 +7,7 @@ import {
   type Candidate,
   type Kind,
   type MatchReport,
+  type LookupSourceChoice,
   type ReviewList,
   type ReviewRow,
 } from '../api.ts';
@@ -87,7 +88,7 @@ export function Review({ onChanged }: { onChanged: () => void }) {
     );
 
   const tier = (n: number) => data?.rows.filter((r) => r.tier === n) ?? [];
-  const handlers = { act, setPdfType, match, later, run };
+  const handlers = { act, setPdfType, match, later, run, lookupSources: data?.lookupSources ?? [] };
 
   return (
     <div className="page">
@@ -326,8 +327,10 @@ function ReviewCard({
   match,
   later,
   run,
+  lookupSources,
 }: {
   row: ReviewRow;
+  lookupSources: LookupSourceChoice[];
   run: (fn: () => Promise<unknown>, message: string) => Promise<void>;
   act: (row: ReviewRow, action: string, fileId?: string, message?: string) => Promise<void>;
   setPdfType: (row: ReviewRow, type: string) => Promise<void>;
@@ -440,7 +443,9 @@ function ReviewCard({
             </button>
           </>
         )}
-        {row.candidates && <IdentityChoices row={row} match={match} />}
+        {row.candidates && (
+          <IdentityChoices row={row} match={match} lookupSources={lookupSources} />
+        )}
         {row.kind === 'store_not_seen' && (
           <>
             <button
@@ -513,8 +518,10 @@ function ReviewCard({
 function IdentityChoices({
   row,
   match,
+  lookupSources,
 }: {
   row: ReviewRow;
+  lookupSources: LookupSourceChoice[];
   match: (row: ReviewRow, body: object, message: string) => Promise<void>;
 }) {
   const item = row.items[0]!;
@@ -522,6 +529,7 @@ function IdentityChoices({
   const [results, setResults] = useState<Candidate[] | null>(null);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [searching, setSearching] = useState(false);
+  const [source, setSource] = useState('');
   const list = results ?? row.candidates ?? [];
   return (
     <div className="identity">
@@ -601,7 +609,7 @@ function IdentityChoices({
             try {
               const r = await api.post<{ candidates: Candidate[]; errors: string[] }>(
                 `/api/items/${item.id}/search`,
-                { query },
+                { query, ...(source ? { source } : {}) },
               );
               setResults(r.candidates);
               if (r.errors.length) setSearchError(r.errors.join(' · '));
@@ -612,13 +620,44 @@ function IdentityChoices({
             }
           }}
         >
+          <label htmlFor={`source-${row.id}`}>Search source</label>
+          <select
+            id={`source-${row.id}`}
+            value={source}
+            disabled={searching}
+            onChange={(e) => {
+              setSource(e.target.value);
+              setResults(null);
+              setSearchError(null);
+            }}
+          >
+            <option value="">Automatic sources for this item</option>
+            {lookupSources.map((s) => (
+              <option key={s.source} value={s.source} disabled={!s.configured}>
+                {s.label}
+                {s.configured ? '' : ' — set up in Settings'}
+              </option>
+            ))}
+          </select>
           <label className="visually-hidden" htmlFor={`q-${row.id}`}>
             Search for {item.title}
           </label>
-          <input id={`q-${row.id}`} value={query} onChange={(e) => setQuery(e.target.value)} />
+          <input
+            id={`q-${row.id}`}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            minLength={2}
+            maxLength={200}
+            required
+          />
           <button type="submit" className="small" disabled={searching}>
             {searching ? 'Searching…' : 'Search'}
           </button>
+          <p className="muted small">
+            Metron and ComicVine cover comics; AniList covers manga. Include the issue number for a
+            comic search, for example Copperline #2. Comic sources are searched only when selected.
+            Sources marked “set up” need credentials in Settings → Online sources.
+          </p>
         </form>
       )}
     </div>

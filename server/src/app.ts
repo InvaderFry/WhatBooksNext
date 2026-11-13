@@ -548,7 +548,14 @@ export function createApp(ctx: AppContext) {
   // ---- Needs review and Library health (§11.4, §15) -------------------------------------------
   app.get(
     '/api/review',
-    route(() => listReview(db)),
+    route(() => ({
+      ...listReview(db),
+      lookupSources: sources.onlineSources(true).map((s) => ({
+        source: s.name,
+        label: sources.label(s.name),
+        configured: sources.isConfigured(s.name),
+      })),
+    })),
   );
   app.post(
     '/api/review/:id',

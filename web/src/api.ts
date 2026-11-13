@@ -225,7 +225,14 @@ export interface ReviewRow {
   };
 }
 
+export interface LookupSourceChoice {
+  source: string;
+  label: string;
+  configured: boolean;
+}
+
 export interface ReviewList {
+  lookupSources: LookupSourceChoice[];
   tiers: Record<number, number>;
   rows: ReviewRow[];
   notListed: { provisional: number; unidentified: number };
@@ -675,6 +682,8 @@ export interface ItemOnline {
   fromEachSource: FromEachSource;
   identity: 'accepted' | 'provisional' | 'tie' | 'unidentified';
   matchConfirmed: boolean;
+  autoMatchScore: number | null;
+  autoMatchThreshold: number;
   override: string | null;
   lookups: {
     source: string;
@@ -708,6 +717,7 @@ export interface ItemOnline {
   description: string | null;
   subjects: string[];
   lookupAvailable: boolean;
+  lookupSources: LookupSourceChoice[];
   /** Sources due for a refresh, and ones whose last refresh failed (previous result shown). */
   refresh: { due: string[]; failed: string[] };
 }

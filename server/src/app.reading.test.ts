@@ -1,12 +1,14 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import request from 'supertest';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createApp } from './app.ts';
 import type { DB } from './db/database.ts';
 import { createBackup } from './lib/backup.ts';
+import { MATCH_ACCEPT } from './config.ts';
 import { createStoreItem } from './lib/store.ts';
 import { mergeItems } from './lib/operations.ts';
+import { setSecret } from './sources/index.ts';
 import type { Fetcher } from './sources/types.ts';
 import { makeCbz, makeEpub, makeImage, makePdf } from './testing/fixtures.ts';
 import { fakePlatformWithDrives, memoryDb, tempDir, writeFiles } from './testing/helpers.ts';
@@ -93,6 +95,41 @@ const timeMachine = () =>
   makeEpub({ title: 'The Time Machine', creators: ['H. G. Wells'], chapters: [1500, 1500] });
 
 describe('lookups', () => {
+  it.each([undefined, null, [] as string[], ['An earlier source problem']])(
+    'reads a saved lookup summary with errors=%j without losing its other fields',
+    async (errors) => {
+      const summary = {
+        runId: 'old-run',
+        status: 'completed',
+        startedAt: '2026-01-01T00:00:00.000Z',
+        finishedAt: '2026-01-01T00:01:00.000Z',
+        total: 3,
+        done: 3,
+        outcomes: { matched: 3 },
+        estimateSeconds: null,
+        error: null,
+        errors,
+      };
+      const raw = JSON.stringify(summary);
+      db.prepare(
+        "INSERT INTO enrich_runs (id, status, started_at, summary) VALUES ('old-run', 'completed', ?, ?)",
+      ).run(summary.startedAt, raw);
+      const response = await api.get('/api/lookups');
+      expect(response.status).toBe(200);
+      expect(response.body.status).toEqual({ ...summary, errors: errors ?? [] });
+      expect(db.prepare("SELECT summary FROM enrich_runs WHERE id = 'old-run'").pluck().get()).toBe(
+        raw,
+      );
+    },
+  );
+
+  it('does not expose an unfinished saved summary as a usable lookup status', async () => {
+    db.prepare(
+      "INSERT INTO enrich_runs (id, status, started_at) VALUES ('interrupted-run', 'running', '2026-01-01')",
+    ).run();
+    expect((await api.get('/api/lookups')).body.status).toBeNull();
+  });
+
   it('continues with later books when a merge retires the item awaiting an online response', async () => {
     const keep = createStoreItem(db, { title: 'Rain Ledger', store: 'kindle' });
     const other = createStoreItem(db, { title: 'Rain Ledger Copy', store: 'apple_books' });
@@ -122,6 +159,207 @@ describe('lookups', () => {
     const item = (await api.get(`/api/items/${itemIdOf('thetimemachine.epub')}`)).body;
     expect(item.kind).toBe('fiction');
     expect(item.kindIsGuess).toBe(true);
+  });
+
+  it('exposes manual source choices, including comic sources that need setup', async () => {
+    const id = createStoreItem(db, { title: 'Comic collection', store: 'kindle' });
+    const online = (await api.get(`/api/items/${id}/online`)).body;
+    expect(online.lookupSources).toEqual(
+      expect.arrayContaining([
+        { source: 'openlibrary', label: 'Open Library', configured: true },
+        { source: 'metron', label: 'Metron', configured: false },
+        { source: 'comicvine', label: 'ComicVine', configured: false },
+      ]),
+    );
+    for (const endpoint of ['lookup', 'search']) {
+      for (const source of ['unknown', 'calibre', '', null, 'metron']) {
+        const response = await api.post(`/api/items/${id}/${endpoint}`, {
+          query: 'Comic #2',
+          source,
+        });
+        expect(response.status).toBe(400);
+      }
+    }
+    expect(requests).toHaveLength(0);
+  });
+
+  it('looks up only the chosen comic source outside the automatic plan, preserving confirmations', async () => {
+    await addAndScan({ 'thetimemachine.epub': timeMachine() });
+    const id = itemIdOf('thetimemachine.epub');
+    await api.post(`/api/items/${id}/match`, {
+      action: 'confirm',
+      source: 'openlibrary',
+      sourceId: '/works/OL52267W',
+    });
+    setSecret(db, 'comicvine_key', 'invented-key');
+    const comic = vi.spyOn(made.sources.comicvine, 'search').mockResolvedValue([]);
+    requests.length = 0;
+    const response = await api.post(`/api/items/${id}/lookup`, { source: 'comicvine' });
+    expect(response.status).toBe(200);
+    expect(response.body.results).toEqual([
+      expect.objectContaining({ source: 'comicvine', outcome: 'none' }),
+    ]);
+    expect(comic).toHaveBeenCalled();
+    expect(requests).toHaveLength(0);
+    const online = (await api.get(`/api/items/${id}/online`)).body;
+    expect(online.override).toBe('openlibrary:/works/OL52267W');
+    expect(online.autoMatchScore).toBeNull();
+    comic.mockRestore();
+  });
+
+  it('searches a chosen comic source with the corrected series and issue number', async () => {
+    const id = createStoreItem(db, { title: 'Bad filename', store: 'kindle' });
+    setSecret(db, 'comicvine_key', 'invented-key');
+    const comic = vi.spyOn(made.sources.comicvine, 'search').mockResolvedValue([
+      {
+        source: 'comicvine',
+        sourceId: '42',
+        title: 'Copperline #2',
+        authors: [],
+        isbns: [],
+        subjects: [],
+      },
+    ]);
+    const response = await api.post(`/api/items/${id}/search`, {
+      query: 'Copperline #2',
+      source: 'comicvine',
+    });
+    expect(response.status).toBe(200);
+    expect(comic).toHaveBeenCalledWith(
+      expect.objectContaining({ series: 'Copperline', issue: '2' }),
+    );
+    expect(response.body.candidates).toHaveLength(1);
+    expect(requests).toHaveLength(0);
+    await api.post(`/api/items/${id}/match`, {
+      action: 'confirm',
+      source: 'comicvine',
+      sourceId: '42',
+    });
+    expect((await api.get(`/api/items/${id}/online`)).body.override).toBe('comicvine:42');
+    comic.mockRestore();
+  });
+
+  it('keeps an unconfirmed manual source match and its rating after a bulk lookup and restore', async () => {
+    const id = createStoreItem(db, {
+      title: 'Rain Ledger #2',
+      author: 'Ivo Brandt',
+      kind: 'fiction',
+      store: 'kindle',
+    });
+    db.prepare('UPDATE items SET issue_label = ? WHERE id = ?').run('2', id);
+    setSecret(db, 'hardcover_token', 'invented-token');
+    const hardcover = vi.spyOn(made.sources.hardcover, 'search').mockResolvedValue([
+      {
+        source: 'hardcover',
+        sourceId: 'invented-rain-ledger',
+        title: 'Rain Ledger #2',
+        authors: ['Ivo Brandt'],
+        isbns: [],
+        subjects: [],
+        rating: { value: 4.5, scale: 5, count: 100, scope: 'book' },
+      },
+    ]);
+    try {
+      expect((await api.post(`/api/items/${id}/lookup`, { source: 'hardcover' })).status).toBe(200);
+      const before = (await api.get(`/api/items/${id}/online`)).body;
+      expect(before.identity).toBe('accepted');
+      expect(before.override).toBeNull();
+      expect(before.community).toMatchObject({ source: 'hardcover', raw: 4.5 });
+      expect(
+        db
+          .prepare(
+            "SELECT manually_selected FROM lookup_state WHERE item_id = ? AND source = 'hardcover'",
+          )
+          .pluck()
+          .get(id),
+      ).toBe(1);
+      expect((await api.post('/api/lookups', {})).status).toBe(200);
+      await made.lookups.wait();
+      const after = (await api.get(`/api/items/${id}/online`)).body;
+      expect(after.identity).toBe('accepted');
+      expect(after.community).toEqual(before.community);
+      expect(hardcover).toHaveBeenCalledTimes(1);
+      const backup = createBackup(db);
+      expect((await api.post('/api/restore', { backup, confirm: true })).status).toBe(200);
+      expect((await api.post('/api/lookups', {})).status).toBe(200);
+      await made.lookups.wait();
+      expect((await api.get(`/api/items/${id}/online`)).body.community).toEqual(before.community);
+    } finally {
+      hardcover.mockRestore();
+    }
+  });
+
+  it.each(['comic', 'manga'] as const)(
+    'does not spend comic-source requests during an automatic %s search',
+    async (kind) => {
+      const id = createStoreItem(db, { title: 'Copperline #2', kind, store: 'kindle' });
+      setSecret(db, 'metron_token', 'invented-token');
+      setSecret(db, 'comicvine_key', 'invented-key');
+      const metron = vi.spyOn(made.sources.metron, 'search').mockResolvedValue([]);
+      const comicvine = vi.spyOn(made.sources.comicvine, 'search').mockResolvedValue([]);
+      const anime = vi.spyOn(made.sources.anilist, 'search').mockResolvedValue([]);
+      try {
+        const response = await api.post(`/api/items/${id}/search`, { query: 'Copperline #2' });
+        expect(response.status).toBe(200);
+        expect(metron).not.toHaveBeenCalled();
+        expect(comicvine).not.toHaveBeenCalled();
+        expect(anime).toHaveBeenCalled();
+      } finally {
+        metron.mockRestore();
+        comicvine.mockRestore();
+        anime.mockRestore();
+      }
+    },
+  );
+
+  it.each(['metron', 'comicvine'] as const)(
+    'requires a typed number instead of borrowing another series’ number for %s',
+    async (source) => {
+      const id = createStoreItem(db, {
+        title: 'Copperline #2',
+        kind: 'comic',
+        series: 'Copperline',
+        number: '2',
+        store: 'kindle',
+      });
+      db.prepare('UPDATE items SET issue_label = ? WHERE id = ?').run('2', id);
+      setSecret(db, 'metron_token', 'invented-token');
+      setSecret(db, 'comicvine_key', 'invented-key');
+      const search = vi.spyOn(made.sources[source], 'search').mockResolvedValue([]);
+      try {
+        const missing = await api.post(`/api/items/${id}/search`, { query: 'Brassbound', source });
+        expect(missing.status).toBe(200);
+        expect(missing.body.errors.join(' ')).toContain('Include an issue number');
+        expect(search).not.toHaveBeenCalled();
+        const numbered = await api.post(`/api/items/${id}/search`, {
+          query: 'Brassbound #7',
+          source,
+        });
+        expect(numbered.status).toBe(200);
+        expect(numbered.body.errors).toEqual([]);
+        expect(search).toHaveBeenCalledWith(
+          expect.objectContaining({ series: 'Brassbound', issue: '7' }),
+        );
+      } finally {
+        search.mockRestore();
+      }
+    },
+  );
+
+  it('reports the score of an automatic 90+ match, and clears the notice after confirmation', async () => {
+    await addAndScan({ 'thetimemachine.epub': timeMachine() });
+    const id = itemIdOf('thetimemachine.epub');
+    const online = (await api.get(`/api/items/${id}/online`)).body;
+    expect(online.identity).toBe('accepted');
+    expect(online.autoMatchThreshold).toBe(Math.round(MATCH_ACCEPT * 100));
+    expect(online.autoMatchScore).toBeGreaterThanOrEqual(online.autoMatchThreshold);
+    expect(online.autoMatchScore).toBeLessThanOrEqual(100);
+    await api.post(`/api/items/${id}/match`, {
+      action: 'confirm',
+      source: 'openlibrary',
+      sourceId: '/works/OL52267W',
+    });
+    expect((await api.get(`/api/items/${id}/online`)).body.autoMatchScore).toBeNull();
   });
 
   it('makes no new requests when nothing changed since the last lookup', async () => {
@@ -234,6 +472,42 @@ describe('Needs review: identities (§11.4)', () => {
       { key: '/works/OL1W', title: 'The Glass Bell', author_name: ['Ann Example'] },
       { key: '/works/OL2W', title: 'Glass Bell', author_name: ['Bea Other'] },
     ],
+  });
+
+  it('offers the same sources in review and lets a source-specific search resolve a review row', async () => {
+    olByTitle['the glass bell'] = twoWorks;
+    await addAndScan({ 'theglassbell.pdf': 30_000 });
+    const id = itemIdOf('theglassbell.pdf');
+    const review = (await api.get('/api/review')).body;
+    const online = (await api.get(`/api/items/${id}/online`)).body;
+    expect(review.lookupSources).toEqual(online.lookupSources);
+    expect(review.lookupSources).toContainEqual({
+      source: 'comicvine',
+      label: 'ComicVine',
+      configured: false,
+    });
+    requests.length = 0;
+    const search = await api.post(`/api/items/${id}/search`, {
+      query: 'The Time Machine',
+      source: 'openlibrary',
+    });
+    expect(search.status).toBe(200);
+    expect(search.body.candidates).toContainEqual(
+      expect.objectContaining({ source: 'openlibrary', sourceId: '/works/OL52267W' }),
+    );
+    expect(requests.length).toBeGreaterThan(0);
+    expect(requests.every((url) => new URL(url).hostname === 'openlibrary.org')).toBe(true);
+    const confirmed = await api.post(`/api/items/${id}/match`, {
+      action: 'confirm',
+      source: 'openlibrary',
+      sourceId: '/works/OL52267W',
+    });
+    expect(confirmed.status).toBe(200);
+    expect(
+      (await api.get('/api/review')).body.rows.some(
+        (r: { id: string }) => r.id === `identity:${id}`,
+      ),
+    ).toBe(false);
   });
 
   it('leaves tied candidates provisional and shows both in tier 2 (scenario 18)', async () => {

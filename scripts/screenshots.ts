@@ -12,7 +12,7 @@ const { chromium } = require('playwright') as typeof import('playwright');
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 const OUT = path.join(ROOT, 'screenshots');
-const PORT = 4877;
+const PORT = Number(process.env.SCREENSHOT_PORT ?? 4877);
 const BASE = `http://localhost:${PORT}`;
 
 async function waitForServer() {
