@@ -152,6 +152,22 @@ describe('merge (§11.4)', () => {
     expect((await api.post('/api/merge', { keepId: a, otherId: b, choices: {} })).status).toBe(400);
   });
 
+  it('keeps the covers the owner turned down for either book when merging', async () => {
+    const a = itemOf('harrowfield.epub');
+    const b = itemOf('Harrowfield (Anniversary).epub');
+    const wrong = db.prepare(
+      "INSERT INTO user_item (item_id, cover_rejected, updated_at) VALUES (?, ?, '2026-11-13')",
+    );
+    wrong.run(a, JSON.stringify(['hardcover:601']));
+    wrong.run(b, JSON.stringify(['metron:81', 'hardcover:601']));
+    expect((await api.post('/api/merge', { keepId: a, otherId: b, choices: {} })).status).toBe(200);
+    const kept = db
+      .prepare('SELECT cover_rejected FROM user_item WHERE item_id = ?')
+      .pluck()
+      .get(a);
+    expect(JSON.parse(kept as string)).toEqual(['hardcover:601', 'metron:81']);
+  });
+
   it('merges files and history with the owner’s choices; the old id still leads to the book', async () => {
     const a = itemOf('harrowfield.epub');
     const b = itemOf('Harrowfield (Anniversary).epub');

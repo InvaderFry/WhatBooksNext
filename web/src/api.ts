@@ -110,6 +110,8 @@ export interface ItemSummary {
   coverFileId: string | null;
   /** With no file cover: the book's own online cover, served at /api/items/<id>/cover. */
   coverItemId?: string | null;
+  /** Only in search results: where the search found the book, when its title doesn't say. */
+  searchHits?: { field: 'author' | 'series' | 'file title'; text: string }[];
   formats: string[];
   fileCount: number;
   folderIds: string[];
@@ -183,6 +185,8 @@ export interface ItemDetail extends ItemSummary {
   parse: Record<string, unknown> | null;
   titleSource: 'embedded' | 'filename' | null;
   redirectedFrom?: string;
+  /** The online cover shown (with no file cover), and how many the owner turned down. */
+  onlineCover?: { source: string | null; sourceLabel: string | null; rejected: number };
 }
 
 export interface ReviewFile {

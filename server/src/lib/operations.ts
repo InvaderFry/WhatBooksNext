@@ -376,6 +376,12 @@ export function mergeItems(
         next[col] = [a[col], b![col]].filter(Boolean).join('\n\n');
       }
     }
+    // Covers the owner called wrong for either book stay turned down for the merged one.
+    const wrong = [a.cover_rejected, b?.cover_rejected].flatMap((x) => {
+      const list = parseJson<unknown>(x as string | null | undefined, []);
+      return Array.isArray(list) ? list.filter((k): k is string => typeof k === 'string') : [];
+    });
+    next.cover_rejected = wrong.length ? JSON.stringify([...new Set(wrong)]) : null;
     // The shortlist keeps the earlier place of the two.
     const pa = a.shortlist_position as number | null;
     const pb = (b?.shortlist_position as number | null | undefined) ?? null;

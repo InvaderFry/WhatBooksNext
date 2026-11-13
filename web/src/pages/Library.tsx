@@ -314,6 +314,14 @@ export function Library({
                 </a>
                 <div className="item-meta">
                   {item.creators.length > 0 && <span>{creatorsText(item.creators)}</span>}
+                  {item.searchHits
+                    // An author the row already names needs no second mention.
+                    ?.filter((h) => h.field !== 'author' || !shownAuthors(item).includes(h.text))
+                    .map((h) => (
+                      <span key={`${h.field}:${h.text}`} className="search-hit">
+                        Matched {h.field}: {h.text}
+                      </span>
+                    ))}
                   <span>
                     <KindText item={item} />
                   </span>
@@ -425,4 +433,10 @@ function FirstRun({ onScanStarted }: { onScanStarted: () => void }) {
       <p className="hint">No accounts or API keys needed.</p>
     </div>
   );
+}
+
+/** The authors a Library row names (creatorsText shows the first two). */
+function shownAuthors(item: { creators: { name: string }[] }): string[] {
+  const names = [...new Set(item.creators.map((c) => c.name))];
+  return names.length <= 2 ? names : names.slice(0, 2);
 }

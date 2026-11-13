@@ -350,3 +350,88 @@ describe('online covers in Diagnostics', () => {
     expect(after).toMatchObject({ bySource: { hardcover: 1 }, waiting: 0, running: false });
   });
 });
+
+describe('Wrong cover', () => {
+  const del = (url: string) => request(made.app).delete(url).set('Host', HOST).send({});
+
+  it('turns down an online cover, tries the next match, and never asks the first again', async () => {
+    const id = await storeBook('Wrong Picture #1');
+    candidate(id, 'hardcover', '601', 'https://cdn.hardcover.app/wrong.jpg');
+    acceptedOn(id, 'hardcover', '601');
+    candidate(id, 'metron', '81', 'https://static.metron.cloud/media/81.jpg');
+    acceptedOn(id, 'metron', '81');
+    hosted['https://cdn.hardcover.app/wrong.jpg'] = picture();
+    await run();
+    expect((await api.get(`/api/items/${id}`)).body.onlineCover).toEqual({
+      source: 'hardcover',
+      sourceLabel: 'Hardcover',
+      rejected: 0,
+    });
+
+    expect((await api.post(`/api/items/${id}/cover/wrong`)).status).toBe(200);
+    expect(fs.existsSync(path.join(dataDir, 'covers', `item-${id}.jpg`))).toBe(false);
+    expect((await api.get(`/api/items/${id}`)).body.coverItemId).toBeNull();
+
+    asked = [];
+    hosted['https://static.metron.cloud/media/81.jpg'] = picture();
+    await run();
+    expect(asked.map((a) => a.url)).toEqual(['https://static.metron.cloud/media/81.jpg']);
+    expect((await api.get(`/api/items/${id}`)).body.onlineCover).toEqual({
+      source: 'metron',
+      sourceLabel: 'Metron',
+      rejected: 1,
+    });
+  });
+
+  it('leaves a book with no cover when its only match was turned down, until the owner undoes it', async () => {
+    const id = await storeBook('Only Match');
+    candidate(id, 'hardcover', '602', 'https://cdn.hardcover.app/only.jpg');
+    override(id, 'hardcover:602');
+    hosted['https://cdn.hardcover.app/only.jpg'] = picture();
+    await run();
+    await api.post(`/api/items/${id}/cover/wrong`);
+    expect(coverCandidates(db)).toEqual([]);
+    expect((await api.get(`/api/items/${id}`)).body.onlineCover).toEqual({
+      source: null,
+      sourceLabel: null,
+      rejected: 1,
+    });
+
+    expect((await del(`/api/items/${id}/cover/wrong`)).status).toBe(200);
+    hosted['https://cdn.hardcover.app/only.jpg'] = picture();
+    await run();
+    expect((await api.get(`/api/items/${id}`)).body).toMatchObject({
+      coverItemId: id,
+      onlineCover: { source: 'hardcover', rejected: 0 },
+    });
+  });
+
+  it('says so when a book shows no online cover', async () => {
+    const id = await storeBook('No Picture');
+    expect((await api.post(`/api/items/${id}/cover/wrong`)).status).toBe(409);
+  });
+
+  it('runs once more when asked during a run, so a change made meanwhile isn’t missed', async () => {
+    const a = await storeBook('Early Book');
+    candidate(a, 'hardcover', '603', 'https://cdn.hardcover.app/early.jpg');
+    override(a, 'hardcover:603');
+    // The first picture waits until the second book is matched, so the run is still going.
+    let release!: () => void;
+    hosted['https://cdn.hardcover.app/early.jpg'] = new Promise<Response>((done) => {
+      release = () => done(picture());
+    }) as unknown as Response;
+    made.covers.start();
+    // Matched after the run made its list.
+    const b = await storeBook('Late Book');
+    candidate(b, 'metron', '82', 'https://static.metron.cloud/media/82.jpg');
+    override(b, 'metron:82');
+    hosted['https://static.metron.cloud/media/82.jpg'] = picture();
+    made.covers.start();
+    expect(made.covers.isRunning()).toBe(true);
+    release();
+    await made.covers.wait();
+    expect(db.prepare('SELECT item_id FROM item_covers ORDER BY item_id').pluck().all()).toEqual(
+      [a, b].sort(),
+    );
+  });
+});

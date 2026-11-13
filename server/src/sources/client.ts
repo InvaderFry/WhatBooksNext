@@ -192,6 +192,10 @@ export class SourceClient {
     if (wait > 0) await this.sleep(wait);
     this.nextAt = this.now() + this.minInterval;
     this.requests++;
+    // A picture that can't be had (an image host refusing it, a placeholder page, a file too
+    // large) says nothing about the source's API: it never counts toward the pause after failures,
+    // so a run of bad covers can't stop lookups. A paused source still refuses pictures (above).
+    const fail = (err: SourceError) => (as ? err : this.fail(err));
 
     let res: Response;
     try {
@@ -208,7 +212,7 @@ export class SourceClient {
       });
     } catch (err) {
       const e = err as Error;
-      throw this.fail(
+      throw fail(
         new SourceError(
           this.name,
           e.name === 'TimeoutError' ? 'The request timed out.' : `Couldn't connect (${e.message}).`,
@@ -241,16 +245,18 @@ export class SourceClient {
       const ms = Math.min(retryAfterMs ?? 60_000, MAX_RETRY_WAIT_MS);
       this.nextAt = Math.max(this.nextAt, this.now() + ms);
       if (!retried) return this.request(url, init, true, as);
-      throw this.fail(
+      throw fail(
         new SourceError(this.name, 'Too many requests; the source asked us to wait.', true),
       );
     }
     if (res.status === 401 || res.status === 403) {
       const text = await res.text().catch(() => '');
-      throw this.fail(
+      throw fail(
         new SourceError(
           this.name,
-          `The source refused the request (${res.status}${detail(text)}). Check the API key in Settings.`,
+          as
+            ? `The image host refused the picture (${res.status}${detail(text)}).`
+            : `The source refused the request (${res.status}${detail(text)}). Check the API key in Settings.`,
           false,
         ),
       );
@@ -263,7 +269,7 @@ export class SourceClient {
     }
     if (!res.ok) {
       const text = await res.text().catch(() => '');
-      throw this.fail(
+      throw fail(
         new SourceError(
           this.name,
           `The source answered ${res.status}${detail(text)}.`,
@@ -273,12 +279,12 @@ export class SourceClient {
     }
     if (as) {
       if (!/^image\//i.test(res.headers.get('content-type') ?? ''))
-        throw this.fail(
+        throw fail(
           new SourceError(this.name, 'The source sent something that isn’t a picture.', false),
         );
       const buf = new Uint8Array(await res.arrayBuffer());
       if (buf.byteLength > as.image)
-        throw this.fail(new SourceError(this.name, 'The picture is larger than allowed.', false));
+        throw fail(new SourceError(this.name, 'The picture is larger than allowed.', false));
       this.failures = 0;
       this.lastSuccessAt = nowIso();
       return buf;

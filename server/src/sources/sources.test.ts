@@ -190,6 +190,20 @@ describe('the source client', () => {
     expect(c.status().state).toBe('paused');
   });
 
+  it('never pauses a source’s lookups because its image host refused some covers', async () => {
+    const fetcher: Fetcher = async (url) =>
+      String(url).includes('/img/')
+        ? new Response('nope', { status: 403 })
+        : new Response('{"ok":1}', { status: 200 });
+    const c = new SourceClient({ name: 'comicvine', minIntervalMs: 0, fetcher, ...noSleep });
+    for (let i = 0; i < CIRCUIT_FAILURES + 2; i++)
+      await expect(c.image(`https://example.invalid/img/${i}`, 1_000_000)).rejects.toThrow(
+        'image host refused',
+      );
+    expect(c.status().state).not.toBe('paused');
+    await expect(c.json('https://example.invalid/api', {}, null)).resolves.toEqual({ ok: 1 });
+  });
+
   it('waits as long as a 429 asks, then tries once more', async () => {
     let n = 0;
     const waits: number[] = [];

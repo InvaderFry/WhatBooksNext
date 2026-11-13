@@ -128,6 +128,7 @@ export function ItemPage({
             <p className="subtitle">{item.details.title.value.subtitle}</p>
           )}
           {!u.titleOverride && <p className="muted small">{titleOrigin(item.details.title)}</p>}
+          <OnlineCoverNote item={item} onChange={load} onMessage={setError} onSaved={setSaved} />
           <div className="item-meta big">
             <AvailabilityLabels a={item.availability} />
           </div>
@@ -877,4 +878,68 @@ function titleOrigin(t: ItemDetail['details']['title']): string {
     default:
       return `Title from ${t.label}.`;
   }
+}
+
+/**
+ * Under an online cover: where it came from, and "Wrong cover?" to turn it down (the app then
+ * tries the book's other confident matches). With covers turned down: "Show online covers again".
+ */
+function OnlineCoverNote({
+  item,
+  onChange,
+  onMessage,
+  onSaved,
+}: {
+  item: ItemDetail;
+  onChange: () => Promise<void> | void;
+  onMessage: (m: string) => void;
+  onSaved: (m: string) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const c = item.onlineCover;
+  if (!c || (!c.sourceLabel && c.rejected === 0)) return null;
+  const act = async (method: 'post' | 'delete', done: string) => {
+    setBusy(true);
+    try {
+      const url = `/api/items/${encodeURIComponent(item.id)}/cover/wrong`;
+      await (method === 'post' ? api.post(url) : api.delete(url));
+      onSaved(done);
+      await onChange();
+    } catch (e) {
+      onMessage((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <p className="muted small cover-note">
+      {c.sourceLabel && (
+        <>
+          Cover from {c.sourceLabel}.{' '}
+          <button
+            type="button"
+            className="link-button"
+            disabled={busy}
+            onClick={() => void act('post', 'Cover removed. Other matches will be tried.')}
+          >
+            Wrong cover?
+          </button>
+        </>
+      )}
+      {c.rejected > 0 && (
+        <>
+          {c.sourceLabel ? ' ' : ''}
+          {c.rejected === 1 ? 'One online cover' : `${c.rejected} online covers`} turned down.{' '}
+          <button
+            type="button"
+            className="link-button"
+            disabled={busy}
+            onClick={() => void act('delete', 'Online covers will be fetched again.')}
+          >
+            Show online covers again
+          </button>
+        </>
+      )}
+    </p>
+  );
 }

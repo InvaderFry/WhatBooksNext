@@ -107,6 +107,8 @@ export interface ItemSummary {
    * From Open Library once the book is matched with confidence.
    */
   coverItemId?: string | null;
+  /** Only in search results: where the search found the book, when its title doesn't say. */
+  searchHits?: SearchHit[];
   formats: string[];
   fileCount: number;
   folderIds: string[];
@@ -549,6 +551,42 @@ export function searchMatcher(
   };
 }
 
+/** Why a book turned up in a search when its shown title doesn't say: an author, a series… */
+export interface SearchHit {
+  field: 'author' | 'series' | 'file title';
+  text: string;
+}
+
+/**
+ * The places other than the shown title where a search found a book, so the Library can say
+ * "Matched author: …". Empty when the shown title explains the match (or nothing matched).
+ */
+export function searchHits(
+  text: string,
+  i: Pick<ItemSummary, 'title' | 'factTitle' | 'creators' | 'series'>,
+): SearchHit[] {
+  const needle = normalizeForCompare(text);
+  if (!needle) return [];
+  const words = text
+    .split(/\s+/)
+    .map(normalizeForCompare)
+    .filter((w) => w.length > 0);
+  const title = normalizeForCompare(i.title);
+  if (title.includes(needle) || (words.length > 1 && words.every((w) => title.includes(w))))
+    return [];
+  const candidates: SearchHit[] = [
+    ...i.creators.map((c) => ({ field: 'author' as const, text: c.name })),
+    ...(i.series ? [{ field: 'series' as const, text: i.series.name }] : []),
+    ...(normalizeForCompare(i.factTitle) !== title
+      ? [{ field: 'file title' as const, text: i.factTitle }]
+      : []),
+  ];
+  return candidates.filter((h) => {
+    const f = normalizeForCompare(h.text);
+    return f.includes(needle) || (words.length > 1 && words.some((w) => f.includes(w)));
+  });
+}
+
 /** Filters and sorts a loaded library. Pure, so it is testable without a database. */
 export function queryLibrary(
   items: ItemSummary[],
@@ -604,7 +642,15 @@ export function queryLibrary(
   });
   const offset = q.offset ?? 0;
   const limit = Math.min(q.limit ?? 100, 1000);
-  return { total: list.length, items: list.slice(offset, offset + limit), storeCounts };
+  let page = list.slice(offset, offset + limit);
+  if (q.q) {
+    const text = q.q;
+    page = page.map((i) => {
+      const hits = searchHits(text, i);
+      return hits.length ? { ...i, searchHits: hits } : i;
+    });
+  }
+  return { total: list.length, items: page, storeCounts };
 }
 
 /** Items only read elsewhere: a history location, no files and no store copy (§7). */
