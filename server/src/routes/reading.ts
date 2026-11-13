@@ -63,6 +63,8 @@ export interface ReadingDeps {
   scans: ScanManager;
   reach: () => Promise<FolderReachability>;
   itemIdOr404: (raw: string) => string;
+  /** After the owner changes a book's match: fetch covers for books that now have one. */
+  matchChanged?: () => void;
 }
 
 export function getSetting<T>(db: DB, key: string, fallback: T): T {
@@ -647,6 +649,7 @@ export function registerReadingRoutes(app: Express, d: ReadingDeps): void {
         db.prepare('SELECT issue_label FROM items WHERE id = ?').pluck().get(id)
       )
         settled = await resolveRunTies(db, sources);
+      d.matchChanged?.();
       return { ok: true, settled };
     }),
   );
@@ -664,6 +667,7 @@ export function registerReadingRoutes(app: Express, d: ReadingDeps): void {
         lookUpItem(db, sources, id, { refresh: true, fresh: true, source }),
       );
       const after = await lookupSnapshot(id);
+      d.matchChanged?.();
       return {
         results: r.map((x) => ({ ...x, sourceLabel: SOURCE_LABELS[x.source] })),
         changes: lookupChanges(before, after),

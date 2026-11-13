@@ -123,7 +123,7 @@ export function ItemPage({
         <Cover fileId={item.coverFileId} itemId={item.coverItemId} kind={item.kind} size="large" />
         <div className="item-head-text">
           <TitleEditor item={item} onSave={save} />
-          {item.creators.length > 0 && <p className="byline">{creatorsText(item.creators)}</p>}
+          {item.creators.length > 0 && <Byline creators={item.creators} />}
           {item.details.title.value.subtitle && (
             <p className="subtitle">{item.details.title.value.subtitle}</p>
           )}
@@ -373,6 +373,29 @@ export function ItemPage({
       />
       <MergeCard itemId={item.id} initialOther={mergeWith} />
     </div>
+  );
+}
+
+/** The book's authors, each a link to the Library searched by that name. */
+function Byline({ creators }: { creators: { name: string }[] }) {
+  const names = [...new Set(creators.map((c) => c.name))];
+  const shown = names.length <= 4 ? names : names.slice(0, 3);
+  return (
+    <p className="byline">
+      {shown.map((name, n) => (
+        <span key={name}>
+          {n > 0 && (n === shown.length - 1 && names.length === shown.length ? ' & ' : ', ')}
+          <a
+            href={hrefFor({ view: 'library', q: name })}
+            onClick={onLinkClick({ view: 'library', q: name })}
+            title={`Books by ${name} in your library`}
+          >
+            {name}
+          </a>
+        </span>
+      ))}
+      {names.length > shown.length && ` and ${names.length - shown.length} more`}
+    </p>
   );
 }
 

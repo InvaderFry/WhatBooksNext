@@ -140,8 +140,9 @@ export function createApp(ctx: AppContext) {
     now: ctx.clock,
     batchRequests: ctx.refreshBatch,
   });
-  // Covers for books without a file cover (store books, reading history), from Open Library, after
-  // each lookup run and once shortly after the app starts: only when lookups may run on their own.
+  // Covers for books without a file cover (store books, reading history), from their confident
+  // match, after each lookup run, after the owner changes a match, and once shortly after the app
+  // starts: only when lookups may run on their own.
   const covers = new CoverFetcher(db, sources, coversDir);
   const coversAllowed = () =>
     !ctx.demo && ctx.autoLookups !== false && getSetting<boolean>(db, 'lookupsAfterScan', true);
@@ -209,6 +210,9 @@ export function createApp(ctx: AppContext) {
     scans,
     reach: () => reach.get(),
     itemIdOr404,
+    matchChanged: () => {
+      if (coversAllowed() && !lookups.isRunning()) covers.start();
+    },
   });
   registerModeRoutes(app, { db, reach: () => reach.get(), itemIdOr404 });
   registerSeriesRoutes(app, { db, sources, reach: () => reach.get(), itemIdOr404 });
