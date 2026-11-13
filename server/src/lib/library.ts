@@ -523,6 +523,32 @@ export interface LibraryQuery {
 
 const collator = new Intl.Collator(undefined, { sensitivity: 'base', numeric: true });
 
+/**
+ * The Library search: titles, authors and series together. Spaces and punctuation are ignored, so
+ * "mapmaking" finds "Map Making" and vice versa. Several words may land in different places
+ * ("orchard ledger hale" finds a title and its author), each word somewhere in the book.
+ */
+export function searchMatcher(
+  text: string,
+): ((i: Pick<ItemSummary, 'title' | 'factTitle' | 'creators' | 'series'>) => boolean) | null {
+  const needle = normalizeForCompare(text);
+  if (!needle) return null;
+  const words = text
+    .split(/\s+/)
+    .map(normalizeForCompare)
+    .filter((w) => w.length > 0);
+  return (i) => {
+    const fields = [
+      i.title,
+      i.factTitle,
+      ...i.creators.map((c) => c.name),
+      ...(i.series ? [i.series.name] : []),
+    ].map(normalizeForCompare);
+    if (fields.some((f) => f.includes(needle))) return true;
+    return words.length > 1 && words.every((w) => fields.some((f) => f.includes(w)));
+  };
+}
+
 /** Filters and sorts a loaded library. Pure, so it is testable without a database. */
 export function queryLibrary(
   items: ItemSummary[],
@@ -538,13 +564,8 @@ export function queryLibrary(
     for (const x of s) storeCounts[x] = (storeCounts[x] ?? 0) + 1;
   }
   if (q.q) {
-    // Spaces and punctuation are ignored, so "mapmaking" finds "Map Making" and vice versa.
-    const needle = normalizeForCompare(q.q);
-    list = list.filter(
-      (i) =>
-        normalizeForCompare(i.title).includes(needle) ||
-        normalizeForCompare(i.factTitle).includes(needle),
-    );
+    const match = searchMatcher(q.q);
+    if (match) list = list.filter(match);
   }
   if (q.kind)
     list = list.filter((i) => (q.kind === 'unknown' ? i.kind === null : i.kind === q.kind));

@@ -155,13 +155,13 @@ export function Library({
 
       <form className="filters" role="search" onSubmit={(e) => e.preventDefault()}>
         <div className="field grow">
-          <label htmlFor="q">Search titles</label>
+          <label htmlFor="q">Search titles, authors and series</label>
           <input
             id="q"
             type="search"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="e.g. glass harbor"
+            placeholder="e.g. glass harbor, or an author's name"
           />
         </div>
         <Select

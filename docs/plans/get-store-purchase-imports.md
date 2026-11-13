@@ -846,6 +846,22 @@ the owner chose **covers from Open Library**, not from the stores.
   the owner confirms it.
 - **Tests:** `server/src/app.covers.test.ts`.
 
+**Widened to every source (owner decision 2026-11-13).** A GlobalComix comic confirmed against
+Hardcover showed Hardcover's picture under Ratings and details but a blank cover at the top. The
+owner asked for the confident match's cover from any source:
+
+- **Which match:** the owner's confirmed match, and only that one. Otherwise the book's main
+  accepted match, then the other sources' accepted matches (`lookup_state.accepted_source_id`), in
+  turn, until one gives a picture. Rejected, provisional and tied matches still never do.
+- **How:** Open Library as before. Hardcover, Metron, ComicVine and AniList: the cover address
+  stored with the match (`item_matches.data.coverUrl`), only on that source's image hosts
+  (`COVER_HOSTS`), through that source's client. No API key is sent with a picture.
+- **A changed match:** a saved cover that belongs to a match the book no longer has is fetched
+  again; with no confident match left ("leave unidentified", a rejection) it's removed.
+  `item_covers.source` now names the source.
+- **When:** also right after the owner confirms a match or presses Look up again.
+- **Offline:** a source that is offline or paused only holds back its own books in that run.
+
 **A collector that hasn't been checked is never shown as working.** In the extension and the app,
 each store is **Checked on <date>**, **Not checked yet**, or **Not supported** (with the reason).
 
