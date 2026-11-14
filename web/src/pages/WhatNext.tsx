@@ -22,6 +22,7 @@ import {
 import { hrefFor, onLinkClick, updateParams, type Params } from '../url.ts';
 import { LookupBanner } from './LookupBanner.tsx';
 import { GapNotice } from './SeriesCard.tsx';
+import { WhyNotFinder } from './WhyNot.tsx';
 
 /**
  * What next (PLAN.md §13, §15): Read next with the time control, Ready to read, and cards that
@@ -524,6 +525,7 @@ export function WhatNext({ params, onChanged }: { params: Params; onChanged: () 
           </ol>
         </section>
       )}
+      {data && <WhyNotFinder nextQuery={query(0).split('?')[1] ?? ''} />}
     </div>
   );
 }

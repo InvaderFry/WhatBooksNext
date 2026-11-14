@@ -7,6 +7,7 @@ import { Review } from './pages/Review.tsx';
 import { ReminderBanner } from './ReminderBanner.tsx';
 import { ItemPage } from './pages/ItemPage.tsx';
 import { Library } from './pages/Library.tsx';
+import { Series } from './pages/Series.tsx';
 import { Settings } from './pages/Settings.tsx';
 import { Shortlist } from './pages/Shortlist.tsx';
 import { Stats } from './pages/Stats.tsx';
@@ -19,6 +20,7 @@ import { hrefFor, onLinkClick, useParams } from './url.ts';
 const NAV = [
   { view: 'next', label: 'What next' },
   { view: 'library', label: 'Library' },
+  { view: 'series', label: 'Series' },
   { view: 'triage', label: 'Triage' },
   { view: 'shortlist', label: 'Shortlist' },
   { view: 'review', label: 'Needs review' },
@@ -95,6 +97,7 @@ export function App() {
       next: 'What next',
       triage: 'Triage',
       library: 'Library',
+      series: 'Series',
       shortlist: 'Shortlist',
       settings: 'Settings',
       diagnostics: 'Diagnostics',
@@ -193,6 +196,9 @@ export function App() {
             mergeWith={params.merge}
             splitFiles={params.split}
           />
+        )}
+        {view === 'series' && (
+          <Series key={`${params.id ?? 'all'}-${dataVersion}`} id={params.id} />
         )}
         {view === 'shortlist' && <Shortlist key={dataVersion} />}
         {view === 'settings' && (

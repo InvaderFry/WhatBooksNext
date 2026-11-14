@@ -344,3 +344,57 @@ describe('collected editions and their issues (§12.5)', () => {
     expect(ids).not.toContain(tpb);
   });
 });
+
+describe('Series page and “Why isn’t this book shown?” (feature review, step 5)', () => {
+  it('lists each series with what is owned, read, missing and next, started series first', async () => {
+    await addAndScan({
+      ...ownedVolumes(),
+      'Other/glassmoon1.epub': makeEpub({
+        title: 'The Glass Moon 1',
+        creators: ['Ilse Varga'],
+        language: 'en',
+        series: 'The Glass Moon',
+        seriesIndex: '1',
+        chapters: [3000],
+      }),
+    });
+    await api.patch(`/api/items/${itemIdOf('emberroads1.epub')}`, { progress: 'finished' });
+    await api.patch(`/api/items/${itemIdOf('emberroads2.epub')}`, { progress: 'into_it' });
+    const r = await api.get('/api/series');
+    expect(r.status).toBe(200);
+    expect(r.body.series.map((s: { name: string }) => s.name)).toEqual([
+      'The Ember Roads',
+      'The Glass Moon',
+    ]);
+    expect(r.body.series[0]).toMatchObject({
+      id: seriesIdOf('emberroads1.epub'),
+      owned: 3,
+      read: 1,
+      reading: 1,
+      missing: 1,
+      next: { id: itemIdOf('emberroads2.epub'), label: '2' },
+    });
+    expect(r.body.series[1]).toMatchObject({ owned: 1, read: 0, missing: 0 });
+  });
+
+  it('explains a later volume held back by one per series, and a filter, with ways round them', async () => {
+    await addAndScan(ownedVolumes());
+    const two = itemIdOf('emberroads2.epub');
+    const r = await api.get(`/api/next/why?id=${two}`);
+    expect(r.status).toBe(200);
+    expect(r.body).toMatchObject({ id: two, mode: 'read_next', position: null });
+    expect(r.body.reasons[0].text).toContain('One book per series');
+    expect(r.body.reasons[0].fix).toMatchObject({ kind: 'item', id: itemIdOf('emberroads1.epub') });
+
+    const kinds = await api.get(`/api/next/why?id=${two}&show=comics`);
+    expect(kinds.body.reasons[0].fix).toEqual({
+      kind: 'choice',
+      key: 'show',
+      value: '',
+      label: 'Show all kinds',
+    });
+    const one = await api.get(`/api/next/why?id=${itemIdOf('emberroads1.epub')}`);
+    expect(one.body.position).toBe(1);
+    expect((await api.get('/api/next/why?id=nope')).status).toBe(404);
+  });
+});

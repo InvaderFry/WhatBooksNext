@@ -81,6 +81,20 @@ ready now". The name then appears as a button above the choices: one tap brings 
 narrow screen the choices fold into one line ("Showing Read next · 30 min · …") with a **Change**
 button, and the Library's filters fold behind **Filters and sort**, so books start near the top.
 
+**Why isn't a book here?** At the foot of What next, find any book to see what keeps it out of
+the list as it stands. For example: it's finished or marked Never, "What kind?" is set to Books, an
+earlier book in its series comes first, or its length won't fit the time chosen. Each reason has a
+button that makes the change for you, such as **Show all kinds**, or opens the book that comes
+first. Nothing is loosened behind your back. A book's own page has the same check for Read next
+under **In What next?**.
+
+**Series page.** **Series** in the menu lists every series, the ones you're reading first. For
+each it shows what you own, have read and are reading, how many are missing (published volumes
+you don't have, and gaps), and the one to read next. **With gaps** narrows the list. A series'
+own page shows its full order with the same actions as a book's Series section: finished or
+ongoing, "I read these elsewhere", and confirming what a collected edition holds. A book's Series
+section links to it with **See the whole series**.
+
 **The ten modes.** _What are you after?_ on What next switches between them. Each states its rule
 on screen, and none ever shows a finished, Never, hidden or "did not finish" book:
 

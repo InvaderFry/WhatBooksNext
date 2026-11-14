@@ -28,6 +28,7 @@ import {
 import { hrefFor, onLinkClick } from '../url.ts';
 import { OnlineCard } from './OnlineCard.tsx';
 import { CollectsSection, SeriesSection } from './SeriesCard.tsx';
+import { WhyNotForItem } from './WhyNot.tsx';
 import { MergeCard, SplitCard } from './MergeSplit.tsx';
 import { PlacesSection } from './StoreBooks.tsx';
 
@@ -324,6 +325,7 @@ export function ItemPage({
         </section>
       </div>
 
+      <WhyNotForItem itemId={item.id} />
       <SeriesSection
         key={`${item.series?.id ?? 'none'}-${rev}`}
         itemId={item.id}

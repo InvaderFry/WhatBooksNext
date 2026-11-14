@@ -1794,3 +1794,57 @@ kbd {
     width: 100%;
   }
 }
+
+/* ---- Series page and "Why isn't this book shown?" (feature review, step 5) ---------------- */
+.series-index {
+  list-style: none;
+  margin: 0.5rem 0;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+.series-counts {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.2rem 0.9rem;
+  margin: 0.35rem 0;
+  padding: 0;
+  font-size: 0.92rem;
+}
+.series-counts .warn {
+  color: var(--warn);
+}
+.series-filters {
+  margin-bottom: 0.5rem;
+  padding-bottom: 0.75rem;
+}
+.why-not-finder {
+  margin: 1.5rem 0 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  padding: 0.6rem 0.85rem;
+}
+.why-not-finder summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.why-not-finder form {
+  margin: 0.6rem 0;
+}
+.why-not-finder form input {
+  flex: 1 1 14rem;
+  min-width: 0;
+}
+.why-not ul {
+  margin: 0.3rem 0 0;
+  padding-left: 1.2rem;
+}
+.why-not li {
+  margin: 0.3rem 0;
+}
+.why-fix {
+  display: inline-block;
+  margin-left: 0.25rem;
+}

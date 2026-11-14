@@ -545,6 +545,35 @@ export interface SeriesView {
   unnumbered: number;
 }
 
+/** One line per series on the Series page (`server/src/lib/seriesView.ts`). */
+export interface SeriesSummary {
+  id: string;
+  name: string;
+  kind: Kind | null;
+  status: 'finished' | 'ongoing' | 'unknown';
+  entries: number;
+  owned: number;
+  read: number;
+  reading: number;
+  readElsewhere: number;
+  missing: number;
+  unavailable: number;
+  next: { id: string; title: string; label: string | null; unit: SeriesUnit } | null;
+}
+
+/** "Why isn't this book shown?" (`server/src/lib/whyNot.ts`). */
+export type WhyFix =
+  | { kind: 'choice'; key: string; value: string; label: string }
+  | { kind: 'item'; id: string; label: string };
+export interface WhyNot {
+  id: string;
+  title: string;
+  mode: ModeId;
+  position: number | null;
+  mightFit: boolean;
+  reasons: { text: string; fix?: WhyFix }[];
+}
+
 export interface TimePreset {
   id: string;
   label: string;

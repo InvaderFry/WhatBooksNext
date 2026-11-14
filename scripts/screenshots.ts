@@ -110,6 +110,30 @@ try {
     ['next', '/', async () => {}],
     ['next-finish-within', '/?time=30&mode=finish_within', async () => {}],
     [
+      'series',
+      '/?view=series',
+      async (p) => void (await p.locator('.series-index li').first().waitFor()),
+    ],
+    [
+      'series-one',
+      '/?view=series',
+      async (p) => {
+        await p.getByRole('link', { name: 'Copperline', exact: true }).click();
+        await p.getByRole('heading', { level: 1, name: 'Copperline' }).waitFor();
+      },
+    ],
+    [
+      'next-why-not',
+      '/?show=books',
+      async (p) => {
+        await p.locator('.why-not-finder summary').click();
+        await p.getByLabel('Find the book').fill('Copperline #4');
+        await p.getByRole('button', { name: 'Search' }).click();
+        await p.locator('.why-found button').first().click();
+        await p.locator('.why-not').waitFor();
+      },
+    ],
+    [
       'next-not-this',
       '/?time=120',
       async (p) => {
