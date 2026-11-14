@@ -34,7 +34,9 @@ export function ReminderBanner({ onScanStarted }: { onScanStarted: () => void })
               ? `no complete scan since it was added ${r.days} days ago.`
               : `last complete scan ${r.days} days ago.`}{' '}
             {r.storageKind === 'external' ? 'Plug it in and scan.' : 'Scan it to catch up.'}
-            {r.storageKind !== 'local' && <span className="muted small"> ({r.displayPath})</span>}
+            {r.storageKind !== 'local' && (
+              <span className="muted small hide-narrow"> ({r.displayPath})</span>
+            )}
           </p>
           <div className="row-actions">
             <button

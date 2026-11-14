@@ -198,216 +198,24 @@ export function SeriesSection({
         </p>
       )}
       {s && (
-        <>
-          <p>
-            <strong>{s.name}</strong>
-            {s.runLabel && <span> · {s.runLabel}</span>}
-            {position !== null && (
-              <span>
-                {' '}
-                · this is {s.entries.find((e) => e.id === itemId)?.unit ?? 'volume'}{' '}
-                {s.entries.find((e) => e.id === itemId)?.label}
-              </span>
-            )}
-          </p>
-          <p className="muted small">
-            {STATUS_TEXT[s.status]}
-            {s.statusSource && ` (from ${SOURCE_TEXT[s.statusSource] ?? s.statusSource})`}
-            {s.total !== null && ` · ${s.total} volumes in all`}
-            {s.orderSource && ` · order from ${SOURCE_TEXT[s.orderSource] ?? s.orderSource}`}
-          </p>
-          <div className="field inline">
-            <label htmlFor="series-status">Is the story finished?</label>
-            <select
-              id="series-status"
-              value={s.ownerStatus ?? ''}
-              onChange={(e) =>
-                void act(() =>
-                  api.put(`/api/series/${s.id}`, {
-                    status: (e.target.value || null) as 'finished' | 'ongoing' | null,
-                  }),
-                )
-              }
-            >
-              <option value="">Go by the sources</option>
-              <option value="finished">Yes, it’s finished</option>
-              <option value="ongoing">No, it’s ongoing</option>
-            </select>
-          </div>
-
-          {s.entries.some((e) => e.unit === 'volume') && (
-            <div className="section" aria-labelledby="published-h">
-              <h3 id="published-h">Published volumes</h3>
-              {s.publications?.volumes.length ? (
-                <>
-                  <p className={s.publications.missing.length ? 'warn small' : 'small'}>
-                    {s.publications.missing.length
-                      ? `Published volumes not recorded as owned or read: ${s.publications.missingRanges.map((r) => numbers({ ...r, unit: 'volume' })).join(', ')}.`
-                      : 'No missing volumes among the published volumes verified by this source.'}
-                  </p>
-                  <p className="muted small">
-                    {s.publications.volumes.length} numbered, published volumes verified by{' '}
-                    {SOURCE_TEXT[s.publications.source] ?? s.publications.source}; checked{' '}
-                    {new Date(s.publications.checkedAt).toLocaleDateString()}. This is separate from
-                    whether the story is finished. Unreleased volumes and unverified dates are left
-                    out.
-                  </p>
-                  {s.publications.missing.length > 0 && (
-                    <details>
-                      <summary>
-                        Show the {s.publications.missing.length} missing published volumes
-                      </summary>
-                      <ul className="plain-list small">
-                        {s.publications.missing.map((v) => (
-                          <li key={v.position}>
-                            Vol. {v.position} · {v.title}
-                          </li>
-                        ))}
-                      </ul>
-                    </details>
-                  )}
-                </>
-              ) : (
-                <p className="muted small">
-                  {s.publications
-                    ? 'No numbered volumes with verified publication dates were returned. Later volumes remain unknown.'
-                    : 'Published volumes beyond your files have not been checked yet.'}
-                </p>
-              )}
-              <button
-                type="button"
-                className="secondary small"
-                disabled={checkingPublications || !s.publicationLookup?.available}
-                onClick={async () => {
-                  setCheckingPublications(true);
-                  await act(() => api.post(`/api/series/${s.id}/publications`, {}));
-                  setCheckingPublications(false);
-                }}
-              >
-                {checkingPublications
-                  ? 'Checking published volumes…'
-                  : s.publications
-                    ? 'Refresh published volumes'
-                    : 'Check published volumes'}
-              </button>
-              {!s.publicationLookup?.available && s.publicationLookup?.reason && (
-                <p className="muted small">{s.publicationLookup.reason}</p>
-              )}
-            </div>
-          )}
-
-          <ol className="series-list">
-            {s.entries.map((e) => (
-              <li key={e.id} className={e.id === itemId ? 'current' : undefined}>
-                <span className="series-num">
-                  {e.label === null ? '–' : `${e.unit === 'issue' ? '#' : 'Vol. '}${e.label}`}
-                </span>
-                <span className="series-title">
-                  {e.id === itemId ? (
-                    <strong>{e.title} (this one)</strong>
-                  ) : (
-                    <a
-                      href={hrefFor({ view: 'item', id: e.id })}
-                      onClick={onLinkClick({ view: 'item', id: e.id })}
-                    >
-                      {e.title}
-                    </a>
-                  )}
-                </span>
-                <span className="series-state">
-                  {e.holding === 'read_elsewhere' ? (
-                    <>
-                      <span aria-hidden="true">✓ </span>Read elsewhere{' '}
-                      <button
-                        type="button"
-                        className="link-button"
-                        onClick={() => void act(() => api.delete(`/api/items/${e.id}`))}
-                      >
-                        Undo
-                      </button>
-                    </>
-                  ) : (
-                    <>
-                      {e.holding === 'unavailable' && (
-                        <>
-                          <span aria-hidden="true">✕ </span>File missing ·{' '}
-                        </>
-                      )}
-                      {e.holding === 'owned' && e.availabilityLabel && `${e.availabilityLabel} · `}
-                      {e.via === 'collection'
-                        ? 'Read in a collection'
-                        : e.via === 'issues'
-                          ? 'Every issue in it read'
-                          : PROGRESS_LABELS[e.progress]}
-                    </>
-                  )}
-                </span>
-              </li>
-            ))}
-          </ol>
-
-          {s.gaps.length > 0 && (
-            <ul className="gap-list" aria-label="Gaps">
-              {s.gaps.map((g) => (
-                <li key={`${g.unit}-${g.from}`}>
-                  <span aria-hidden="true">⚠ </span>
-                  {g.text}{' '}
-                  {g.state === 'not_owned' && (
-                    <button
-                      type="button"
-                      className="small secondary"
-                      onClick={() => void act(() => markRead(s.id, g))}
-                    >
-                      I read {numbers(g)} elsewhere
-                    </button>
-                  )}
-                  {g.state === 'maybe_covered' && g.coveredBy && (
-                    <span className="row-actions wrap inline">
-                      <button
-                        type="button"
-                        className="small secondary"
-                        onClick={() =>
-                          void act(() =>
-                            api.post(`/api/coverage/${g.coveredBy!.coverageId}`, {
-                              action: 'confirm',
-                            }),
-                          )
-                        }
-                      >
-                        Yes, confirm
-                      </button>
-                      <button
-                        type="button"
-                        className="small secondary"
-                        onClick={() =>
-                          void act(() =>
-                            api.post(`/api/coverage/${g.coveredBy!.coverageId}`, {
-                              action: 'reject',
-                            }),
-                          )
-                        }
-                      >
-                        No, it doesn’t
-                      </button>
-                    </span>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
-          {s.missingAfter && !s.publications?.volumes.length && (
-            <p className="muted small">
-              Not owned yet: {numbers({ ...s.missingAfter, unit: 'volume' })} of {s.total}.
-            </p>
-          )}
-          {s.unnumbered > 0 && (
-            <p className="muted small">
-              {s.unnumbered} {s.unnumbered === 1 ? 'entry has' : 'entries have'} no number, so
-              {s.unnumbered === 1 ? ' its' : ' their'} place in the order is unknown. Give{' '}
-              {s.unnumbered === 1 ? 'it' : 'them'} a number to fill a gap.
-            </p>
-          )}
-        </>
+        <SeriesDetails
+          s={s}
+          itemId={itemId}
+          position={position}
+          act={act}
+          checkingPublications={checkingPublications}
+          setCheckingPublications={setCheckingPublications}
+        />
+      )}
+      {s && (
+        <p className="small">
+          <a
+            href={hrefFor({ view: 'series', id: s.id })}
+            onClick={onLinkClick({ view: 'series', id: s.id })}
+          >
+            See the whole series
+          </a>
+        </p>
       )}
 
       {editing ? (
@@ -668,5 +476,245 @@ export function CollectsSection({
         </form>
       )}
     </section>
+  );
+}
+
+/**
+ * A series' order, published volumes, gaps and the owner's actions on them. Shared by a book's
+ * Series section (`itemId` marks "this one") and the Series page (`itemId` null).
+ */
+export function SeriesDetails({
+  s,
+  itemId,
+  position,
+  act,
+  checkingPublications,
+  setCheckingPublications,
+}: {
+  s: SeriesView;
+  itemId: string | null;
+  position: number | null;
+  act: (fn: () => Promise<unknown>) => Promise<void>;
+  checkingPublications: boolean;
+  setCheckingPublications: (v: boolean) => void;
+}) {
+  return (
+    <>
+      {/* On the Series page the name is already the heading; only the run label is left. */}
+      {(itemId !== null || s.runLabel) && (
+        <p>
+          {itemId !== null && <strong>{s.name}</strong>}
+          {s.runLabel && (
+            <span>
+              {itemId !== null && ' · '}
+              {s.runLabel}
+            </span>
+          )}
+          {position !== null && (
+            <span>
+              {' '}
+              · this is {s.entries.find((e) => e.id === itemId)?.unit ?? 'volume'}{' '}
+              {s.entries.find((e) => e.id === itemId)?.label}
+            </span>
+          )}
+        </p>
+      )}
+      <p className="muted small">
+        {STATUS_TEXT[s.status]}
+        {s.statusSource && ` (from ${SOURCE_TEXT[s.statusSource] ?? s.statusSource})`}
+        {s.total !== null && ` · ${s.total} volumes in all`}
+        {s.orderSource && ` · order from ${SOURCE_TEXT[s.orderSource] ?? s.orderSource}`}
+      </p>
+      <div className="field inline">
+        <label htmlFor="series-status">Is the story finished?</label>
+        <select
+          id="series-status"
+          value={s.ownerStatus ?? ''}
+          onChange={(e) =>
+            void act(() =>
+              api.put(`/api/series/${s.id}`, {
+                status: (e.target.value || null) as 'finished' | 'ongoing' | null,
+              }),
+            )
+          }
+        >
+          <option value="">Go by the sources</option>
+          <option value="finished">Yes, it’s finished</option>
+          <option value="ongoing">No, it’s ongoing</option>
+        </select>
+      </div>
+
+      {s.entries.some((e) => e.unit === 'volume') && (
+        <div className="section" aria-labelledby="published-h">
+          <h3 id="published-h">Published volumes</h3>
+          {s.publications?.volumes.length ? (
+            <>
+              <p className={s.publications.missing.length ? 'warn small' : 'small'}>
+                {s.publications.missing.length
+                  ? `Published volumes not recorded as owned or read: ${s.publications.missingRanges.map((r) => numbers({ ...r, unit: 'volume' })).join(', ')}.`
+                  : 'No missing volumes among the published volumes verified by this source.'}
+              </p>
+              <p className="muted small">
+                {s.publications.volumes.length} numbered, published volumes verified by{' '}
+                {SOURCE_TEXT[s.publications.source] ?? s.publications.source}; checked{' '}
+                {new Date(s.publications.checkedAt).toLocaleDateString()}. This is separate from
+                whether the story is finished. Unreleased volumes and unverified dates are left out.
+              </p>
+              {s.publications.missing.length > 0 && (
+                <details>
+                  <summary>
+                    Show the {s.publications.missing.length} missing published volumes
+                  </summary>
+                  <ul className="plain-list small">
+                    {s.publications.missing.map((v) => (
+                      <li key={v.position}>
+                        Vol. {v.position} · {v.title}
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              )}
+            </>
+          ) : (
+            <p className="muted small">
+              {s.publications
+                ? 'No numbered volumes with verified publication dates were returned. Later volumes remain unknown.'
+                : 'Published volumes beyond your files have not been checked yet.'}
+            </p>
+          )}
+          <button
+            type="button"
+            className="secondary small"
+            disabled={checkingPublications || !s.publicationLookup?.available}
+            onClick={async () => {
+              setCheckingPublications(true);
+              await act(() => api.post(`/api/series/${s.id}/publications`, {}));
+              setCheckingPublications(false);
+            }}
+          >
+            {checkingPublications
+              ? 'Checking published volumes…'
+              : s.publications
+                ? 'Refresh published volumes'
+                : 'Check published volumes'}
+          </button>
+          {!s.publicationLookup?.available && s.publicationLookup?.reason && (
+            <p className="muted small">{s.publicationLookup.reason}</p>
+          )}
+        </div>
+      )}
+
+      <ol className="series-list">
+        {s.entries.map((e) => (
+          <li key={e.id} className={e.id === itemId ? 'current' : undefined}>
+            <span className="series-num">
+              {e.label === null ? '–' : `${e.unit === 'issue' ? '#' : 'Vol. '}${e.label}`}
+            </span>
+            <span className="series-title">
+              {e.id === itemId ? (
+                <strong>{e.title} (this one)</strong>
+              ) : (
+                <a
+                  href={hrefFor({ view: 'item', id: e.id })}
+                  onClick={onLinkClick({ view: 'item', id: e.id })}
+                >
+                  {e.title}
+                </a>
+              )}
+            </span>
+            <span className="series-state">
+              {e.holding === 'read_elsewhere' ? (
+                <>
+                  <span aria-hidden="true">✓ </span>Read elsewhere{' '}
+                  <button
+                    type="button"
+                    className="link-button"
+                    onClick={() => void act(() => api.delete(`/api/items/${e.id}`))}
+                  >
+                    Undo
+                  </button>
+                </>
+              ) : (
+                <>
+                  {e.holding === 'unavailable' && (
+                    <>
+                      <span aria-hidden="true">✕ </span>File missing ·{' '}
+                    </>
+                  )}
+                  {e.holding === 'owned' && e.availabilityLabel && `${e.availabilityLabel} · `}
+                  {e.via === 'collection'
+                    ? 'Read in a collection'
+                    : e.via === 'issues'
+                      ? 'Every issue in it read'
+                      : PROGRESS_LABELS[e.progress]}
+                </>
+              )}
+            </span>
+          </li>
+        ))}
+      </ol>
+
+      {s.gaps.length > 0 && (
+        <ul className="gap-list" aria-label="Gaps">
+          {s.gaps.map((g) => (
+            <li key={`${g.unit}-${g.from}`}>
+              <span aria-hidden="true">⚠ </span>
+              {g.text}{' '}
+              {g.state === 'not_owned' && (
+                <button
+                  type="button"
+                  className="small secondary"
+                  onClick={() => void act(() => markRead(s.id, g))}
+                >
+                  I read {numbers(g)} elsewhere
+                </button>
+              )}
+              {g.state === 'maybe_covered' && g.coveredBy && (
+                <span className="row-actions wrap inline">
+                  <button
+                    type="button"
+                    className="small secondary"
+                    onClick={() =>
+                      void act(() =>
+                        api.post(`/api/coverage/${g.coveredBy!.coverageId}`, {
+                          action: 'confirm',
+                        }),
+                      )
+                    }
+                  >
+                    Yes, confirm
+                  </button>
+                  <button
+                    type="button"
+                    className="small secondary"
+                    onClick={() =>
+                      void act(() =>
+                        api.post(`/api/coverage/${g.coveredBy!.coverageId}`, {
+                          action: 'reject',
+                        }),
+                      )
+                    }
+                  >
+                    No, it doesn’t
+                  </button>
+                </span>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+      {s.missingAfter && !s.publications?.volumes.length && (
+        <p className="muted small">
+          Not owned yet: {numbers({ ...s.missingAfter, unit: 'volume' })} of {s.total}.
+        </p>
+      )}
+      {s.unnumbered > 0 && (
+        <p className="muted small">
+          {s.unnumbered} {s.unnumbered === 1 ? 'entry has' : 'entries have'} no number, so
+          {s.unnumbered === 1 ? ' its' : ' their'} place in the order is unknown. Give{' '}
+          {s.unnumbered === 1 ? 'it' : 'them'} a number to fill a gap.
+        </p>
+      )}
+    </>
   );
 }

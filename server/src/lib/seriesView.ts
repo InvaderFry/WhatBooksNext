@@ -36,6 +36,9 @@ export interface SeriesEntry {
   formats: string[];
   /** Read through a collection, or (a collection) through every issue it holds. Derived. */
   via?: 'collection' | 'issues' | null;
+  /** The owner hid it or marked it Never: never recommended, so never "next" either. */
+  hidden?: boolean;
+  never?: boolean;
 }
 
 export interface SeriesView {
@@ -114,6 +117,8 @@ export function seriesView(db: DB, reach: FolderReachability, id: string): Serie
             : 'History only · not owned'
           : i.availability.label,
         formats: i.formats,
+        hidden: i.user.hidden,
+        never: i.user.triage === 'never',
       };
     })
     .sort(
@@ -307,4 +312,91 @@ export function removeHistoryEntry(db: DB, itemId: string): void {
     ).run('item', itemId, nowIso());
     syncSeries(db);
   })();
+}
+
+/** One line per series for the Series page (feature review, step 5). */
+export interface SeriesSummary {
+  id: string;
+  name: string;
+  kind: string | null;
+  /** The owner's answer wins over the sources'. */
+  status: 'finished' | 'ongoing' | 'unknown';
+  /** Installments the app knows of: owned, read elsewhere, or with missing files. */
+  entries: number;
+  owned: number;
+  /** Finished, or read through a collection. */
+  read: number;
+  reading: number;
+  readElsewhere: number;
+  /** Installments neither owned nor read (see missingCount). */
+  missing: number;
+  /** Owned, but its files are gone. */
+  unavailable: number;
+  /** The installment to read next: one in progress, else the first unread one owned. */
+  next: { id: string; title: string; label: string | null; unit: SeriesUnit } | null;
+}
+
+const READING = ['sampled', 'into_it', 'halfway', 'nearly_done'];
+
+/**
+ * Installments neither owned nor read, as the series' own view counts them. Volumes: the
+ * verified published volumes when a source gave them (they include gaps), else the gaps plus any
+ * volumes after the last one up to a stated total. Issues: their gaps. "Maybe in a collection"
+ * isn't counted: that waits for the owner's answer.
+ */
+function missingCount(v: SeriesView): number {
+  const gapSize = (unit: SeriesUnit) =>
+    v.gaps
+      .filter((g) => g.unit === unit && g.state === 'not_owned')
+      .reduce((n, g) => n + (g.to - g.from + 1), 0);
+  const volumes = v.publications?.volumes.length
+    ? v.publications.missing.length
+    : gapSize('volume') + (v.missingAfter ? v.missingAfter.to - v.missingAfter.from + 1 : 0);
+  return volumes + gapSize('issue');
+}
+
+export function seriesSummary(v: SeriesView): SeriesSummary {
+  const done = (e: SeriesEntry) => e.progress === 'finished' || !!e.via;
+  // Only what What next could offer: owned, not finished or stopped, not hidden or Never.
+  const open = v.entries.filter(
+    (e) => e.holding === 'owned' && !done(e) && e.progress !== 'dnf' && !e.hidden && !e.never,
+  );
+  // The same rule as What next's one per series: with volumes and issues, carry on with whichever
+  // the owner has been reading; if neither, collected volumes come first.
+  const touched = (e: SeriesEntry) => e.progress !== 'not_started' && e.progress !== 'dnf';
+  const readingIssues =
+    v.entries.some((e) => e.unit === 'issue' && touched(e)) &&
+    !v.entries.some((e) => e.unit === 'volume' && touched(e));
+  const preferred = open.filter((e) => (e.unit === 'issue') === readingIssues);
+  const ordered = [...preferred, ...open.filter((e) => !preferred.includes(e))];
+  const next = ordered.find((e) => READING.includes(e.progress)) ?? ordered[0] ?? null;
+  return {
+    id: v.id,
+    name: v.name,
+    kind: v.kind,
+    status: v.ownerStatus ?? v.status,
+    entries: v.entries.length,
+    owned: v.entries.filter((e) => e.holding === 'owned').length,
+    read: v.entries.filter(done).length,
+    reading: v.entries.filter((e) => READING.includes(e.progress)).length,
+    readElsewhere: v.entries.filter((e) => e.holding === 'read_elsewhere').length,
+    missing: missingCount(v),
+    unavailable: v.entries.filter((e) => e.holding === 'unavailable').length,
+    next: next && { id: next.id, title: next.title, label: next.label, unit: next.unit },
+  };
+}
+
+/**
+ * Every series, the ones being read first, then started ones, then the rest, each by name. Built
+ * from the same seriesView the book page uses, so counts and gaps always agree with it.
+ */
+export function seriesSummaries(db: DB, reach: FolderReachability): SeriesSummary[] {
+  const ids = db
+    .prepare('SELECT DISTINCT series_id FROM items WHERE series_id IS NOT NULL')
+    .pluck()
+    .all() as string[];
+  const rank = (s: SeriesSummary) => (s.reading > 0 ? 0 : s.read + s.readElsewhere > 0 ? 1 : 2);
+  return ids
+    .map((id) => seriesSummary(seriesView(db, reach, id)))
+    .sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name));
 }

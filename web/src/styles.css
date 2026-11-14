@@ -1660,3 +1660,191 @@ kbd {
   justify-content: flex-end;
   margin-top: 0.5rem;
 }
+
+/* ---- Phones: get to the books sooner (feature review, step 4) ---------------------------- */
+[hidden] {
+  display: none !important;
+}
+.more-filters {
+  display: contents;
+}
+
+/* Saved views on What next: one tap back to a set of choices. */
+.saved-views {
+  margin: 0 0 0.75rem;
+}
+.saved-view-list {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin: 0 0 0.35rem;
+  padding: 0;
+}
+.saved-view-list li {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+}
+.view-chip {
+  display: inline-block;
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  padding: 0.3rem 0.8rem;
+  font-size: 0.92rem;
+  color: var(--text);
+  text-decoration: none;
+  background: var(--surface);
+}
+.view-chip:hover {
+  background: var(--accent-soft);
+}
+.view-chip[aria-current='true'] {
+  background: var(--accent);
+  color: var(--accent-text);
+  font-weight: 600;
+}
+.view-remove {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  border-radius: 999px;
+  min-width: 2rem;
+  min-height: 2rem;
+  padding: 0;
+  line-height: 1;
+}
+.saved-view-actions {
+  gap: 0.25rem 1rem;
+}
+.saved-view-form input {
+  flex: 1 1 14rem;
+  min-width: 0;
+}
+
+/* The one-line summary that stands in for What next's choices on a phone. */
+.choices-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 0.75rem;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 0.5rem 0.75rem;
+  margin: 0 0 0.75rem;
+}
+.choices-summary p {
+  margin: 0;
+  min-width: 0;
+}
+.choices-summary button {
+  flex: none;
+  white-space: nowrap;
+}
+
+@media (max-width: 40rem) {
+  .hide-narrow {
+    display: none !important;
+  }
+  /* The menu: one row under the name, scrolling sideways instead of wrapping onto three. */
+  .header-inner {
+    gap: 0.35rem;
+    padding-bottom: 0.4rem;
+  }
+  .header-inner nav {
+    width: 100%;
+    overflow-x: auto;
+    scrollbar-width: none;
+    /* A fade at the right edge says the row carries on. */
+    mask-image: linear-gradient(to right, #000 calc(100% - 2.5rem), transparent);
+  }
+  .header-inner nav ul {
+    padding-right: 2rem;
+  }
+  .header-inner nav::-webkit-scrollbar {
+    display: none;
+  }
+  .header-inner nav ul {
+    flex-wrap: nowrap;
+  }
+  .header-inner nav a {
+    white-space: nowrap;
+  }
+  .page-head h1 {
+    margin-bottom: 0.25rem;
+  }
+  .lookup-banner,
+  .offer {
+    padding: 0.5rem 0.7rem;
+    margin-bottom: 0.6rem;
+  }
+  .reminder {
+    padding: 0.4rem 1rem;
+  }
+  .filters-toggle {
+    margin-bottom: 0.75rem;
+  }
+  /* Opened on a phone, the filters start on their own row below the toggle. */
+  .more-filters {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 0 0.75rem;
+    width: 100%;
+  }
+}
+
+/* ---- Series page and "Why isn't this book shown?" (feature review, step 5) ---------------- */
+.series-index {
+  list-style: none;
+  margin: 0.5rem 0;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+.series-counts {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.2rem 0.9rem;
+  margin: 0.35rem 0;
+  padding: 0;
+  font-size: 0.92rem;
+}
+.series-counts .warn {
+  color: var(--warn);
+}
+.series-filters {
+  margin-bottom: 0.5rem;
+  padding-bottom: 0.75rem;
+}
+.why-not-finder {
+  margin: 1.5rem 0 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  padding: 0.6rem 0.85rem;
+}
+.why-not-finder summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.why-not-finder form {
+  margin: 0.6rem 0;
+}
+.why-not-finder form input {
+  flex: 1 1 14rem;
+  min-width: 0;
+}
+.why-not ul {
+  margin: 0.3rem 0 0;
+  padding-left: 1.2rem;
+}
+.why-not li {
+  margin: 0.3rem 0;
+}
+.why-fix {
+  display: inline-block;
+  margin-left: 0.25rem;
+}

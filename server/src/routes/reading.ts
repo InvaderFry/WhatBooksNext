@@ -34,6 +34,7 @@ import {
   type TimeMode,
 } from '../lib/recommend.ts';
 import { tasteOn } from '../lib/taste.ts';
+import { whyNot } from '../lib/whyNot.ts';
 import { loadStrength, loadTopics, loadWeights, tasteFrom } from '../lib/tune.ts';
 import { bulkReview } from '../lib/review.ts';
 import type { ScanManager } from '../scan/scanManager.ts';
@@ -113,28 +114,34 @@ export function registerReadingRoutes(app: Express, d: ReadingDeps): void {
   const { db, sources, lookups } = d;
 
   // ---- The ten modes (§13.10) ---------------------------------------------------------------
+  /** The mode and full situation from What next's query string; shared with "Why not?". */
+  const choicesFrom = async (req: Request) => {
+    const base = situationFrom(req);
+    const view: ModeId = (MODE_IDS as readonly string[]).includes(String(req.query.view))
+      ? (req.query.view as ModeId)
+      : 'read_next';
+    const mood = (['escape', 'learn', 'skim'] as const).find((m) => m === req.query.mood) ?? null;
+    const topics = loadTopics(db);
+    const topic = topics.find((t) => t === str(req.query.topic)) ?? null;
+    const data = loadRankData(db, await d.reach());
+    const taste = tasteFrom(data.items, loadStrength(db));
+    const s: Situation = {
+      ...base,
+      weights: loadWeights(db),
+      taste,
+      mood: view === 'mood' ? (mood ?? 'escape') : null,
+      topics,
+      topic,
+      completeOnly: req.query.complete === '1',
+    };
+    return { base, view, topics, topic, data, taste, s };
+  };
+
   app.get(
     '/api/next',
     route(async (req) => {
-      const base = situationFrom(req);
-      const view: ModeId = (MODE_IDS as readonly string[]).includes(String(req.query.view))
-        ? (req.query.view as ModeId)
-        : 'read_next';
-      const mood = (['escape', 'learn', 'skim'] as const).find((m) => m === req.query.mood) ?? null;
-      const topics = loadTopics(db);
-      const topic = topics.find((t) => t === str(req.query.topic)) ?? null;
+      const { base, view, topics, topic, data, taste, s } = await choicesFrom(req);
       const offset = Math.max(0, Number(req.query.offset) || 0);
-      const data = loadRankData(db, await d.reach());
-      const taste = tasteFrom(data.items, loadStrength(db));
-      const s: Situation = {
-        ...base,
-        weights: loadWeights(db),
-        taste,
-        mood: view === 'mood' ? (mood ?? 'escape') : null,
-        topics,
-        topic,
-        completeOnly: req.query.complete === '1',
-      };
       const r = runMode(view, data.items, s, {
         offset,
         limit: READ_NEXT_PAGE,
@@ -161,6 +168,18 @@ export function registerReadingRoutes(app: Express, d: ReadingDeps): void {
         lookups: { pending: lookups.pending(), running: lookups.isRunning() },
         hardcover: sources.demo ? null : sources.hardcover.configured(),
       };
+    }),
+  );
+
+  // ---- "Why isn't this book shown?" (feature review, step 5) -------------------------------
+  app.get(
+    '/api/next/why',
+    route(async (req) => {
+      const id = d.itemIdOr404(String(req.query.id ?? ''));
+      const { view, data, s } = await choicesFrom(req);
+      const r = whyNot(data.items, s, view, id);
+      if (!r) throw new HttpError(404, 'That book isn’t in the library.');
+      return r;
     }),
   );
 

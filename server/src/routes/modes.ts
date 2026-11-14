@@ -1,5 +1,5 @@
 import type { Express } from 'express';
-import { RECENT_DAYS, STILL_READING_SNOOZE_DAYS, WEIGHTS } from '../config.ts';
+import { MAX_SAVED_VIEWS, RECENT_DAYS, STILL_READING_SNOOZE_DAYS, WEIGHTS } from '../config.ts';
 import type { DB } from '../db/database.ts';
 import { loadLibrary, type FolderReachability } from '../lib/library.ts';
 import { stillReadingDue } from '../lib/modes.ts';
@@ -9,9 +9,11 @@ import { buildCard } from '../lib/recommend.ts';
 import { tasteSummary } from '../lib/taste.ts';
 import {
   loadStrength,
+  loadSavedViews,
   loadTopics,
   loadWeights,
   resetWeights,
+  saveSavedViews,
   saveStrength,
   saveTopics,
   saveWeights,
@@ -123,6 +125,16 @@ export function registerModeRoutes(app: Express, d: ModeDeps): void {
   app.put(
     '/api/settings/topics',
     route((req) => ({ topics: saveTopics(db, req.body?.topics) })),
+  );
+
+  // ---- Saved views on What next ---------------------------------------------------------------
+  app.get(
+    '/api/saved-views',
+    route(() => ({ views: loadSavedViews(db), max: MAX_SAVED_VIEWS })),
+  );
+  app.put(
+    '/api/saved-views',
+    route((req) => ({ views: saveSavedViews(db, req.body?.views), max: MAX_SAVED_VIEWS })),
   );
 
   // ---- Still reading? (§13.6): one digest, never a stream of prompts -------------------------

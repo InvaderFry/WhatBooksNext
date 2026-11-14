@@ -5,7 +5,12 @@ import type { Sources } from '../sources/index.ts';
 import type { DB } from '../db/database.ts';
 import { seriesRunLabel } from '../identify/series.ts';
 import type { FolderReachability } from '../lib/library.ts';
-import { markReadElsewhere, seriesView, setSeriesStatus } from '../lib/seriesView.ts';
+import {
+  markReadElsewhere,
+  seriesSummaries,
+  seriesView,
+  setSeriesStatus,
+} from '../lib/seriesView.ts';
 import { actOnCoverage, addCoverage } from '../lib/coverage.ts';
 import { removeFilelessItem } from '../lib/store.ts';
 import { HttpError } from '../util.ts';
@@ -25,6 +30,12 @@ export interface SeriesDeps {
 
 export function registerSeriesRoutes(app: Express, d: SeriesDeps): void {
   const { db } = d;
+
+  // The Series page: every series, the ones being read first (feature review, step 5).
+  app.get(
+    '/api/series',
+    route(async () => ({ series: seriesSummaries(db, await d.reach()) })),
+  );
 
   app.get(
     '/api/series/:id',

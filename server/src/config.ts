@@ -455,6 +455,13 @@ export const MAX_TOPICS = 30;
 export const MAX_TOPIC_LENGTH = 40;
 
 /**
+ * Saved views on What next: at most this many, each name at most this long. A dozen one-tap
+ * situations ("30-minute comics, ready now") fit on a phone screen; more becomes a list to scroll.
+ */
+export const MAX_SAVED_VIEWS = 12;
+export const MAX_SAVED_VIEW_NAME = 40;
+
+/**
  * Taste reasons say "You rate X highly" only when the owner's own ratings behind X average at
  * least this; otherwise "above your other books". Assumption: 8/10 is a rating most people would
  * call high; a strict rater's 6s and 7s can stand out without being high.

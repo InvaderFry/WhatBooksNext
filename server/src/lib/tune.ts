@@ -2,6 +2,7 @@ import { MAX_TOPIC_LENGTH, MAX_TOPICS, TASTE_STRENGTH, WEIGHTS } from '../config
 import type { DB } from '../db/database.ts';
 import { HttpError, nowIso, parseJson } from '../util.ts';
 import type { RankItem, Weights } from './recommend.ts';
+import { cleanSavedViews, type SavedView } from './savedViews.ts';
 import { learnTaste, type TasteModel, type TasteStrength } from './taste.ts';
 
 /**
@@ -136,4 +137,19 @@ export function tasteFrom(items: RankItem[], strength: TasteStrength): TasteMode
     })),
     strength,
   );
+}
+
+/** Saved views on What next (`lib/savedViews.ts`). A damaged stored list reads as none. */
+export function loadSavedViews(db: DB): SavedView[] {
+  try {
+    return cleanSavedViews(readSetting<unknown>(db, 'savedViews', []));
+  } catch {
+    return [];
+  }
+}
+
+export function saveSavedViews(db: DB, v: unknown): SavedView[] {
+  const views = cleanSavedViews(v);
+  writeSetting(db, 'savedViews', views);
+  return views;
 }

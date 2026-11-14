@@ -163,6 +163,58 @@ describe('Tune and taste', () => {
   });
 });
 
+describe('Saved views on What next', () => {
+  it('saves named views with only What next choices, and keeps them in the backup', async () => {
+    const r = await api.put('/api/saved-views', {
+      views: [
+        {
+          name: '  30-minute comics,   ready now ',
+          params: { time: '30', show: 'comics', ready: '1', mode: '', topic: '' },
+        },
+        { name: 'Weekend learning', params: { m: 'mood', mood: 'learn', time: 'weekend' } },
+      ],
+    });
+    expect(r.status).toBe(200);
+    expect(r.body.views).toMatchObject([
+      { name: '30-minute comics, ready now', params: { time: '30', show: 'comics', ready: '1' } },
+      { name: 'Weekend learning', params: { m: 'mood', mood: 'learn', time: 'weekend' } },
+    ]);
+    expect(r.body.views[0].params).toEqual({ time: '30', show: 'comics', ready: '1' });
+    const ids = r.body.views.map((v: { id: string }) => v.id);
+    expect(new Set(ids).size).toBe(2);
+
+    const backup = createBackup(db);
+    await api.put('/api/saved-views', { views: [] });
+    expect((await api.get('/api/saved-views')).body.views).toEqual([]);
+    await restoreBackup(db, validateBackup(db, JSON.parse(JSON.stringify(backup))), null);
+    expect((await api.get('/api/saved-views')).body.views.map((v: { id: string }) => v.id)).toEqual(
+      ids,
+    );
+  });
+
+  it('refuses unknown choices, made-up values, duplicate or empty names, and too many views', async () => {
+    const put = (views: unknown) => api.put('/api/saved-views', { views });
+    expect((await put([{ name: 'A', params: { view: 'library' } }])).status).toBe(400);
+    expect((await put([{ name: 'A', params: { time: '45' } }])).status).toBe(400);
+    expect((await put([{ name: 'A', params: { m: 'everything' } }])).status).toBe(400);
+    expect((await put([{ name: '   ', params: {} }])).status).toBe(400);
+    expect((await put([{ name: 'x'.repeat(41), params: {} }])).status).toBe(400);
+    expect(
+      (
+        await put([
+          { name: 'Comics', params: {} },
+          { name: 'comics', params: {} },
+        ])
+      ).status,
+    ).toBe(400);
+    expect(
+      (await put(Array.from({ length: 13 }, (_, i) => ({ name: `View ${i}`, params: {} })))).status,
+    ).toBe(400);
+    expect((await put('Comics')).status).toBe(400);
+    expect((await api.get('/api/saved-views')).body.views).toEqual([]);
+  });
+});
+
 describe('Topic interests', () => {
   it('saves a tidy list and refuses nonsense', async () => {
     const r = await api.put('/api/settings/topics', { topics: [' Rust ', 'rust', 'Go', ''] });
