@@ -8,7 +8,7 @@ owner has already made. Don't reopen those decisions. Then read the latest
 
 - **M0–M3** are done and checked on the owner's PC (M3: first real recommendations; Hardcover
   verified; quality session passed, `docs/quality-summary.md`).
-- **M4 in progress** (`docs/milestones/M4.md`). Part 1 (series and gaps) and part 2 (Metron and
+- **M4 built, not yet signed off on Windows** (`docs/milestones/M4.md`). Part 1 (series and gaps) and part 2 (Metron and
   ComicVine adapters) are built. Part 2 waits on the owner's Test Metron / Test ComicVine
   reports (done: shapes confirmed, many ties; tie-breakers added). Record real answers into
   `fixtures/sources/` when the owner can share some. Part 3 (collected
