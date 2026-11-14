@@ -93,6 +93,16 @@ the letter back at the end.
 13. Open a book in **Needs review** and press **Generate page previews** for a PDF, an EPUB and a CBZ
     from the USB drive. Do the first pages appear?
 
+### Comic runs (new: "Which run is it?")
+
+14. After updating, wait for the lookups to finish, then open **Needs review**. Is there a
+    **Which run is it?** section? Pick the right run for one series you know (look at a cover
+    on Metron if unsure). Do that series' issues leave the list?
+15. Find a comic whose filename includes a year (like "series1992_issue1") that was tied before.
+    Is the run that began that year now offered? And for a series that has a spin-off with a
+    subtitle ("Series: Other Name"), are its issues now matched to the series itself (as
+    unconfirmed) rather than tied with the spin-off?
+
 ## You can skip these
 
 - **iCloud or OneDrive downloads:** you have neither on the PC, so there's nothing to test.
@@ -102,6 +112,6 @@ the letter back at the end.
 ## What to send back
 
 - Part 1: your yes/no for each of the 5 situations, plus anything you had to correct.
-- Part 2: worked / didn't work / skipped for checks 1–13, and what happened for any that didn't
+- Part 2: worked / didn't work / skipped for checks 1–15, and what happened for any that didn't
   work.
 - **Settings → Diagnostics → Copy report** (it leaves out folder names unless you tick the box).

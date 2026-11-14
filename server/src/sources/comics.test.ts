@@ -59,6 +59,7 @@ describe('Metron (§12.1)', () => {
       name: 'Copperline',
       id: '9002',
       startYear: 2023,
+      volume: 2,
       position: 2,
       status: 'unknown',
     });
@@ -141,6 +142,138 @@ describe('Metron (§12.1)', () => {
     expect(
       decide(issueFacts({ issue: '3', title: 'Copperline #3', years: [2019] }), recs).decision,
     ).toBe('unidentified');
+  });
+});
+
+describe('telling runs of one name apart', () => {
+  /** An invented Metron issue in list shape. */
+  const issueOf = (id: number, name: string, number: string, volume: number, began: number) => ({
+    id,
+    number,
+    series: { id: id * 10, name, volume, year_began: began },
+    cover_date: `${began}-01-01`,
+  });
+
+  it('ranks the series itself above a spin-off that shares its main title', () => {
+    const recs = parseMetronIssues({
+      results: [
+        issueOf(1, 'Copperline: Maximised', '5', 1, 2014),
+        issueOf(2, 'Copperline', '5', 1, 1993),
+      ],
+    });
+    const result = decide(issueFacts({ title: 'Copperline #5', issue: '5' }), recs);
+    expect(result.decision).toBe('provisional');
+    expect(result.best?.record.sourceId).toBe('2');
+  });
+
+  it('ranks a spin-off first when the file names the spin-off', () => {
+    const recs = parseMetronIssues({
+      results: [
+        issueOf(1, 'Copperline: Maximised', '5', 1, 2014),
+        issueOf(2, 'Copperline', '5', 1, 1993),
+      ],
+    });
+    const facts = issueFacts({
+      title: 'Copperline: Maximised #5',
+      seriesHint: 'Copperline: Maximised',
+      issue: '5',
+    });
+    expect(decide(facts, recs).best?.record.sourceId).toBe('1');
+  });
+
+  it('keeps a story name after the volume number the same series', () => {
+    const facts = issueFacts({ title: 'Copperline Vol. 6', issue: null, volume: '6' });
+    const rec = {
+      source: 'hardcover' as const,
+      sourceId: 'h6',
+      title: 'Copperline, Vol. 6: Falling Sun',
+      authors: [],
+      isbns: [],
+      subjects: ['Comics'],
+    };
+    expect(decide(facts, [rec]).best?.evidence.title).toBe(1);
+  });
+
+  it('settles a tie between runs by the series volume in the filename, unconfirmed', () => {
+    const recs = parseMetronIssues({
+      results: [
+        issueOf(1, 'Copperline', '1', 1, 1984),
+        issueOf(2, 'Copperline', '1', 2, 1993),
+        issueOf(3, 'Copperline', '1', 4, 2001),
+      ],
+    });
+    expect(decide(issueFacts({ title: 'Copperline v4 #1', issue: '1' }), recs).decision).toBe(
+      'tie',
+    );
+    const result = decide(
+      issueFacts({ title: 'Copperline v4 #1', issue: '1', runVolume: 4 }),
+      recs,
+    );
+    expect(result).toMatchObject({ decision: 'provisional', best: { record: { sourceId: '3' } } });
+    expect(result.best?.evidence.notes).toContain('Series volume matches.');
+    expect(result.ranked[1]!.score).toBeLessThan(0.6);
+  });
+
+  it('asks Metron by start year only when the plain answer lacks the file’s run', async () => {
+    const db = await memoryDb();
+    const plain = { results: [issueOf(14, 'Copperline', '1', 2, 2014)] };
+    const byYear = { results: [issueOf(92, 'Copperline', '1', 1, 1992)] };
+    const calls: URL[] = [];
+    const fetcher: Fetcher = async (url) => {
+      const u = new URL(url);
+      calls.push(u);
+      const body = u.searchParams.get('series_year_began') === '1992' ? byYear : plain;
+      return new Response(JSON.stringify(u.pathname === '/api/issue/' ? body : {}), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    };
+    const m = new Metron(db, () => 'tok-1234567890abcdef', fetcher);
+    (m.client as unknown as { minInterval: number }).minInterval = 0;
+    const recs = await m.search({
+      title: 'Copperline',
+      series: 'Copperline',
+      issue: '1',
+      years: [1992],
+    });
+    expect(recs.map((r) => r.sourceId).sort()).toEqual(['14', '92']);
+    expect(
+      decide(issueFacts({ title: 'Copperline #1', issue: '1', years: [1992] }), recs),
+    ).toMatchObject({ decision: 'accepted', best: { record: { sourceId: '92' } } });
+    // Asked again: both answers come from the cache.
+    const sent = calls.filter((c) => c.pathname === '/api/issue/').length;
+    await m.search({ title: 'Copperline', series: 'Copperline', issue: '1', years: [1992] });
+    expect(calls.filter((c) => c.pathname === '/api/issue/').length).toBe(sent);
+    // The run already in the plain answer: no extra question.
+    calls.length = 0;
+    await m.search({ title: 'Copperline', series: 'Copperline', issue: '1', years: [2014] });
+    expect(calls.filter((c) => c.searchParams.has('series_year_began'))).toEqual([]);
+  });
+
+  it('asks Metron by series volume for a "v4" file', async () => {
+    const db = await memoryDb();
+    const calls: URL[] = [];
+    const fetcher: Fetcher = async (url) => {
+      const u = new URL(url);
+      calls.push(u);
+      const body =
+        u.searchParams.get('series_volume') === '4'
+          ? { results: [issueOf(4, 'Copperline', '1', 4, 2001)] }
+          : { results: [issueOf(1, 'Copperline', '1', 1, 1984)] };
+      return new Response(JSON.stringify(u.pathname === '/api/issue/' ? body : {}), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    };
+    const m = new Metron(db, () => 'tok-1234567890abcdef', fetcher);
+    (m.client as unknown as { minInterval: number }).minInterval = 0;
+    const recs = await m.search({
+      title: 'Copperline',
+      series: 'Copperline',
+      issue: '1',
+      seriesVolume: '4',
+    });
+    expect(recs.map((r) => r.series?.volume).sort()).toEqual([1, 4]);
   });
 });
 

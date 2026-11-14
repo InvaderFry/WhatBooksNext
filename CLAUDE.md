@@ -62,6 +62,10 @@ owner has already made. Don't reopen those decisions. Then read the latest
   the app's own accepted match: lookups keep it (a rival goes to Needs review as "Check this
   match") unless `fresh` (Look up again) or the search changed. `last_answer_at` moves only when a
   real request went out.
+- **Comic runs:** "Which run is it?" in Needs review (`lib/runChoice.ts`) answers a series'
+  tied issues in one folder at once. Run hints and groups use `runKeyOf` (series volume "v4",
+  joined start year). Metron is asked again by run year or volume when its plain answer lacks
+  the run (filters still to be confirmed on the owner's machine; M4 notes).
 - Series rows are rebuilt by `syncSeries` (`server/src/identify/series.ts`) from stored facts
   and owner corrections. Call it after anything that changes items' names, numbers, kinds or
   matches. Gap rules are pure, in `server/src/lib/series.ts`.

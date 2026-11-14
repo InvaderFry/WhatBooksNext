@@ -1,4 +1,10 @@
-import { MATCH_ACCEPT, MATCH_REVIEW, MATCH_TIE_MARGIN } from '../config.ts';
+import {
+  MATCH_ACCEPT,
+  MATCH_REVIEW,
+  MATCH_TIE_MARGIN,
+  SERIES_VOLUME_AGREES,
+  SERIES_VOLUME_DIFFERS,
+} from '../config.ts';
 import type { SourceQuery, SourceRecord } from '../sources/types.ts';
 import { normalizeForCompare, titleCompareKey } from './filename.ts';
 
@@ -27,7 +33,9 @@ import { normalizeForCompare, titleCompareKey } from './filename.ts';
  */
 // Version 15 carries publishers and source covers into visual candidate comparisons.
 // Version 16 adds opening-page ISBN discovery and EPUB printed-ISBN evidence.
-export const MATCH_VERSION = 16;
+// Version 17 ranks a spin-off ("Series: Other Name #5") below the series itself, uses a comic's
+// series volume ("Series v4 01") against the source's, and searches Metron by year and volume.
+export const MATCH_VERSION = 17;
 
 export interface MatchFacts {
   title: string;
@@ -49,6 +57,8 @@ export interface MatchFacts {
    * (Metron series id, ComicVine volume id). Issues of one series in one folder are one run.
    */
   runs?: { source: string; id: string }[];
+  /** A comic's series volume from its filename ("Series v4 01" → 4): which run of the name. */
+  runVolume?: number | null;
   /** Identifiers from an EPUB: strong evidence. */
   isbns: string[];
   /** ISBNs found inside a PDF: candidates only, never accepted alone (§10). */
@@ -104,6 +114,10 @@ export function buildQuery(f: MatchFacts): SourceQuery {
   if (f.seriesHint) q.series = f.seriesHint;
   if (f.volume) q.volume = f.volume;
   if (f.issue) q.issue = f.issue;
+  // A comic issue's run: Metron is asked by year or series volume when its plain answer
+  // doesn't include that run (many runs share a name and number).
+  if (f.issue && f.years?.length) q.years = [...new Set(f.years)].sort();
+  if (f.issue && f.runVolume) q.seriesVolume = String(f.runVolume);
   return q;
 }
 
@@ -169,6 +183,26 @@ function ourNumber(f: MatchFacts): string | null {
   const v = f.volume ?? f.issue;
   if (v && /^\d+(\.\d+)?$/.test(v)) return String(parseFloat(v));
   return numberIn(f.title.replace(EDITION_SUFFIX, ''));
+}
+
+/** The part of a title before its number ("Copperline: Maximised #5" → "Copperline: Maximised"). */
+function beforeNumber(t: string): string {
+  const m = NUMBER_MARK.exec(t) ?? WORD_MARK.exec(t) ?? TRAILING_NUMBER.exec(t);
+  return m ? t.slice(0, m.index) : t;
+}
+
+const SUBTITLE_MARK = /[:—–]| - /;
+
+/**
+ * Do two numbered titles name the same series? Yes when the names before their numbers agree,
+ * or when neither carries a subtitle there (spellings like "Batman (2011-2016)" are left to the
+ * other checks). A subtitle on one side only is another series that shares the main title.
+ */
+function sameNamedSeries(mine: string[], theirs: string[]): boolean {
+  const key = (t: string) => titleCompareKey(withoutNumber(beforeNumber(t)));
+  const ours = mine.map(key).filter(Boolean);
+  if (theirs.some((t) => ours.includes(key(t)))) return true;
+  return ![...mine, ...theirs].some((t) => SUBTITLE_MARK.test(beforeNumber(t)));
 }
 
 /** The title without its volume marker and number, for comparing the series part. */
@@ -248,7 +282,10 @@ function titleScore(f: MatchFacts, r: SourceRecord): number {
   const a = ourNumber(f);
   const b = numberIn(fullTitleOf(r));
   if ((a || b) && [...mine0].some((k) => their0.has(k))) {
-    if (a && b) return 1;
+    // Both numbered: the same series only when the names before the numbers agree. A record
+    // that adds a name before its number ("Copperline: Maximised #5" against "Copperline #5") is
+    // a spin-off sharing the main title, as is ours adding one the record lacks.
+    if (a && b) return sameNamedSeries(mine, theirs) ? 1 : MAIN_TITLE_ONLY;
     // A volume against a record with no number is only the series' name: never certain,
     // except on AniList, whose records are whole series by design (scope "series"). For a comic
     // or manga, a record that doesn't say it's a comic is most likely a prose book that shares
@@ -355,6 +392,20 @@ export function scoreCandidate(f: MatchFacts, r: SourceRecord): ScoredCandidate 
     notes.push('Same run as the other issues in its folder.');
   }
 
+  // A comic's series volume ("Series v4 01") against the run the source numbers the same way.
+  // Agreeing settles which run, but conventions differ between sources and fans, so it stays
+  // unconfirmed (below MATCH_ACCEPT) unless a year agrees too. A different volume is another run.
+  const theirVolume = r.series?.volume;
+  if (f.runVolume && theirVolume !== undefined && title >= 0.75) {
+    if (theirVolume === f.runVolume) {
+      score = Math.max(score, SERIES_VOLUME_AGREES);
+      notes.push('Series volume matches.');
+    } else {
+      score = Math.min(score, SERIES_VOLUME_DIFFERS);
+      notes.push(`Series volume ${theirVolume}, not ${f.runVolume}.`);
+    }
+  }
+
   const ours = ourNumber(f);
   const theirs = numberIn(fullTitleOf(r));
   if (ours && theirs && ours !== theirs && title >= 0.75) {
@@ -403,7 +454,9 @@ export function scoreCandidate(f: MatchFacts, r: SourceRecord): ScoredCandidate 
   const corroborated =
     author === 'agrees' ||
     isbn !== 'none' ||
-    notes.some((n) => n === 'Year matches.' || n.startsWith('Same run'));
+    notes.some(
+      (n) => n === 'Year matches.' || n.startsWith('Same run') || n === 'Series volume matches.',
+    );
   return {
     record: r,
     score: round(score),
