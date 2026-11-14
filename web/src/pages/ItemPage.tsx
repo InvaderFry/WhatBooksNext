@@ -325,7 +325,7 @@ export function ItemPage({
         </section>
       </div>
 
-      <WhyNotForItem itemId={item.id} />
+      <WhyNotForItem itemId={item.id} version={item} />
       <SeriesSection
         key={`${item.series?.id ?? 'none'}-${rev}`}
         itemId={item.id}

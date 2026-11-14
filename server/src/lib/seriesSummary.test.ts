@@ -59,6 +59,13 @@ describe('a series’ summary on the Series page', () => {
     expect(seriesSummary(v)).toMatchObject({ next: { id: 'v2' }, reading: 1, status: 'finished' });
   });
 
+  it('skips a volume marked Never or hidden when choosing next, as What next does', () => {
+    const v1 = { ...entry('v1', 'volume', 1), never: true };
+    const v2 = { ...entry('v2', 'volume', 2), hidden: true };
+    const s = seriesSummary(view([v1, v2, entry('v3', 'volume', 3)]));
+    expect(s.next?.id).toBe('v3');
+  });
+
   it('counts published volumes not owned, and gaps, without counting a range twice', () => {
     const vol = (position: number) => ({
       position,

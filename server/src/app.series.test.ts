@@ -377,6 +377,16 @@ describe('Series page and “Why isn’t this book shown?” (feature review, st
     expect(r.body.series[1]).toMatchObject({ owned: 1, read: 0, missing: 0 });
   });
 
+  it('agrees with What next on the next volume when volume 1 is marked Never', async () => {
+    await addAndScan(ownedVolumes());
+    await api.patch(`/api/items/${itemIdOf('emberroads1.epub')}`, { triage: 'never' });
+    const two = itemIdOf('emberroads2.epub');
+    const series = (await api.get('/api/series')).body.series[0];
+    expect(series.next.id).toBe(two);
+    const next = await api.get('/api/next');
+    expect(next.body.cards.map((c: { id: string }) => c.id)).toContain(two);
+  });
+
   it('explains a later volume held back by one per series, and a filter, with ways round them', async () => {
     await addAndScan(ownedVolumes());
     const two = itemIdOf('emberroads2.epub');

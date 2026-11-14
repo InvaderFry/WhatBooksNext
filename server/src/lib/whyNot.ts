@@ -174,9 +174,20 @@ export function whyNot(all: RankItem[], s: Situation, mode: ModeId, id: string):
       );
     return out;
   }
-  if (r.mightFit.some((c) => c.id === i.id)) {
+  // "Might fit" shows only its first READ_NEXT_PAGE, with no Show more: past that, say so.
+  const fitAt = r.mightFit.findIndex((c) => c.id === i.id);
+  if (fitAt >= 0 && fitAt < READ_NEXT_PAGE) {
     out.mightFit = true;
     say('It’s under “might fit”: its length is only an estimate, so it may not fit the time.');
+    return out;
+  }
+  if (fitAt >= 0) {
+    say(
+      `It might fit, but its length is only an estimate, and it’s number ${fitAt + 1} of those. What next shows only the top ${READ_NEXT_PAGE} under “might fit”.`,
+      mode === 'one_sitting'
+        ? { kind: 'choice', key: 'm', value: '', label: 'Show Read next' }
+        : { kind: 'choice', key: 'mode', value: '', label: 'Read for that long instead' },
+    );
     return out;
   }
   const info = MODES.find((m) => m.id === mode)!;

@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from 'react';
+import { useCallback, useEffect, useId, useState } from 'react';
 import { api, type ItemSummary, type WhyFix, type WhyNot as WhyNotData } from '../api.ts';
 import { Notice } from '../components.tsx';
 import { hrefFor, onLinkClick, updateParams } from '../url.ts';
@@ -67,7 +67,10 @@ function Explanation({
       <ul>
         {r.reasons.map((x) => (
           <li key={x.text}>
-            {x.text} {x.fix && <span className="why-fix">{fixButton(x.fix)}</span>}
+            {x.text} {/* On the book's own page, a link back to that page would go nowhere. */}
+            {x.fix && !(x.fix.kind === 'item' && x.fix.id === r.id && !onWhatNext) && (
+              <span className="why-fix">{fixButton(x.fix)}</span>
+            )}
           </li>
         ))}
       </ul>
@@ -157,33 +160,41 @@ export function WhyNotFinder({ nextQuery }: { nextQuery: string }) {
 }
 
 /** On a book's page: is it in Read next, and if not, why. Asked only when the owner wants. */
-export function WhyNotForItem({ itemId }: { itemId: string }) {
+export function WhyNotForItem({ itemId, version }: { itemId: string; version: unknown }) {
   const [r, setR] = useState<WhyNotData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Once asked, the answer follows the book: the page reloads the book after every edit (progress,
+  // Never, hidden, kind…), and each reload asks again, so the answer is never left stale.
+  const [asked, setAsked] = useState(false);
+
+  const check = useCallback(async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      setR(await api.get<WhyNotData>(`/api/next/why?id=${encodeURIComponent(itemId)}`));
+    } catch (e) {
+      setR(null);
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }, [itemId]);
+
+  useEffect(() => {
+    if (asked) void check();
+    // `version` changes when the page reloads the book after an edit.
+  }, [asked, check, version]);
+
   return (
     <section className="card" aria-labelledby="why-not-h">
       <h2 id="why-not-h">In What next?</h2>
-      {!r && (
-        <button
-          type="button"
-          className="small secondary"
-          disabled={busy}
-          onClick={async () => {
-            setBusy(true);
-            setError(null);
-            try {
-              setR(await api.get<WhyNotData>(`/api/next/why?id=${encodeURIComponent(itemId)}`));
-            } catch (e) {
-              setError((e as Error).message);
-            } finally {
-              setBusy(false);
-            }
-          }}
-        >
-          {busy ? 'Checking…' : 'Is it recommended? Check Read next'}
+      {!asked && (
+        <button type="button" className="small secondary" onClick={() => setAsked(true)}>
+          Is it recommended? Check Read next
         </button>
       )}
+      {asked && busy && !r && <p className="muted small">Checking…</p>}
       {error && <Notice kind="error">{error}</Notice>}
       <div aria-live="polite">{r && <Explanation r={r} onWhatNext={false} nextQuery="" />}</div>
     </section>

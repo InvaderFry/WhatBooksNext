@@ -36,6 +36,9 @@ export interface SeriesEntry {
   formats: string[];
   /** Read through a collection, or (a collection) through every issue it holds. Derived. */
   via?: 'collection' | 'issues' | null;
+  /** The owner hid it or marked it Never: never recommended, so never "next" either. */
+  hidden?: boolean;
+  never?: boolean;
 }
 
 export interface SeriesView {
@@ -114,6 +117,8 @@ export function seriesView(db: DB, reach: FolderReachability, id: string): Serie
             : 'History only · not owned'
           : i.availability.label,
         formats: i.formats,
+        hidden: i.user.hidden,
+        never: i.user.triage === 'never',
       };
     })
     .sort(
@@ -352,7 +357,10 @@ function missingCount(v: SeriesView): number {
 
 export function seriesSummary(v: SeriesView): SeriesSummary {
   const done = (e: SeriesEntry) => e.progress === 'finished' || !!e.via;
-  const open = v.entries.filter((e) => e.holding === 'owned' && !done(e) && e.progress !== 'dnf');
+  // Only what What next could offer: owned, not finished or stopped, not hidden or Never.
+  const open = v.entries.filter(
+    (e) => e.holding === 'owned' && !done(e) && e.progress !== 'dnf' && !e.hidden && !e.never,
+  );
   // The same rule as What next's one per series: with volumes and issues, carry on with whichever
   // the owner has been reading; if neither, collected volumes come first.
   const touched = (e: SeriesEntry) => e.progress !== 'not_started' && e.progress !== 'dnf';

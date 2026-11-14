@@ -155,6 +155,26 @@ describe('Why isn’t this book shown?', () => {
     );
   });
 
+  it('says “might fit” only for the books that section shows, and explains the rest', () => {
+    // Twelve estimated lengths that might fit in an hour: the section shows the first ten.
+    const rough = Array.from({ length: 12 }, (_, k) =>
+      item({
+        title: `Invented Rough ${String(k + 1).padStart(2, '0')}`,
+        duration: { low: 30, high: 80, basis: 'from 40 pages', measured: false, unit: 'book' },
+      }),
+    );
+    const s = situation({ budget: 60, mode: 'finish_within' });
+    const results = rough.map((b) => whyNot(rough, s, 'read_next', b.id)!);
+    const shown = results.filter((x) => x.mightFit);
+    expect(shown).toHaveLength(10);
+    const beyond = results.filter((x) => !x.mightFit);
+    expect(beyond).toHaveLength(2);
+    for (const x of beyond) {
+      expect(x.reasons[0]!.text).toMatch(/number 1[12] of those\. What next shows only the top 10/);
+      expect(x.reasons[0]!.fix).toMatchObject({ key: 'mode', value: '' });
+    }
+  });
+
   it('gives the mode’s own rule when the book is eligible but the mode doesn’t take it', () => {
     const a = item();
     const r = whyNot([a], situation(), 'continue', a.id)!;
