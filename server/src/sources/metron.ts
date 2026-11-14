@@ -1,4 +1,4 @@
-import { METRON_DAILY_LIMIT, METRON_MIN_INTERVAL_MS } from '../config.ts';
+import { METRON_DAILY_LIMIT, METRON_MIN_INTERVAL_MS, METRON_RUN_SEARCHES } from '../config.ts';
 import type { DB } from '../db/database.ts';
 import { titleCompareKey } from '../identify/filename.ts';
 import { SourceClient } from './client.ts';
@@ -27,8 +27,10 @@ import { DailyUsage } from './usage.ts';
  *    store_date; a series has status ("Completed", "Ongoing", …), issue_count, year_began and
  *    year_end. Metron's data is licensed CC BY-SA 4.0 and is shown as Metron's.
  *
- * The issue filters used here (series_name, number) and the response shapes come from that
- * library, not from a live answer: the owner's Diagnostics → Test Metron run confirms them.
+ * The issue filters used here (series_name, number, and series_year_began and series_volume to
+ * find one run) and the response shapes come from that library, not from a live answer: the
+ * owner's Diagnostics → Test Metron run confirms them. A filter Metron ignored would only repeat
+ * the plain answer.
  */
 
 export const METRON_API = 'https://metron.cloud/api';
@@ -123,6 +125,9 @@ export function parseMetronIssues(
           : typeof s?.year_began === 'number'
             ? { startYear: s.year_began }
             : {}),
+        ...(typeof i.series.volume === 'number' && i.series.volume > 0
+          ? { volume: i.series.volume }
+          : {}),
         ...(position !== undefined ? { position } : {}),
         status,
         // An issue count is only the story's length once it has ended.
@@ -204,7 +209,28 @@ export class Metron implements SourceAdapter {
     const key = `issues:${series.toLowerCase()}|${number.toLowerCase()}`;
     const payload = await this.get(`issue/?${params}`, key, Boolean(opts.refresh));
     const want = baseKey(series);
-    const results = (payload as { results?: MetronIssue[] } | null)?.results ?? [];
+    const results = [...((payload as { results?: MetronIssue[] } | null)?.results ?? [])];
+    // Many runs share a name and number ("Copperline #1" from 1992, 2014 and 2019), and the first
+    // page of answers may hold none from the file's run. Ask by the run's start year or series
+    // volume then: once each, cached, and only while the run is still missing.
+    const ofRun = (i: MetronIssue) =>
+      baseKey(i.series?.name ?? '') === want &&
+      ((q.seriesVolume !== undefined && String(i.series?.volume) === q.seriesVolume) ||
+        (q.years ?? []).some((y) => y === i.series?.year_began || y === year(i.cover_date)));
+    const runAsks = [
+      ...(q.seriesVolume ? [['series_volume', q.seriesVolume]] : []),
+      ...(q.years ?? []).map((y) => ['series_year_began', String(y)]),
+    ].slice(0, METRON_RUN_SEARCHES);
+    for (const [filter, value] of runAsks) {
+      if (results.some(ofRun)) break;
+      const more = (await this.get(
+        `issue/?${new URLSearchParams({ series_name: series, number, [filter!]: value! })}`,
+        `${key}|${filter}=${value}`,
+        Boolean(opts.refresh),
+      )) as { results?: MetronIssue[] } | null;
+      const seen = new Set(results.map((i) => i.id));
+      results.push(...(more?.results ?? []).filter((i) => !seen.has(i.id)));
+    }
     const ids = [
       ...new Set(
         results

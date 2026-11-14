@@ -251,6 +251,23 @@ export interface LookupSourceChoice {
   configured: boolean;
 }
 
+/** "Which run?": a comic series' tied issues in one folder, answered together. */
+export interface RunGroup {
+  key: string;
+  series: string;
+  folder: string;
+  itemIds: string[];
+  runs: {
+    source: 'metron' | 'comicvine';
+    seriesId: string;
+    name: string;
+    startYear?: number;
+    volume?: number;
+    publisher?: string;
+    issues: number;
+  }[];
+}
+
 export interface ReviewList {
   lookupSources: LookupSourceChoice[];
   tiers: Record<number, number>;

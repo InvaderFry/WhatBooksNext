@@ -218,6 +218,91 @@ describe('comic issue lookups', () => {
     });
   });
 
+  it('answers "which run?" once for every tied issue of a series in a folder', async () => {
+    metronHasThree = true;
+    const plain = (n: number) =>
+      makeCbz({ pages: 4, comicInfo: { Series: 'Copperline', Number: String(n) } });
+    writeFiles(drive, {
+      'Loose/Copperline 002.cbz': plain(2),
+      'Loose/Copperline 003.cbz': plain(3),
+    });
+    await api.post('/api/scan', {});
+    await made.scans.wait();
+    await api.put('/api/settings/metron', { token: 'tok-1234567890abcdef' });
+    await lookUp();
+    const two = itemOf('Copperline 002.cbz');
+    const three = itemOf('Copperline 003.cbz');
+    const { groups } = (await api.get('/api/review/runs')).body as {
+      groups: {
+        key: string;
+        folder: string;
+        itemIds: string[];
+        runs: { seriesId: string; startYear: number; issues: number }[];
+      }[];
+    };
+    const group = groups.find((g) => g.folder === 'Loose')!;
+    expect(group.itemIds.sort()).toEqual([two, three].sort());
+    expect(group.runs.map((r) => [r.seriesId, r.startYear, r.issues])).toEqual([
+      ['9001', 2019, 2],
+      ['9002', 2023, 2],
+    ]);
+    const answer = await api.post('/api/review/runs', {
+      key: group.key,
+      source: 'metron',
+      seriesId: '9002',
+    });
+    expect(answer.body).toMatchObject({ confirmed: 2, left: 0 });
+    for (const [id, issue] of [
+      [two, '900102'],
+      [three, '900103'],
+    ])
+      expect(
+        db.prepare('SELECT identity, match_source_id FROM items WHERE id = ?').get(id),
+      ).toEqual({ identity: 'accepted', match_source_id: issue });
+    expect(
+      ((await api.get('/api/review/runs')).body as { groups: { folder: string }[] }).groups.some(
+        (g) => g.folder === 'Loose',
+      ),
+    ).toBe(false);
+    expect(
+      (await api.post('/api/review/runs', { key: group.key, source: 'metron', seriesId: '9002' }))
+        .status,
+    ).toBe(404);
+  });
+
+  it('keeps a "v2" file out of the run its unnumbered neighbour was confirmed as', async () => {
+    metronHasThree = true;
+    writeFiles(drive, {
+      'Mixed/Copperline 002.cbz': makeCbz({
+        pages: 4,
+        comicInfo: { Series: 'Copperline', Number: '2' },
+      }),
+      'Mixed/Copperline v2 003.cbz': makeCbz({
+        pages: 4,
+        comicInfo: { Series: 'Copperline', Number: '3' },
+      }),
+    });
+    await api.post('/api/scan', {});
+    await made.scans.wait();
+    await api.put('/api/settings/metron', { token: 'tok-1234567890abcdef' });
+    await lookUp();
+    expect(
+      (
+        await api.post(`/api/items/${itemOf('Copperline 002.cbz')}/match`, {
+          action: 'confirm',
+          source: 'metron',
+          sourceId: '900002',
+        })
+      ).status,
+    ).toBe(200);
+    // The v2 file is the run Metron numbers 2, not its neighbour's: unconfirmed, for the owner.
+    expect(
+      db
+        .prepare('SELECT identity, match_source_id FROM items WHERE id = ?')
+        .get(itemOf('Copperline v2 003.cbz')),
+    ).toEqual({ identity: 'provisional', match_source_id: '900103' });
+  });
+
   it('leaves two runs tied when nothing tells them apart', async () => {
     metronHasThree = true;
     writeFiles(drive, {

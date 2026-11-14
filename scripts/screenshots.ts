@@ -543,6 +543,51 @@ try {
         await p.locator('details.tier4 > summary').click(); // tier 4 is collapsed by default
       },
     ],
+    // "Which run?": the demo has no tied comic runs, so this invents one group. Behaviour is
+    // covered by app.comics.test.ts.
+    [
+      'review-runs',
+      '/?view=review',
+      async (p) => {
+        await p.route('**/api/review/runs', (route) =>
+          route.fulfill({
+            json: {
+              groups: [
+                {
+                  key: 'invented-run-group',
+                  series: 'Copperline v4',
+                  folder: 'Comics/Copperline',
+                  itemIds: ['a', 'b', 'c'],
+                  runs: [
+                    {
+                      source: 'metron',
+                      seriesId: '1',
+                      name: 'Copperline',
+                      startYear: 2001,
+                      volume: 4,
+                      publisher: 'Invented Press',
+                      issues: 3,
+                    },
+                    {
+                      source: 'metron',
+                      seriesId: '2',
+                      name: 'Copperline',
+                      startYear: 1984,
+                      volume: 1,
+                      publisher: 'Invented Press',
+                      issues: 3,
+                    },
+                  ],
+                },
+              ],
+            },
+          }),
+        );
+        await p.reload();
+        await p.getByRole('heading', { name: 'Which run is it?' }).waitFor();
+        await p.unroute('**/api/review/runs');
+      },
+    ],
     ['health', '/?view=health', async () => {}],
     ['settings', '/?view=settings', async () => {}],
     ['diagnostics', '/?view=diagnostics', async () => {}],

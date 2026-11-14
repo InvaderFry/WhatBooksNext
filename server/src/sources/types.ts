@@ -26,6 +26,10 @@ export interface SourceQuery {
   rawTitle?: string;
   author?: string;
   isbn?: string;
+  /** A comic issue's years (file name, ComicInfo): which run, when several share the name. */
+  years?: number[];
+  /** A comic's series volume from its filename ("Series v4 01" → "4"). */
+  seriesVolume?: string;
   /** Local lookup invalidation key; adapters must not treat these as authoritative ISBNs. */
   isbnCandidates?: string[];
   /** Manga or comics: the series name and a volume number. */
@@ -77,6 +81,8 @@ export interface SourceRecord {
     id?: string;
     /** Explicit start of this run, never an issue's cover/publication year. */
     startYear?: number;
+    /** The source's own number for this run of the name (Metron's series volume). */
+    volume?: number;
     position?: number;
     /** Installments the source says exist (finished series), when it states it. */
     total?: number;
