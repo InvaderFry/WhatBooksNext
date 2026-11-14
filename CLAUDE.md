@@ -51,9 +51,10 @@ owner has already made. Don't reopen those decisions. Then read the latest
   the extension stays a later option). The Library has a **Store** filter (`LibraryQuery.store`,
   with `storeCounts`).
   Findings per store are in the plan.
-- **Covers for books without a file cover** come from Open Library (`identify/covers.ts`, table
-  `item_covers`, migration 016): only for a confident Open Library match, by cover ID, after
-  lookup runs. Owner decision 2026-11-11; details in the store purchases plan.
+- **Covers for books without a file cover** (`identify/covers.ts`, table `item_covers`, migration
+  016): only from a confident match (owner-confirmed or app-accepted) on any source, Open Library
+  by cover ID and the others by their stored cover address on the source's own image hosts.
+  Owner decisions 2026-11-11 and 2026-11-13; details in the store purchases plan.
   "Wrong cover?" on a book's page turns one down (`user_item.cover_rejected`, migration 018,
   an owner correction): the fetcher skips it and tries the book's other confident matches.
 - Automatic refresh: due rules are pure in `lib/refresh.ts`; `identify/refresher.ts` runs batches
@@ -73,6 +74,8 @@ owner has already made. Don't reopen those decisions. Then read the latest
   high-confidence matches.
 - Ranking is pure (`server/src/lib/recommend.ts`); `lib/rankData.ts` assembles its input.
 - API keys go in the `secrets` table only, never in settings, backups or Diagnostics.
+- **`docs/owner-checklist.md`** is the owner's current to-do: the second quality session and the
+  Windows checks still open, in plain steps. Update it when a check is done or a new one appears.
 - The **owner actions** for each milestone are in PLAN.md §21. Tell the owner, plainly and at
   the start of your message, whenever one is due.
 
