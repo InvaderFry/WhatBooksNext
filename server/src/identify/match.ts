@@ -26,7 +26,8 @@ import { normalizeForCompare, titleCompareKey } from './filename.ts';
  * twice with a misspelt or HTML-encoded author name is one book.
  */
 // Version 15 carries publishers and source covers into visual candidate comparisons.
-export const MATCH_VERSION = 15;
+// Version 16 adds opening-page ISBN discovery and EPUB printed-ISBN evidence.
+export const MATCH_VERSION = 16;
 
 export interface MatchFacts {
   title: string;
@@ -97,6 +98,7 @@ export function buildQuery(f: MatchFacts): SourceQuery {
     q.title = q.title.split(':')[0]!.trim();
   if (f.authors[0]) q.author = f.authors[0];
   if (f.isbns[0]) q.isbn = f.isbns[0];
+  if (f.isbnCandidates.length) q.isbnCandidates = [...new Set(f.isbnCandidates)].sort();
   if (f.rawTitle && normalizeForCompare(f.rawTitle) !== normalizeForCompare(q.title))
     q.rawTitle = f.rawTitle;
   if (f.seriesHint) q.series = f.seriesHint;
@@ -390,7 +392,7 @@ export function scoreCandidate(f: MatchFacts, r: SourceRecord): ScoredCandidate 
   } else if (isbn === 'candidate' && title >= 0.8 && author !== 'conflicts') {
     // A PDF's ISBN may be another book's (tech books cite others), so it only corroborates.
     score = Math.min(1, score + 0.1);
-    notes.push('An ISBN printed in the PDF matches.');
+    notes.push('An ISBN printed inside the book matches.');
   }
   if (title === 1) notes.push('Title matches.');
   else if (title >= 0.8) notes.push('Title is close.');

@@ -1848,3 +1848,23 @@ kbd {
   display: inline-block;
   margin-left: 0.25rem;
 }
+
+.identification-evidence {
+  margin-block: 1rem;
+}
+.identification-field {
+  display: grid;
+  gap: 0.3rem;
+  margin-block: 0.7rem;
+}
+.identification-field input,
+.identification-field textarea {
+  width: 100%;
+  min-width: 0;
+}
+.opening-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 24rem;
+  overflow-y: auto;
+}

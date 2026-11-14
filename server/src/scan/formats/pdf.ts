@@ -10,6 +10,9 @@ import {
   PDF_RANGE_CHUNK,
   PDF_FULL_PAGE_IMAGE,
   PDF_ISBN_PAGES,
+  PDF_OPENING_IMAGE_PAGES,
+  OPENING_PAGE_CHARS,
+  ISBN_CANDIDATES_MAX,
   PDF_TEXT_PAGE_CHARS,
   PDF_TYPE_MAJORITY,
   PDF_TYPE_SAMPLE_PAGES,
@@ -17,7 +20,7 @@ import {
   THUMBNAIL_QUALITY,
 } from '../../config.ts';
 import { countWords, findIsbns } from './text.ts';
-import type { EmbeddedMetadata, MetaResult, PdfTypeResult } from './types.ts';
+import type { EmbeddedMetadata, MetaResult, OpeningPage, PdfTypeResult } from './types.ts';
 import { LimitError } from './zip.ts';
 
 /**
@@ -339,11 +342,29 @@ export async function readPdf(
           page.cleanup();
         }
         words += countWords(text);
-        if (n <= PDF_ISBN_PAGES) isbnText += text + '\n';
+        if (n <= PDF_ISBN_PAGES) {
+          isbnText += text + '\n';
+          sampledText.set(n, text);
+        }
       }
     }
+    // Even image-heavy comics can have a text copyright page. Read only the opening
+    // pages when the broad sample found no text, never the entire comic.
+    const openingPages: OpeningPage[] = [];
+    const openingCount = hasTextLayer ? PDF_ISBN_PAGES : PDF_OPENING_IMAGE_PAGES;
+    for (let n = 1; n <= Math.min(openingCount, numPages); n++) {
+      let text = sampledText.get(n);
+      if (text === undefined) {
+        const page = await doc.getPage(n);
+        text = await pageText(page);
+        page.cleanup();
+      }
+      if (!hasTextLayer) isbnText += text + '\n';
+      if (text.trim())
+        openingPages.push({ label: `Page ${n}`, text: text.trim().slice(0, OPENING_PAGE_CHARS) });
+    }
     const isbns = findIsbns(isbnText);
-    if (isbns.length) metadata.isbnCandidates = isbns.slice(0, 20);
+    if (isbns.length) metadata.isbnCandidates = isbns.slice(0, ISBN_CANDIDATES_MAX);
     // The cover from the same open document: no second pass over the file.
     let jpeg: Buffer | null | undefined;
     if (wantCover) {
@@ -359,6 +380,7 @@ export async function readPdf(
       pageCount: numPages,
       pdfType,
       jpeg,
+      ...(openingPages.length ? { openingPages } : {}),
     };
   } finally {
     await task.destroy();

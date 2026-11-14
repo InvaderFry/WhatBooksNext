@@ -450,3 +450,20 @@ framework. Windows-specific code sits behind `server/src/platform/`, which has a
 [PolyForm Strict 1.0.0](LICENSE). You may read the code and run it for yourself. You may not
 change or redistribute it. Third-party notices are in
 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
+
+### Identifying Humble books with missing metadata
+
+On a book’s page, open **Ratings and details → Identify using bundle details and opening pages**.
+Save the Humble bundle name, a purchase/bundle/publisher link, title, creator, ISBN, and evidence
+or edition uncertainty. These notes are included in backups and do not confirm or replace a match.
+Choose **Use these details in search**, select a source, then **Search** and compare the candidates
+and covers before confirming. Open Library supports ISBN searches; other catalogs vary.
+
+After the next scan, the panel also shows cached text from the first ten text-PDF pages (four for image-heavy PDFs) or first six
+non-navigation EPUB sections (up to 6,000 characters each), plus ISBN clues (EPUBs are also
+checked for a copyright page in their last three sections). Unresolved automatic Open Library lookups try up to three printed ISBNs,
+checking the results against the original file facts. This includes opening
+PDF pages even when the rest of a comic has no text layer. Text stays local; only the title, author
+and ISBN entered in search go to catalogs. Copy distinctive text for a manual publisher-preview
+search when necessary. Image-only pages still require visual inspection; OCR and automatic Humble
+account imports are not included. Existing confirmed matches remain yours to change.

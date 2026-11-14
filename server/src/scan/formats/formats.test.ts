@@ -325,7 +325,8 @@ describe('PDF', () => {
     expect(r.pdfType?.type).toBe('comic');
     expect(r.jpeg).toBeTruthy();
     expect(r.wordCount).toBeNull(); // no text layer: unknown, not zero
-    expect(pdfReadStats.bytes / fs.statSync(f).size).toBeLessThan(0.4);
+    // Includes four opening pages for credits/ISBN clues as well as the spread sample.
+    expect(pdfReadStats.bytes / fs.statSync(f).size).toBeLessThan(0.45);
   });
 
   it('ignores junk titles written by PDF tools', async () => {
@@ -380,5 +381,81 @@ describe('PDF', () => {
   it('samples pages spread through the document, skipping the cover', () => {
     expect(samplePages(3)).toEqual([1, 2, 3]);
     expect(samplePages(500, 4)).toEqual([64, 189, 313, 438]);
+  });
+});
+
+describe('opening-page identification evidence', () => {
+  it('extracts EPUB copyright ISBNs as candidates, not embedded identifiers', async () => {
+    const file = put(
+      'copyright.epub',
+      makeZip([
+        {
+          name: 'book.opf',
+          data: '<package><metadata/><manifest><item id="copyright" href="copyright.xhtml" media-type="application/xhtml+xml"/></manifest><spine><itemref idref="copyright"/></spine></package>',
+        },
+        {
+          name: 'copyright.xhtml',
+          data: '<html><body><p>Copyright A. Writer. ISBN 9780306406157</p></body></html>',
+        },
+      ]),
+    );
+    const result = await meta(file, 'epub');
+    expect(result.meta.metadata.isbnCandidates).toEqual(['9780306406157']);
+    expect(result.meta.metadata.identifiers).toBeUndefined();
+  });
+
+  it('finds a copyright ISBN even when the sampled PDF body has no text', async () => {
+    const file = put(
+      'copyright-only.pdf',
+      makePdf({
+        pages: [
+          { text: ['Copyright A. Writer. ISBN 9780306406157'] },
+          ...Array.from({ length: 25 }, () => ({ text: [] })),
+        ],
+      }),
+    );
+    const result = await readPdf(file);
+    expect(result.metadata.isbnCandidates).toContain('9780306406157');
+    expect(result.openingPages?.[0]).toMatchObject({ label: 'Page 1' });
+    expect(result.openingPages?.[0]?.text).toContain('A. Writer');
+    expect(result.metadata.identifiers).toBeUndefined();
+  });
+  it('finds an EPUB copyright ISBN printed at the back of the book', async () => {
+    const chapters = Array.from({ length: 10 }, (_, i) => ({
+      id: `c${i}`,
+      body: `<p>Chapter ${i} of an invented story, with words enough to read.</p>`,
+    }));
+    chapters.push({ id: 'copyright', body: '<p>Copyright A. Writer. ISBN 9780306406157</p>' });
+    const file = put(
+      'back-copyright.epub',
+      makeZip([
+        {
+          name: 'book.opf',
+          data: `<package><metadata/><manifest>${chapters
+            .map(
+              (c) => `<item id="${c.id}" href="${c.id}.xhtml" media-type="application/xhtml+xml"/>`,
+            )
+            .join('')}</manifest><spine>${chapters
+            .map((c) => `<itemref idref="${c.id}"/>`)
+            .join('')}</spine></package>`,
+        },
+        ...chapters.map((c) => ({
+          name: `${c.id}.xhtml`,
+          data: `<html><body>${c.body}</body></html>`,
+        })),
+      ]),
+    );
+    const result = await meta(file, 'epub');
+    expect(result.meta.metadata.isbnCandidates).toEqual(['9780306406157']);
+  });
+  it('stores bounded EPUB opening sections without inventing title or author metadata', async () => {
+    const result = await meta(
+      put('opening.epub', makeEpub({ chapters: Array(12).fill(1500) })),
+      'epub',
+    );
+    expect(result.meta.openingPages).toHaveLength(6);
+    expect(result.meta.metadata).not.toHaveProperty('openingPages');
+    expect(result.meta.openingPages?.every((p) => p.text.length <= 6000)).toBe(true);
+    expect(result.meta.metadata.creators).toBeUndefined();
   });
 });

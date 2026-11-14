@@ -8,7 +8,7 @@ export interface EmbeddedMetadata {
   date?: string;
   /** EPUB identifiers (strong evidence), e.g. { scheme: 'isbn', value: '9780000000000' }. */
   identifiers?: { scheme: string; value: string }[];
-  /** ISBNs found in a PDF's first pages: candidates only, never accepted alone (§10). */
+  /** ISBNs printed in opening pages: candidates only, never accepted alone (§10). */
   isbnCandidates?: string[];
   subjects?: string[];
   description?: string;
@@ -43,8 +43,19 @@ export interface PdfTypeResult {
   portraitPages: number;
 }
 
+/** One opening page's or section's text, kept locally for identity review. */
+export interface OpeningPage {
+  label: string;
+  text: string;
+}
+
 export interface MetaResult {
   metadata: EmbeddedMetadata;
+  /**
+   * Bounded opening-page text. Stored apart from `metadata` (table file_opening_text), so the
+   * lookups and fact refreshes that parse metadata don't carry it.
+   */
+  openingPages?: OpeningPage[];
   wordCount: number | null;
   pageCount: number | null;
   pdfType?: PdfTypeResult;

@@ -110,6 +110,34 @@ export const PDF_TYPE_SAMPLE_PAGES = 8;
 export const PDF_ISBN_PAGES = 10;
 
 /**
+ * An image-heavy PDF (a comic) has no text layer to sample, but its copyright or credits page
+ * often does. Reading a page's text makes pdf.js fetch its images too, so only this many opening
+ * pages are read: enough for a cover, title page, credits and copyright page.
+ */
+export const PDF_OPENING_IMAGE_PAGES = 4;
+
+/** Opening EPUB sections kept for identity review: cover, title, copyright, contents, more. */
+export const EPUB_OPENING_SECTIONS = 6;
+
+/**
+ * Closing EPUB sections also searched for printed ISBNs: many ebooks put the copyright page at
+ * the back. Only the ends of a book are read, as tech books cite other books' ISBNs inside.
+ */
+export const EPUB_ISBN_CLOSING_SECTIONS = 3;
+
+/** Characters kept per opening page or section: a dense copyright page fits with room to spare. */
+export const OPENING_PAGE_CHARS = 6000;
+
+/** ISBN candidates kept per file. More than this is a reference list, not a copyright page. */
+export const ISBN_CANDIDATES_MAX = 20;
+
+/**
+ * Printed ISBNs tried as leads when a title search found nothing certain (§10). A copyright page
+ * lists the print, ebook and audio ISBNs; a fourth is usually another book's.
+ */
+export const ISBN_LEAD_SEARCHES = 3;
+
+/**
  * A page counts as "text" with at least this many characters of text layer. A line of 60–80
  * characters; less is page numbers, credits or a caption.
  */

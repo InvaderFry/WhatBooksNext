@@ -220,6 +220,7 @@ const GROUPS: { field: string; label: string; cols: string[]; both?: boolean }[]
       'progress_at',
     ],
   },
+  { field: 'identification', label: 'Identification evidence', cols: ['identification_context'] },
   { field: 'rating', label: 'Your rating', cols: ['rating'] },
   { field: 'note', label: 'Note', cols: ['note'], both: true },
   { field: 'takeaway', label: 'Takeaway', cols: ['takeaway'], both: true },
@@ -256,6 +257,12 @@ function display(field: string, u: UserRow): string {
         u.progress === 'finished' ? (u.finished_on ? `, ${u.finished_on}` : ', date unknown') : '';
       return `${p}${dnf}${when}`;
     }
+    case 'identification':
+      return Object.values(
+        parseJson<Record<string, string>>(u.identification_context as string, {}),
+      )
+        .filter(Boolean)
+        .join(' · ');
     case 'rating':
       return `${u.rating}/10`;
     case 'hidden':

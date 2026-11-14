@@ -1,9 +1,15 @@
-import { PAGE_PREVIEW_MAX_SIDE } from '../../config.ts';
+import {
+  EPUB_ISBN_CLOSING_SECTIONS,
+  EPUB_OPENING_SECTIONS,
+  ISBN_CANDIDATES_MAX,
+  OPENING_PAGE_CHARS,
+  PAGE_PREVIEW_MAX_SIDE,
+} from '../../config.ts';
 import path from 'node:path';
 import { createCanvas } from '@napi-rs/canvas';
-import { countWords, htmlToText } from './text.ts';
+import { countWords, findIsbns, htmlToText } from './text.ts';
 import { thumbnailFromImage } from './thumbnail.ts';
-import type { EmbeddedMetadata, MetaResult } from './types.ts';
+import type { EmbeddedMetadata, MetaResult, OpeningPage } from './types.ts';
 import { attr, findAll, findFirst, parseXml, textOf, type XmlElement } from './xml.ts';
 import { ZipReader } from './zip.ts';
 
@@ -131,6 +137,9 @@ export async function readEpub(file: string): Promise<MetaResult> {
     const metadata = opfMetadata(opf.doc);
     const seen = new Set<string>();
     let words = 0;
+    const openingPages: OpeningPage[] = [];
+    // The last few sections, for a copyright page at the back of the book.
+    const closing: string[] = [];
     for (const ref of findAll(opf.doc, 'itemref')) {
       const item = opf.manifest.get(ref.attrs.idref ?? '');
       if (!item || item.properties.includes('nav') || NAV_NAME.test(item.href)) continue;
@@ -141,9 +150,26 @@ export async function readEpub(file: string): Promise<MetaResult> {
       // Repeated boilerplate (the same notice page in every chapter file) is counted once.
       if (seen.has(text)) continue;
       seen.add(text);
+      if (!text.trim()) continue;
+      if (openingPages.length < EPUB_OPENING_SECTIONS)
+        openingPages.push({
+          label: `Section ${openingPages.length + 1}`,
+          text: text.trim().slice(0, OPENING_PAGE_CHARS),
+        });
+      else {
+        closing.push(text.slice(0, OPENING_PAGE_CHARS));
+        if (closing.length > EPUB_ISBN_CLOSING_SECTIONS) closing.shift();
+      }
       words += countWords(text);
     }
-    return { metadata, wordCount: words > 0 ? words : null, pageCount: null };
+    const candidates = findIsbns([...openingPages.map((p) => p.text), ...closing].join('\n'));
+    if (candidates.length) metadata.isbnCandidates = candidates.slice(0, ISBN_CANDIDATES_MAX);
+    return {
+      metadata,
+      wordCount: words > 0 ? words : null,
+      pageCount: null,
+      ...(openingPages.length ? { openingPages } : {}),
+    };
   } finally {
     zip.close();
   }
