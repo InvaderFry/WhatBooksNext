@@ -1,3 +1,5 @@
+import { identificationContext, saveIdentificationContext } from '../lib/identificationContext.ts';
+import { findIsbns } from '../scan/formats/text.ts';
 import type { Express, Request } from 'express';
 import { MATCH_ACCEPT, READ_NEXT_PAGE, RECENT_DAYS, TRIAGE_SESSION } from '../config.ts';
 import type { DB } from '../db/database.ts';
@@ -693,13 +695,30 @@ export function registerReadingRoutes(app: Express, d: ReadingDeps): void {
       };
     }),
   );
+  app.get(
+    '/api/items/:id/identification-context',
+    route((req) => identificationContext(db, d.itemIdOr404(String(req.params.id)))),
+  );
+  app.post(
+    '/api/items/:id/identification-context',
+    route((req) => {
+      const id = d.itemIdOr404(String(req.params.id));
+      saveIdentificationContext(db, id, req.body);
+      return { ok: true };
+    }),
+  );
+
   // Search and pick: a POST because it may call online sources, though it changes nothing here.
   app.post(
     '/api/items/:id/search',
     route(async (req) => {
       const id = d.itemIdOr404(String(req.params.id));
       const q = String(req.body?.query ?? '').trim();
-      if (q.length < 2) throw new HttpError(400, 'Type at least two letters.');
+      const isbnInput = typeof req.body?.isbn === 'string' ? req.body.isbn.trim() : '';
+      const isbn = isbnInput ? findIsbns(isbnInput)[0] : undefined;
+      if (isbnInput && (!isbn || isbnInput.length > 30 || !/^[\dXx\s-]+$/.test(isbnInput)))
+        throw new HttpError(400, 'Enter a valid ISBN-10 or ISBN-13.');
+      if (!isbn && q.length < 2) throw new HttpError(400, 'Type at least two letters.');
       if (q.length > 200) throw new HttpError(400, 'That search is too long.');
       const author =
         typeof req.body?.author === 'string' ? req.body.author.trim().slice(0, 100) : '';
@@ -711,6 +730,13 @@ export function registerReadingRoutes(app: Express, d: ReadingDeps): void {
         : sources.forSearch();
       const parsed = parseFilename(`${q}.pdf`);
       for (const s of searchSources) {
+        if (!q && isbn && s.name !== 'openlibrary') {
+          if (source)
+            errors.push(
+              `${SOURCE_LABELS[s.name]}: Enter a title for this source, or use Open Library for ISBN-only searches.`,
+            );
+          continue;
+        }
         try {
           const comic = s.name === 'metron' || s.name === 'comicvine';
           const issue = parsed.issue?.value;
@@ -725,6 +751,7 @@ export function registerReadingRoutes(app: Express, d: ReadingDeps): void {
           records.push(
             ...(await s.search({
               title: q,
+              isbn,
               author: author || undefined,
               ...(comic
                 ? { series: parsed.series?.value ?? parsed.title.value, issue, volume }

@@ -914,6 +914,20 @@ async function lookUpOnce(
         // A run-together filename title that found nothing: try the raw form too (§11.1).
         if (records.length === 0 && query.rawTitle)
           records = await s.search({ ...query, title: query.rawTitle }, opts);
+        // Opening-page ISBNs are leads, not authoritative identifiers. Search them only
+        // when title matching is unresolved, then score against the original file facts.
+        if (
+          s.name === 'openlibrary' &&
+          !query.isbn &&
+          decide(facts, records).decision !== 'accepted'
+        ) {
+          for (const isbn of facts.isbnCandidates.slice(0, 3)) {
+            const extra = await s.search({ ...query, isbn }, opts);
+            const seen = new Set(records.map((r) => r.sourceId));
+            records = [...records, ...extra.filter((r) => !seen.has(r.sourceId))];
+            if (decide(facts, records).decision === 'accepted') break;
+          }
+        }
         return { s, records };
       }),
     );

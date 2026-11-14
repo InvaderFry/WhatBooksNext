@@ -37,7 +37,7 @@ const fetcher: Fetcher = async (url) => {
   const u = new URL(url);
   if (u.hostname === 'openlibrary.org') {
     const title = (u.searchParams.get('title') ?? '').toLowerCase();
-    const body = olByTitle[title] ?? fixture('ol-search-none.json');
+    const body = olByTitle[u.searchParams.get('isbn') ?? title] ?? fixture('ol-search-none.json');
     return new Response(body, { status: 200, headers: { 'content-type': 'application/json' } });
   }
   return new Response('{}', { status: 404 });
@@ -826,3 +826,57 @@ describe('the Hardcover token (§6.3)', () => {
     expect((await api.put('/api/settings/hardcover', { token: 'oops' })).status).toBe(400);
   });
 });
+
+describe('bundle identification assistance', () => {
+  it('saves provenance in owner data and backups, validates input and handles missing items', async () => {
+    const id = createStoreItem(db, { title: 'Ambiguous', store: 'other' });
+    const endpoint = `/api/items/${id}/identification-context`;
+    expect(
+      (await api.post(endpoint, { bundle: 'Humble Comics', notes: 'Edition uncertain' })).status,
+    ).toBe(200);
+    expect((await api.get(endpoint)).body.context.bundle).toBe('Humble Comics');
+    expect(
+      createBackup(db).tables.user_item?.find((r) => r.item_id === id)?.identification_context,
+    ).toContain('Edition uncertain');
+    expect((await api.post(endpoint, { referenceUrl: 'javascript:alert(1)' })).status).toBe(400);
+    expect((await api.get('/api/items/missing/identification-context')).status).toBe(404);
+  });
+  it('searches a validated ISBN without requiring a title or auto-confirming a match', async () => {
+    const id = createStoreItem(db, { title: 'Ambiguous', store: 'other' });
+    const response = await api.post(`/api/items/${id}/search`, {
+      isbn: '0-306-40615-2',
+      source: 'openlibrary',
+    });
+    expect(response.status).toBe(200);
+    expect(requests.some((url) => new URL(url).searchParams.get('isbn') === '9780306406157')).toBe(
+      true,
+    );
+    expect(db.prepare('SELECT identity FROM items WHERE id = ?').pluck().get(id)).toBe(
+      'unidentified',
+    );
+    expect((await api.post(`/api/items/${id}/search`, { isbn: '9780306406158' })).status).toBe(400);
+  });
+});
+
+it('uses a printed ISBN as a lead without accepting an unrelated book', async () => {
+  olByTitle['9780306406157'] = fixture('ol-search-time-machine.json');
+  await addAndScan({
+    'unrelated-book.pdf': makePdf({
+      pages: [
+        { text: ['Unrelated Book', 'Copyright A Writer', 'ISBN 9780306406157'] },
+        { text: textForIdentificationTest() },
+      ],
+    }),
+  });
+  expect(requests.some((url) => new URL(url).searchParams.get('isbn') === '9780306406157')).toBe(
+    true,
+  );
+  expect(db.prepare('SELECT identity FROM items').pluck().get()).not.toBe('accepted');
+});
+
+function textForIdentificationTest() {
+  return Array.from(
+    { length: 20 },
+    () => 'Some text from the unrelated book, which is not The Time Machine.',
+  );
+}

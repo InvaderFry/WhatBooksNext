@@ -1,5 +1,7 @@
 /** What the deep pass learns from a file's contents (PLAN.md §10). Facts, never owner data. */
 export interface EmbeddedMetadata {
+  /** Bounded opening-page text, kept locally for identity review. */
+  openingPages?: { label: string; text: string }[];
   title?: string;
   creators?: { name: string; role?: string }[];
   language?: string;
@@ -8,7 +10,7 @@ export interface EmbeddedMetadata {
   date?: string;
   /** EPUB identifiers (strong evidence), e.g. { scheme: 'isbn', value: '9780000000000' }. */
   identifiers?: { scheme: string; value: string }[];
-  /** ISBNs found in a PDF's first pages: candidates only, never accepted alone (§10). */
+  /** ISBNs printed in opening pages: candidates only, never accepted alone (§10). */
   isbnCandidates?: string[];
   subjects?: string[];
   description?: string;

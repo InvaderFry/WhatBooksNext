@@ -1,7 +1,7 @@
 import { PAGE_PREVIEW_MAX_SIDE } from '../../config.ts';
 import path from 'node:path';
 import { createCanvas } from '@napi-rs/canvas';
-import { countWords, htmlToText } from './text.ts';
+import { countWords, findIsbns, htmlToText } from './text.ts';
 import { thumbnailFromImage } from './thumbnail.ts';
 import type { EmbeddedMetadata, MetaResult } from './types.ts';
 import { attr, findAll, findFirst, parseXml, textOf, type XmlElement } from './xml.ts';
@@ -131,6 +131,7 @@ export async function readEpub(file: string): Promise<MetaResult> {
     const metadata = opfMetadata(opf.doc);
     const seen = new Set<string>();
     let words = 0;
+    const openingPages: { label: string; text: string }[] = [];
     for (const ref of findAll(opf.doc, 'itemref')) {
       const item = opf.manifest.get(ref.attrs.idref ?? '');
       if (!item || item.properties.includes('nav') || NAV_NAME.test(item.href)) continue;
@@ -141,8 +142,16 @@ export async function readEpub(file: string): Promise<MetaResult> {
       // Repeated boilerplate (the same notice page in every chapter file) is counted once.
       if (seen.has(text)) continue;
       seen.add(text);
+      if (openingPages.length < 6 && text.trim())
+        openingPages.push({
+          label: `Section ${openingPages.length + 1}`,
+          text: text.slice(0, 6000),
+        });
       words += countWords(text);
     }
+    if (openingPages.length) metadata.openingPages = openingPages;
+    const candidates = findIsbns(openingPages.map((p) => p.text).join('\n'));
+    if (candidates.length) metadata.isbnCandidates = candidates.slice(0, 20);
     return { metadata, wordCount: words > 0 ? words : null, pageCount: null };
   } finally {
     zip.close();

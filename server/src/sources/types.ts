@@ -26,6 +26,8 @@ export interface SourceQuery {
   rawTitle?: string;
   author?: string;
   isbn?: string;
+  /** Local lookup invalidation key; adapters must not treat these as authoritative ISBNs. */
+  isbnCandidates?: string[];
   /** Manga or comics: the series name and a volume number. */
   series?: string;
   volume?: string;

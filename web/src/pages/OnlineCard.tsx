@@ -1,3 +1,4 @@
+import { IdentificationEvidence } from './IdentificationEvidence.tsx';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, EFFORT_LABELS, formatRange, type Candidate, type ItemOnline } from '../api.ts';
 import { Notice } from '../components.tsx';
@@ -24,6 +25,8 @@ export function OnlineCard({ itemId, onChanged }: { itemId: string; onChanged: (
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [source, setSource] = useState('');
+  const [author, setAuthor] = useState('');
+  const [isbn, setIsbn] = useState('');
   const matchesRef = useRef<HTMLDetailsElement>(null);
   const [query, setQuery] = useState<string | null>(null);
   const [results, setResults] = useState<Candidate[] | null>(null);
@@ -38,6 +41,8 @@ export function OnlineCard({ itemId, onChanged }: { itemId: string; onChanged: (
   }, [load]);
   useEffect(() => {
     setSource('');
+    setAuthor('');
+    setIsbn('');
     setQuery(null);
     setResults(null);
     setChanges(null);
@@ -257,6 +262,17 @@ export function OnlineCard({ itemId, onChanged }: { itemId: string; onChanged: (
         Settings → Online sources. Review the results and confirm the right match. Your
         confirmations and rejections stay.
       </p>
+      <IdentificationEvidence
+        key={itemId}
+        itemId={itemId}
+        onSearch={(context) => {
+          setQuery(context.title);
+          setAuthor(context.author);
+          setIsbn(context.isbn);
+          setResults(null);
+          setError(null);
+        }}
+      />
       {query !== null && (
         <form
           className="inline-form"
@@ -268,7 +284,7 @@ export function OnlineCard({ itemId, onChanged }: { itemId: string; onChanged: (
               try {
                 const r = await api.post<{ candidates: Candidate[]; errors: string[] }>(
                   `/api/items/${itemId}/search`,
-                  { query, ...(source ? { source } : {}) },
+                  { query, author, isbn, ...(source ? { source } : {}) },
                 );
                 setResults(r.candidates);
                 if (r.errors.length) setError(r.errors.join(' · '));
@@ -284,6 +300,20 @@ export function OnlineCard({ itemId, onChanged }: { itemId: string; onChanged: (
             Search online sources
           </label>
           <input id="online-q" value={query} onChange={(e) => setQuery(e.target.value)} />
+          <label htmlFor="online-author">Author</label>
+          <input
+            id="online-author"
+            value={author}
+            maxLength={100}
+            onChange={(e) => setAuthor(e.target.value)}
+          />
+          <label htmlFor="online-isbn">ISBN</label>
+          <input
+            id="online-isbn"
+            value={isbn}
+            maxLength={30}
+            onChange={(e) => setIsbn(e.target.value)}
+          />
           <button type="submit" className="small" disabled={busy}>
             Search
           </button>

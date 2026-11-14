@@ -339,9 +339,26 @@ export async function readPdf(
           page.cleanup();
         }
         words += countWords(text);
-        if (n <= PDF_ISBN_PAGES) isbnText += text + '\n';
+        if (n <= PDF_ISBN_PAGES) {
+          isbnText += text + '\n';
+          sampledText.set(n, text);
+        }
       }
     }
+    // Even image-heavy comics can have a text copyright page. Read only the opening
+    // pages when the broad sample found no text, never the entire comic.
+    const openingPages: { label: string; text: string }[] = [];
+    for (let n = 1; n <= Math.min(hasTextLayer ? PDF_ISBN_PAGES : 4, numPages); n++) {
+      let text = sampledText.get(n);
+      if (text === undefined) {
+        const page = await doc.getPage(n);
+        text = await pageText(page);
+        page.cleanup();
+      }
+      if (!hasTextLayer) isbnText += text + '\n';
+      if (text.trim()) openingPages.push({ label: `Page ${n}`, text: text.trim().slice(0, 6000) });
+    }
+    if (openingPages.length) metadata.openingPages = openingPages;
     const isbns = findIsbns(isbnText);
     if (isbns.length) metadata.isbnCandidates = isbns.slice(0, 20);
     // The cover from the same open document: no second pass over the file.
