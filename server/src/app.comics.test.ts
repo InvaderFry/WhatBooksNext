@@ -242,6 +242,12 @@ describe('comic issue lookups', () => {
     };
     const group = groups.find((g) => g.folder === 'Loose')!;
     expect(group.itemIds.sort()).toEqual([two, three].sort());
+    // Something to look at before choosing: the numbers, and each run's lowest matching issue.
+    expect((group as unknown as { numbers: string[] }).numbers).toEqual(['2', '3']);
+    expect((group.runs as unknown as { example: object }[]).map((r) => r.example)).toEqual([
+      { title: 'Copperline #2', year: 2019, url: 'https://metron.cloud/series/copperline-2019/' },
+      { title: 'Copperline #2', year: 2023, url: 'https://metron.cloud/series/copperline-2023/' },
+    ]);
     expect(group.runs.map((r) => [r.seriesId, r.startYear, r.issues])).toEqual([
       ['9001', 2019, 2],
       ['9002', 2023, 2],

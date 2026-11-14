@@ -257,6 +257,8 @@ export interface RunGroup {
   series: string;
   folder: string;
   itemIds: string[];
+  /** The issue numbers of the group's files. */
+  numbers: string[];
   runs: {
     source: 'metron' | 'comicvine';
     seriesId: string;
@@ -265,6 +267,7 @@ export interface RunGroup {
     volume?: number;
     publisher?: string;
     issues: number;
+    example: { title: string; year?: number; coverUrl?: string; url?: string };
   }[];
 }
 

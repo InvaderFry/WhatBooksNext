@@ -28,6 +28,11 @@ export interface RunOption {
   publisher?: string;
   /** How many of the group's issues have a candidate from this run. */
   issues: number;
+  /**
+   * One of this run's matching issues, to look at before choosing: its title ("Series #1"), cover
+   * year, cover picture and the source's page (Metron: the run; ComicVine: the issue).
+   */
+  example: { title: string; year?: number; coverUrl?: string; url?: string };
 }
 
 export interface RunGroup {
@@ -36,6 +41,8 @@ export interface RunGroup {
   series: string;
   folder: string;
   itemIds: string[];
+  /** The issue numbers of the group's files, in order. */
+  numbers: string[];
   runs: RunOption[];
 }
 
@@ -103,6 +110,13 @@ function collect(db: DB): { group: RunGroup; choices: Choices }[] {
               ...(s.volume !== undefined ? { volume: s.volume } : {}),
               ...(m.record.publisher ? { publisher: m.record.publisher } : {}),
               issues: 0,
+              // Issues come in number order, so this is the run's lowest matching issue.
+              example: {
+                title: m.record.title,
+                ...(m.record.firstPublishYear ? { year: m.record.firstPublishYear } : {}),
+                ...(m.record.coverUrl ? { coverUrl: m.record.coverUrl } : {}),
+                ...(m.record.url && /^https:\/\//.test(m.record.url) ? { url: m.record.url } : {}),
+              },
             },
             picks: new Map(),
           });
@@ -121,6 +135,7 @@ function collect(db: DB): { group: RunGroup; choices: Choices }[] {
         series: `${issues[0]!.series_hint}${volume ? ` v${volume}` : ''}${start ? ` (${start})` : ''}`,
         folder: issues[0]!.rel_dir,
         itemIds: issues.map((i) => i.id),
+        numbers: issues.map((i) => i.issue_label),
         runs: [...choices.values()]
           .map((c) => c.option)
           .sort(

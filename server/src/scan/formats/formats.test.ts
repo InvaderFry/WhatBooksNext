@@ -8,6 +8,7 @@ import {
   makeImage,
   makePdf,
   makeZip,
+  RED_JPX,
   textLines,
 } from '../../testing/fixtures.ts';
 import { tempDir } from '../../testing/helpers.ts';
@@ -283,6 +284,15 @@ describe('comic archives', () => {
 });
 
 describe('PDF', () => {
+  it('draws a cover stored as a JPEG 2000 picture, not a blank page', async () => {
+    const file = put('jpx-cover.pdf', makePdf({ pages: [{ jpx: RED_JPX }] }));
+    const jpeg = await thumb(file, 'pdf');
+    const [r, g, b] = await pixelAt(jpeg!, 0.5, 0.5);
+    expect(r).toBeGreaterThan(150);
+    expect(g).toBeLessThan(80);
+    expect(b).toBeLessThan(80);
+  });
+
   it('reads Info metadata, page and word counts, ISBN candidates, and calls a text PDF text', async () => {
     const f = put(
       'text.pdf',

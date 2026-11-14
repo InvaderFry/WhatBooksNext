@@ -27,8 +27,17 @@ import { TaskError, type TaskRunner } from './pool.ts';
  * at the current version: a cancelled or interrupted scan resumes where it stopped, and
  * failures are retried (§9.6). Raise a version when its reader improves.
  */
-export const STAGE_VERSIONS = { meta: 3, thumb: 1, full_hash: 1 } as const;
+export const STAGE_VERSIONS = { meta: 3, thumb: 2, full_hash: 1 } as const;
 type Stage = keyof typeof STAGE_VERSIONS;
+
+/**
+ * A version raised for some formats only: a file of another format done at `from` stays current,
+ * so a fix to one reader doesn't re-read the whole library. Thumb 2 draws PDFs' JPEG 2000 and
+ * JBIG2 pictures, which version 1 left blank.
+ */
+const RAISED_FOR: Partial<Record<Stage, { from: number; formats: string[] }>> = {
+  thumb: { from: 1, formats: ['pdf'] },
+};
 
 export interface DeepProgress {
   phase: 'reading' | 'hashing' | 'done';
@@ -87,8 +96,11 @@ export const coverPath = (coversDir: string, fileId: string) =>
 
 const DEEP = new Set<string>(DEEP_FORMATS);
 
-function needs(f: FileRow, stage: Stage): boolean {
-  return parseJson<Record<string, number>>(f.stages, {})[stage] !== STAGE_VERSIONS[stage];
+function needs(f: Pick<FileRow, 'stages' | 'format'>, stage: Stage): boolean {
+  const done = parseJson<Record<string, number>>(f.stages, {})[stage];
+  if (done === STAGE_VERSIONS[stage]) return false;
+  const raised = RAISED_FOR[stage];
+  return !(raised && done === raised.from && !raised.formats.includes(f.format));
 }
 
 function problemFor(err: unknown): { problem: Problem; detail: string } | null {

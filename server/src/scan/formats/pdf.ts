@@ -87,6 +87,9 @@ async function openPdf(file: string) {
     standardFontDataUrl: dataDir('standard_fonts'),
     cMapUrl: dataDir('cmaps'),
     cMapPacked: true,
+    // The decoders for JPEG 2000 and JBIG2 pictures and ICC colour (common in comic and art-book
+    // PDFs). Without them pdf.js skips those pictures silently and a cover comes out blank.
+    wasmUrl: dataDir('wasm'),
     verbosity: 0,
   });
   const close = async () => {

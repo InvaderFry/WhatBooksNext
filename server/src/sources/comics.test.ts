@@ -181,6 +181,16 @@ describe('telling runs of one name apart', () => {
     expect(decide(facts, recs).best?.record.sourceId).toBe('1');
   });
 
+  it('ranks a series above another whose name adds a number ("Copperline 8")', () => {
+    const recs = parseMetronIssues({
+      results: [issueOf(1, 'Copperline 8', '2', 1, 2020), issueOf(2, 'Copperline', '2', 1, 2016)],
+    });
+    const plain = decide(issueFacts({ title: 'Copperline #2', issue: '2' }), recs);
+    expect(plain).toMatchObject({ decision: 'provisional', best: { record: { sourceId: '2' } } });
+    const eight = issueFacts({ title: 'Copperline 8 #2', seriesHint: 'Copperline 8', issue: '2' });
+    expect(decide(eight, recs).best?.record.sourceId).toBe('1');
+  });
+
   it('keeps a story name after the volume number the same series', () => {
     const facts = issueFacts({ title: 'Copperline Vol. 6', issue: null, volume: '6' });
     const rec = {
