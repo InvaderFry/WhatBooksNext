@@ -102,6 +102,15 @@ describe('page preview API', () => {
     expect(calls).toBe(1);
     expect((await get(`/api/items/${itemId}/page-previews`)).body.files[0].pages).toEqual([]);
   });
+  it('makes PDF previews again after the PDF reader improves, keeping other formats’ caches', async () => {
+    await post('/api/files/file/page-previews');
+    // The same cached pages, as if the file were a PDF previewed by the earlier reader (version
+    // 1 stamps): stale now, so the next request reads it again.
+    db.prepare("UPDATE files SET format = 'pdf', ext = 'pdf' WHERE id = 'file'").run();
+    expect((await get(`/api/items/${itemId}/page-previews`)).body.files[0].pages).toEqual([]);
+    expect((await post('/api/files/file/page-previews')).body.pages).toHaveLength(2);
+    expect(calls).toBe(2);
+  });
   it('offers an honest empty state for imports without files, and rejects unknown files/pages', async () => {
     const imported = createStoreItem(db, { title: 'Imported book', store: 'kindle' });
     expect((await get(`/api/items/${imported}/page-previews`)).body.files).toEqual([]);

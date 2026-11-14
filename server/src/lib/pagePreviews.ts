@@ -12,7 +12,13 @@ import { HttpError, parseJson } from '../util.ts';
 import { route } from '../routes/route.ts';
 
 const SUPPORTED = new Set(['pdf', 'epub', 'cbz', 'cbr']);
-const PREVIEW_VERSION = 1;
+/**
+ * The preview reader's version, per format: raise it when a format's reader changes, and that
+ * format's cached previews are made again on request. PDF 2: JPEG 2000 and JBIG2 pictures are
+ * drawn (version 1 left them blank). Other formats are still at 1, so their caches stay valid.
+ */
+const PREVIEW_VERSIONS: Record<string, number> = { pdf: 2 };
+const previewVersion = (format: string) => PREVIEW_VERSIONS[format] ?? 1;
 interface FileRow {
   id: string;
   name: string;
@@ -62,7 +68,9 @@ export class PagePreviews {
   }
   private stamp(file: FileRow): string {
     return createHash('sha256')
-      .update(JSON.stringify([PREVIEW_VERSION, file.size, file.modified_ms, file.full_hash]))
+      .update(
+        JSON.stringify([previewVersion(file.format), file.size, file.modified_ms, file.full_hash]),
+      )
       .digest('hex');
   }
   private directory(file: FileRow): string {

@@ -210,9 +210,13 @@ function sameNamedSeries(
   // Ours as written first: a series hint carries no issue number to cut ("Copperline 8").
   const written = mine.map(titleCompareKey).filter(Boolean);
   if (their.some((k) => written.includes(k))) return true;
+  // The compare key drops punctuation and keeps zeros: issue "1.5" reads "15" there, "#001"
+  // reads "001". Either way it's the issue's own number, not a number in the series' name.
+  const isNumber = (rest: string, num: string) =>
+    rest.replace(/^0+(?=\d)/, '') === num.replace(/\D/g, '').replace(/^0+(?=\d)/, '');
   const joined = (a: string, b: string, num: string) => {
     const rest = a.startsWith(b) ? a.slice(b.length) : '';
-    return /^\d{1,3}$/.test(rest) && String(parseFloat(rest)) !== num;
+    return /^\d{1,4}$/.test(rest) && !isNumber(rest, num);
   };
   if (their.some((k) => written.some((o) => joined(o, k, ourNum) || joined(k, o, theirNum))))
     return false;

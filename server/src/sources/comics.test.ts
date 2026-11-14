@@ -191,6 +191,14 @@ describe('telling runs of one name apart', () => {
     expect(decide(eight, recs).best?.record.sourceId).toBe('1');
   });
 
+  it('accepts a half issue ("#1.5") of the series by its year, as before', () => {
+    const recs = parseMetronIssues({ results: [issueOf(1, 'Copperline', '1.5', 1, 2019)] });
+    for (const title of ['Copperline #1.5', 'Copperline 1.5', 'Copperline #01.5'])
+      expect(
+        decide(issueFacts({ title, seriesHint: null, issue: '1.5', years: [2019] }), recs),
+      ).toMatchObject({ decision: 'accepted', best: { score: 1 } });
+  });
+
   it('keeps a story name after the volume number the same series', () => {
     const facts = issueFacts({ title: 'Copperline Vol. 6', issue: null, volume: '6' });
     const rec = {
