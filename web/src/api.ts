@@ -14,14 +14,30 @@ export class ApiError extends Error {
   }
 }
 
+/** Shown when the app's server can't be reached at all (closed, restarting, or asleep). */
+export const UNREACHABLE =
+  "Can't reach whatBooksNext. If you closed its window, start it again, then press Retry.";
+
 async function call<T>(method: string, url: string, body?: unknown): Promise<T> {
-  const res = await fetch(url, {
-    method,
-    headers: method === 'GET' ? {} : { 'Content-Type': 'application/json' },
-    body: method === 'GET' ? undefined : JSON.stringify(body ?? {}),
-  });
-  const text = await res.text();
-  const data = text ? (JSON.parse(text) as unknown) : null;
+  let res: Response;
+  let text: string;
+  try {
+    res = await fetch(url, {
+      method,
+      headers: method === 'GET' ? {} : { 'Content-Type': 'application/json' },
+      body: method === 'GET' ? undefined : JSON.stringify(body ?? {}),
+    });
+    text = await res.text();
+  } catch {
+    throw new ApiError(0, UNREACHABLE);
+  }
+  let data: unknown = null;
+  try {
+    data = text ? (JSON.parse(text) as unknown) : null;
+  } catch {
+    // Not the app's own answer (e.g. a half-started server): report the status, not a parse error.
+    if (res.ok) throw new ApiError(res.status, 'The app sent an answer it could not read.');
+  }
   if (!res.ok) {
     const d = (data ?? {}) as { error?: string; needsConfirmation?: boolean };
     throw new ApiError(

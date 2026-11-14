@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api, DNF_LABELS, KIND_LABELS, type DnfReason, type Kind, type Tune } from '../api.ts';
-import { Notice } from '../components.tsx';
+import { LoadError } from '../components.tsx';
 import { hrefFor, onLinkClick } from '../url.ts';
 
 /**
@@ -97,20 +97,30 @@ function hours(low: number, high: number): string {
 export function Stats() {
   const [s, setS] = useState<StatsData | null>(null);
   const [error, setError] = useState<string | null>(null);
-  useEffect(() => {
+  const load = () => {
+    setError(null);
     api
       .get<StatsData>('/api/stats')
       .then(setS)
       .catch((e: Error) => setError(e.message));
-  }, []);
+  };
+  useEffect(load, []);
 
   if (error)
     return (
       <div className="page narrow">
-        <Notice kind="error">{error}</Notice>
+        <div className="page-head">
+          <h1>Stats</h1>
+        </div>
+        <LoadError message={error} onRetry={load} />
       </div>
     );
-  if (!s) return <div className="page narrow" />;
+  if (!s)
+    return (
+      <div className="page narrow">
+        <p className="muted">Loading…</p>
+      </div>
+    );
 
   const f = s.finishes;
   const year = Number(s.today.slice(0, 4));

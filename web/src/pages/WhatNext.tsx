@@ -114,7 +114,13 @@ export function WhatNext({ params, onChanged }: { params: Params; onChanged: () 
 
   const more = async () => {
     const offset = (data?.cards.length ?? 0) + extra.length;
-    const r = await api.get<ReadNext>(query(offset));
+    let r: ReadNext;
+    try {
+      r = await api.get<ReadNext>(query(offset));
+    } catch (e) {
+      setError((e as Error).message);
+      return;
+    }
     setExtra((x) => [...x, ...r.cards]);
     setAnnounce(`${r.cards.length} more shown.`);
   };

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, PROGRESS_LABELS, type BulkPreview, type TriageList } from '../api.ts';
-import { Cover, creatorsText, KindText, Notice } from '../components.tsx';
+import { Cover, creatorsText, KindText, LoadError, Notice } from '../components.tsx';
 import { hrefFor, onLinkClick, updateParams, type Params } from '../url.ts';
 
 /**
@@ -24,6 +24,8 @@ interface Done {
   id: string;
   title: string;
   action: Action;
+  /** The server's undo record: it keeps the book's exact earlier state (not for Skip). */
+  undo?: string;
 }
 
 const ACTIONS: { action: Action; label: string; key: string }[] = [
@@ -53,13 +55,20 @@ function OneAtATime({ params, onChanged }: { params: Params; onChanged: () => vo
   const [announce, setAnnounce] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(null);
   const heading = useRef<HTMLHeadingElement>(null);
 
   const load = useCallback(async () => {
     const skip = skipped().join(',');
-    setData(
-      await api.get<TriageList>(`/api/triage?limit=1&skip=${encodeURIComponent(skip)}${src}`),
-    );
+    try {
+      setData(
+        await api.get<TriageList>(`/api/triage?limit=1&skip=${encodeURIComponent(skip)}${src}`),
+      );
+      setLoadError(null);
+    } catch (e) {
+      setLoadError((e as Error).message);
+    }
   }, [src]);
   useEffect(() => {
     void load();
@@ -72,22 +81,21 @@ function OneAtATime({ params, onChanged }: { params: Params; onChanged: () => vo
       if (!item || busy) return;
       setBusy(true);
       setError(null);
+      setInfo(null);
       try {
+        let undo: string | undefined;
         if (action === 'skip') {
           try {
             sessionStorage.setItem(SKIP_KEY, JSON.stringify([...skipped(), item.id]));
           } catch {
             /* ignore */
           }
-        } else if (action === 'read') {
-          await api.patch(`/api/items/${item.id}`, {
-            progress: 'finished',
-            finishedPrecision: 'unknown',
-          });
         } else {
-          await api.patch(`/api/items/${item.id}`, { triage: action });
+          // Already read keeps an unknown date (§13.6); the server records what to undo.
+          undo = (await api.post<{ undo: string }>('/api/triage/one', { id: item.id, action }))
+            .undo;
         }
-        setHistory((h) => [{ id: item.id, title: item.title, action }, ...h].slice(0, 50));
+        setHistory((h) => [{ id: item.id, title: item.title, action, undo }, ...h].slice(0, 50));
         setAnnounce(`${item.title}: ${ACTIONS.find((a) => a.action === action)!.label}.`);
         await load();
         onChanged();
@@ -105,6 +113,8 @@ function OneAtATime({ params, onChanged }: { params: Params; onChanged: () => vo
     const last = history[0];
     if (!last || busy) return;
     setBusy(true);
+    setError(null);
+    setInfo(null);
     try {
       if (last.action === 'skip') {
         try {
@@ -112,10 +122,23 @@ function OneAtATime({ params, onChanged }: { params: Params; onChanged: () => vo
         } catch {
           /* ignore */
         }
-      } else if (last.action === 'read') {
-        await api.patch(`/api/items/${last.id}`, { progress: 'not_started' });
       } else {
-        await api.patch(`/api/items/${last.id}`, { triage: null });
+        let r: { restored: number; skipped: number };
+        try {
+          r = await api.post('/api/triage/undo', { undo: last.undo });
+        } catch (e) {
+          // Gone (e.g. the app restarted): nothing more to undo for this one.
+          if ((e as { status?: number }).status === 404) setHistory((h) => h.slice(1));
+          throw e;
+        }
+        if (r.skipped > 0) {
+          // Changed since (another tab, the book page): the newer decision stays.
+          setHistory((h) => h.slice(1));
+          const msg = `${last.title} was changed after this, so Undo left the newer change alone.`;
+          setInfo(msg);
+          setAnnounce(msg);
+          return;
+        }
       }
       setHistory((h) => h.slice(1));
       setAnnounce(`Undone: ${last.title}.`);
@@ -126,6 +149,8 @@ function OneAtATime({ params, onChanged }: { params: Params; onChanged: () => vo
       const back = d.items.find((i) => i.id === last.id);
       setData({ ...d, items: back ? [back, ...d.items.filter((i) => i.id !== last.id)] : d.items });
       onChanged();
+    } catch (e) {
+      setError((e as Error).message);
     } finally {
       setBusy(false);
     }
@@ -168,6 +193,9 @@ function OneAtATime({ params, onChanged }: { params: Params; onChanged: () => vo
         {announce}
       </div>
       {error && <Notice kind="error">{error}</Notice>}
+      {info && <Notice>{info}</Notice>}
+      {loadError && <LoadError message={loadError} onRetry={() => void load()} />}
+      {!data && !loadError && <p className="muted">Loading…</p>}
       {data && (
         <p className="muted small">
           {sessionDone > 0 && `${sessionDone} sorted this session · `}
@@ -323,9 +351,16 @@ function BulkTriage({ params, onChanged }: { params: Params; onChanged: () => vo
   const [done, setDone] = useState<{ text: string; undo: string } | null>(null);
   const [announce, setAnnounce] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    setData(await api.get<TriageList>(`/api/triage?limit=500${src}`));
+    try {
+      setData(await api.get<TriageList>(`/api/triage?limit=500${src}`));
+      setLoadError(null);
+    } catch (e) {
+      setLoadError((e as Error).message);
+      return;
+    }
     setChosen(new Set());
     setPreview(null);
   }, [src]);
@@ -384,6 +419,8 @@ function BulkTriage({ params, onChanged }: { params: Params; onChanged: () => vo
         {announce}
       </div>
       {error && <Notice kind="error">{error}</Notice>}
+      {loadError && <LoadError message={loadError} onRetry={() => void load()} />}
+      {!data && !loadError && <p className="muted">Loading…</p>}
       {done && (
         <Notice kind="success">
           {done.text}{' '}

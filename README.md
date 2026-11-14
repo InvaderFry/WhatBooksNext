@@ -201,6 +201,13 @@ browser, with no referrer; your files are never uploaded. A source's cover can r
 different edition (or a whole series), so visual similarity never confirms a match automatically.
 Older stored candidates may need **Look up again** to obtain their cover URLs.
 
+**Covers for books without one in the file** (store books, reading history) come from the book's
+own match, but only one you confirmed or the app accepted: a wrong picture would be worse than
+none. The picture is saved in the `data` folder. If it's the wrong one, press **Wrong cover?**
+under it on the book's page; the app then tries the book's other confident matches, and **Show
+online covers again** undoes it. **Diagnostics** shows how many covers are waiting, with **Get
+covers now**.
+
 These display changes make reviews easier; restarting alone does not settle an ambiguous match.
 For older candidates missing publisher details, use **Look up again** on the book's page (or
 **Settings → Online lookups → Look up all books again**). Confirming the right candidate clears
@@ -221,9 +228,30 @@ Hardcover token, these stay on this PC.
 
 ## Store books, spreadsheets and Calibre
 
-- **Store books** (Kindle, Apple Books, Google Play, Kobo, GlobalComix): Library → **Add a store
-  book…**, found online or typed in. They're recommended like any book, labelled "In Kindle"
-  and so on, and count as ready to read once you tick "I can read it there now".
+- **Your store purchases** (Kindle, Google Play Books, Kobo, GlobalComix): Settings → **Import
+  store purchases**. Drag that store's **bookmark button** to your browser's bookmarks bar once.
+  Then open the store's own library page, signed in as usual, and click the bookmark. It reads
+  the list the page shows, slowly, and saves a file to your Downloads folder. whatBooksNext never
+  contacts the store and never sees your password. Choose that file in Settings to see a preview
+  before anything is added:
+  - samples, subscription reads (such as Kindle Unlimited), loans, your own uploads and documents
+    are left out;
+  - books the store wasn't clear about are listed under "Not sure these are yours" for you to
+    tick;
+  - running it again later adds only new purchases. A book that's no longer found goes to
+    **Needs review**, never deleted, and a scan that finds far fewer books than last time asks you
+    first.
+
+  When whatBooksNext is updated, drag the bookmark again so you have the newest version. If you
+  can't use a bookmark, the same steps offer a script to paste into the browser's console. Apple
+  Books has no web library, so its books are added as below.
+
+- **One store book at a time** (any store, including Apple Books): Library → **Add a store
+  book…**, found online or typed in. Store books are recommended like any book, labelled "In
+  Kindle" and so on, and count as ready to read once you tick "I can read it there now". The
+  Library's **Store** filter shows one store's books.
+- **Read links:** a store book can keep a link to where you read it ("Read in Kindle ↗"). It
+  opens in your browser and becomes the main action on the book's page when no file is here.
 - **A spreadsheet of store books:** Settings → **Store books from a spreadsheet**. A CSV with the
   columns `title, author, store, kind, progress, isbn, series, series_index, rating, note` (only
   `title` is needed). You see what would happen first; importing the same file again adds
@@ -352,8 +380,11 @@ can take an hour or more. It runs in the background, last, and carries on after 
 - **Ratings are thin without keys**, and Western comics have almost none anywhere.
 - **Reading times are estimates**: assumed reading speeds, give or take 20%.
 - **Taste learning** tends to suggest more of what you already read (see Tune).
-- **Store books** (Kindle, Kobo…) are added by hand or by spreadsheet: their libraries can't be
-  read.
+- **Store purchase imports** depend on each store's web page. If a store changes its page, its
+  bookmark may stop working or find fewer books until whatBooksNext is updated; the preview
+  warns you before anything changes. Apple Books can't be imported this way. Kindle Unlimited,
+  Prime and loan labels haven't been seen on a real account yet, so check the preview the first
+  time you import while borrowing one.
 - **Goodreads and StoryGraph imports** are checked against public sample layouts, not yet against
   a fresh export from each service.
 

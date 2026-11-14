@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api, formatDate, STORE_LABELS, type RefreshStatus } from '../api.ts';
-import { Notice } from '../components.tsx';
+import { LoadError, Notice } from '../components.tsx';
 
 interface DiagFolder {
   id: string;
@@ -207,7 +207,17 @@ export function Diagnostics() {
           Checks you can run and share if something seems wrong. No API keys are ever included.
         </p>
       </div>
-      {error && <Notice kind="error">{error}</Notice>}
+      {error && !diag && (
+        <LoadError
+          message={error}
+          onRetry={() => {
+            setError(null);
+            setReloadKey((k) => k + 1);
+          }}
+        />
+      )}
+      {error && diag && <Notice kind="error">{error}</Notice>}
+      {!diag && !error && <p className="muted">Loading…</p>}
       {diag && (
         <>
           <section className="section" aria-labelledby="drives-h">
