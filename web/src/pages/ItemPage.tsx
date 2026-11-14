@@ -17,7 +17,14 @@ import {
   type Progress,
   type UserData,
 } from '../api.ts';
-import { AvailabilityLabels, Cover, creatorsText, Notice, StoreLinks } from '../components.tsx';
+import {
+  AvailabilityLabels,
+  Cover,
+  creatorsText,
+  LoadError,
+  Notice,
+  StoreLinks,
+} from '../components.tsx';
 import { hrefFor, onLinkClick } from '../url.ts';
 import { OnlineCard } from './OnlineCard.tsx';
 import { CollectsSection, SeriesSection } from './SeriesCard.tsx';
@@ -94,7 +101,13 @@ export function ItemPage({
   if (error && !item)
     return (
       <div className="page">
-        <Notice kind="error">{error}</Notice>
+        <LoadError
+          message={error}
+          onRetry={() => {
+            setError(null);
+            void load();
+          }}
+        />
       </div>
     );
   if (!item)

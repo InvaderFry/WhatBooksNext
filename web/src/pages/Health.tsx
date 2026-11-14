@@ -7,7 +7,7 @@ import {
   type Health as HealthData,
   type HealthFile,
 } from '../api.ts';
-import { Notice } from '../components.tsx';
+import { LoadError } from '../components.tsx';
 import { hrefFor, onLinkClick } from '../url.ts';
 
 /**
@@ -17,12 +17,14 @@ import { hrefFor, onLinkClick } from '../url.ts';
 export function Health() {
   const [h, setH] = useState<HealthData | null>(null);
   const [error, setError] = useState<string | null>(null);
-  useEffect(() => {
+  const load = () => {
+    setError(null);
     api
       .get<HealthData>('/api/health')
       .then(setH)
       .catch((e: Error) => setError(e.message));
-  }, []);
+  };
+  useEffect(load, []);
 
   const ignored = h ? Object.entries(h.ignoredByType).sort((a, b) => b[1] - a[1]) : [];
   return (
@@ -34,7 +36,8 @@ export function Health() {
           files, so fixing these happens outside it.
         </p>
       </div>
-      {error && <Notice kind="error">{error}</Notice>}
+      {error && <LoadError message={error} onRetry={load} />}
+      {!h && !error && <p className="muted">Loading…</p>}
       {h && (
         <>
           <section className="section" aria-labelledby="errors-h">

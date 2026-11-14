@@ -52,6 +52,10 @@ interface BulkUndo {
   id: string;
   rows: { item_id: string; before: Record<string, unknown> | null; stamp: string }[];
 }
+type TriageAction = 'want' | 'maybe' | 'never' | 'read';
+/** Undo depth: bulk selections can be large, so fewer are kept; one-at-a-time matches the page. */
+const BULK_UNDO_KEPT = 10;
+const ONE_UNDO_KEPT = 50;
 const BULK_FIELDS = [
   'progress',
   'dnf_reason',
@@ -68,6 +72,7 @@ const BULK_FIELDS = [
 export function registerModeRoutes(app: Express, d: ModeDeps): void {
   const { db } = d;
   const bulkUndos: BulkUndo[] = [];
+  const oneUndos: BulkUndo[] = [];
 
   // ---- Tune (§13.7) and taste (§13.11) ------------------------------------------------------
   app.get(
@@ -222,64 +227,100 @@ export function registerModeRoutes(app: Express, d: ModeDeps): void {
         shortlisted: shortlisted.map(([id, , title]) => ({ id, title })),
       };
       if (b.preview !== false) return { preview };
-      const undo: BulkUndo = { id: newId(), rows: [] };
-      db.transaction(() => {
-        for (const [id, u] of rows) {
-          if (action === 'read' ? u?.progress === 'finished' : u?.triage === 'never') continue;
-          const before = u ? Object.fromEntries(BULK_FIELDS.map((f) => [f, u[f]])) : null;
-          // Already read: date unknown, never today's date as a stand-in (§13.6).
-          if (action === 'read')
-            applyUserPatch(db, id, { progress: 'finished', finishedPrecision: 'unknown' });
-          else applyUserPatch(db, id, { triage: 'never' });
-          const stamp = db
-            .prepare('SELECT updated_at FROM user_item WHERE item_id = ?')
-            .pluck()
-            .get(id) as string;
-          undo.rows.push({ item_id: id, before, stamp });
-        }
-      })();
+      const changing = rows
+        .filter(([, u]) => (action === 'read' ? u?.progress !== 'finished' : u?.triage !== 'never'))
+        .map(([id]) => id);
+      const undo = applyWithUndo(changing, action);
       bulkUndos.unshift(undo);
-      bulkUndos.splice(10);
+      bulkUndos.splice(BULK_UNDO_KEPT);
       return { preview, done: undo.rows.length, undo: undo.id };
     }),
   );
+
+  // ---- One-at-a-time triage (§13.5): the same before-state undo as bulk, one book at a time ---
   app.post(
-    '/api/triage/bulk/undo',
+    '/api/triage/one',
     route((req) => {
-      const at = bulkUndos.findIndex((u) => u.id === req.body?.undo);
-      if (at < 0) throw new HttpError(404, 'That can no longer be undone.');
-      const u = bulkUndos[at]!;
-      let restored = 0;
-      const skipped: string[] = [];
-      db.transaction(() => {
-        for (const r of u.rows) {
-          const now = db
-            .prepare('SELECT updated_at FROM user_item WHERE item_id = ?')
-            .pluck()
-            .get(r.item_id) as string | undefined;
-          // Edited since: leave the newer change alone rather than overwrite it.
-          if (now !== r.stamp) {
-            skipped.push(r.item_id);
-            continue;
-          }
-          if (r.before === null) {
-            db.prepare(
-              `UPDATE user_item SET progress = 'not_started', dnf_reason = NULL, started_on = NULL,
+      const b = (req.body ?? {}) as Record<string, unknown>;
+      const action = b.action;
+      if (action !== 'want' && action !== 'maybe' && action !== 'never' && action !== 'read')
+        throw new HttpError(400, 'action must be want, maybe, never or read.');
+      const id = d.itemIdOr404(String(b.id));
+      const undo = applyWithUndo([id], action);
+      oneUndos.unshift(undo);
+      oneUndos.splice(ONE_UNDO_KEPT);
+      return { undo: undo.id };
+    }),
+  );
+
+  /**
+   * Undo puts back each book's exact earlier fields, unless it was edited since: a newer
+   * decision (from another tab, the book page or anywhere else) is left alone and counted.
+   */
+  const undoRoute = route((req) => {
+    for (const pool of [bulkUndos, oneUndos]) {
+      const at = pool.findIndex((u) => u.id === req.body?.undo);
+      if (at < 0) continue;
+      const result = restore(pool[at]!);
+      pool.splice(at, 1);
+      return result;
+    }
+    throw new HttpError(404, 'That can no longer be undone.');
+  });
+  app.post('/api/triage/undo', undoRoute);
+  app.post('/api/triage/bulk/undo', undoRoute);
+
+  function applyWithUndo(ids: string[], action: TriageAction): BulkUndo {
+    const undo: BulkUndo = { id: newId(), rows: [] };
+    db.transaction(() => {
+      for (const id of ids) {
+        const u = db.prepare('SELECT * FROM user_item WHERE item_id = ?').get(id) as
+          Record<string, unknown> | undefined;
+        const before = u ? Object.fromEntries(BULK_FIELDS.map((f) => [f, u[f]])) : null;
+        // Already read: date unknown, never today's date as a stand-in (§13.6).
+        if (action === 'read')
+          applyUserPatch(db, id, { progress: 'finished', finishedPrecision: 'unknown' });
+        else applyUserPatch(db, id, { triage: action });
+        const stamp = db
+          .prepare('SELECT updated_at FROM user_item WHERE item_id = ?')
+          .pluck()
+          .get(id) as string;
+        undo.rows.push({ item_id: id, before, stamp });
+      }
+    })();
+    return undo;
+  }
+
+  function restore(u: BulkUndo): { restored: number; skipped: number } {
+    let restored = 0;
+    const skipped: string[] = [];
+    db.transaction(() => {
+      for (const r of u.rows) {
+        const now = db
+          .prepare('SELECT updated_at FROM user_item WHERE item_id = ?')
+          .pluck()
+          .get(r.item_id) as string | undefined;
+        // Edited since: leave the newer change alone rather than overwrite it.
+        if (now !== r.stamp) {
+          skipped.push(r.item_id);
+          continue;
+        }
+        if (r.before === null) {
+          db.prepare(
+            `UPDATE user_item SET progress = 'not_started', dnf_reason = NULL, started_on = NULL,
                  started_precision = NULL, finished_on = NULL, finished_precision = NULL,
                  progress_at = NULL, triage = NULL, triage_at = NULL, updated_at = ?
                WHERE item_id = ?`,
-            ).run(nowIso(), r.item_id);
-          } else {
-            db.prepare(
-              `UPDATE user_item SET ${BULK_FIELDS.map((f) => `${f} = @${f}`).join(', ')}
+          ).run(nowIso(), r.item_id);
+        } else {
+          db.prepare(
+            `UPDATE user_item SET ${BULK_FIELDS.map((f) => `${f} = @${f}`).join(', ')}
                WHERE item_id = @item_id`,
-            ).run({ ...r.before, item_id: r.item_id });
-          }
-          restored++;
+          ).run({ ...r.before, item_id: r.item_id });
         }
-      })();
-      bulkUndos.splice(at, 1);
-      return { restored, skipped: skipped.length };
-    }),
-  );
+        restored++;
+      }
+    })();
+    return { restored, skipped: skipped.length };
+  }
 }

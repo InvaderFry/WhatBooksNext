@@ -1,23 +1,42 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api, PROGRESS_LABELS, type ItemSummary } from '../api.ts';
-import { AvailabilityLabels, Formats, KindText, Notice, StoreLinks } from '../components.tsx';
+import {
+  AvailabilityLabels,
+  Formats,
+  KindText,
+  LoadError,
+  Notice,
+  StoreLinks,
+} from '../components.tsx';
 import { hrefFor, onLinkClick } from '../url.ts';
 
 /** An ordered "next up" queue (PLAN.md §13.9): reorder with accessible ↑/↓ buttons. */
 export function Shortlist() {
   const [items, setItems] = useState<ItemSummary[] | null>(null);
   const [announce, setAnnounce] = useState('');
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(
-    async () => setItems(await api.get<ItemSummary[]>('/api/shortlist')),
-    [],
-  );
+  const load = useCallback(async () => {
+    try {
+      setItems(await api.get<ItemSummary[]>('/api/shortlist'));
+      setLoadError(null);
+    } catch (e) {
+      setLoadError((e as Error).message);
+    }
+  }, []);
   useEffect(() => {
     void load();
   }, [load]);
 
   const move = async (item: ItemSummary, direction: 'up' | 'down', index: number) => {
-    await api.post('/api/shortlist/move', { itemId: item.id, direction });
+    setError(null);
+    try {
+      await api.post('/api/shortlist/move', { itemId: item.id, direction });
+    } catch (e) {
+      setError((e as Error).message);
+      return;
+    }
     await load();
     const pos = direction === 'up' ? index : index + 2;
     setAnnounce(`${item.title} moved to position ${pos}.`);
@@ -36,6 +55,9 @@ export function Shortlist() {
       <div className="visually-hidden" aria-live="polite">
         {announce}
       </div>
+      {loadError && <LoadError message={loadError} onRetry={() => void load()} />}
+      {error && <Notice kind="error">{error}</Notice>}
+      {!items && !loadError && <p className="muted">Loading…</p>}
       {items?.length === 0 && (
         <Notice>
           Nothing on the shortlist yet. Use the ☆ next to any book in the{' '}
@@ -102,7 +124,13 @@ export function Shortlist() {
                   className="secondary small"
                   aria-label={`Remove ${item.title} from the shortlist`}
                   onClick={async () => {
-                    await api.delete(`/api/shortlist/${item.id}`);
+                    setError(null);
+                    try {
+                      await api.delete(`/api/shortlist/${item.id}`);
+                    } catch (e) {
+                      setError((e as Error).message);
+                      return;
+                    }
                     setAnnounce(`${item.title} removed from the shortlist.`);
                     await load();
                   }}

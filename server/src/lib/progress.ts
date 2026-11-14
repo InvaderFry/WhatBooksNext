@@ -72,13 +72,35 @@ function text(name: string, v: unknown): string | null {
   return t === '' ? null : t;
 }
 
+/**
+ * A real calendar date, month or year: `2024-05-17`, `2024-05` or `2024`. The shape alone isn't
+ * enough: `2026-02-30` and `2026-99-99` look like dates but aren't, and they'd land in Stats.
+ */
+export function isCalendarDate(v: string): boolean {
+  const m = /^(\d{4})(?:-(\d{2})(?:-(\d{2}))?)?$/.exec(v);
+  if (!m) return false;
+  const year = Number(m[1]);
+  if (year < 1) return false;
+  if (m[2] === undefined) return true;
+  const month = Number(m[2]);
+  if (month < 1 || month > 12) return false;
+  if (m[3] === undefined) return true;
+  const day = Number(m[3]);
+  const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1]!;
+  return day >= 1 && day <= days;
+}
+
 function date(name: string, v: unknown): string | null {
   if (v === null) return null;
-  if (typeof v !== 'string' || !/^\d{4}(-\d{2}(-\d{2})?)?$/.test(v)) {
-    throw new HttpError(400, `${name} must be a date like 2024-05-17, 2024-05 or 2024.`);
+  if (typeof v !== 'string' || !isCalendarDate(v)) {
+    throw new HttpError(400, `${name} must be a real date like 2024-05-17, 2024-05 or 2024.`);
   }
   return v;
 }
+
+/** A full day, for "exact" precision. */
+const FULL_DAY = /^\d{4}-\d{2}-\d{2}$/;
 
 /** Validates an incoming patch; unknown fields are refused rather than ignored. */
 export function validatePatch(body: unknown): UserPatch {
@@ -246,15 +268,42 @@ export function applyUserPatch(db: DB, itemId: string, p: UserPatch, today = tod
       throw new HttpError(400, 'A DNF reason needs progress "dnf".');
     next.dnf_reason = p.dnfReason;
   }
-  if (p.startedOn !== undefined) next.started_on = p.startedOn;
+  // A date given without a precision takes its precision from its shape (below), not from the
+  // automatic "today, exactly" above.
+  if (p.startedOn !== undefined) {
+    next.started_on = p.startedOn;
+    if (p.startedPrecision === undefined) next.started_precision = null;
+  }
   if (p.startedPrecision !== undefined) next.started_precision = p.startedPrecision;
-  if (p.finishedOn !== undefined) next.finished_on = p.finishedOn;
+  if (p.finishedOn !== undefined) {
+    next.finished_on = p.finishedOn;
+    if (p.finishedPrecision === undefined) next.finished_precision = null;
+  }
   if (p.finishedPrecision !== undefined) next.finished_precision = p.finishedPrecision;
-  // An unknown date has no value; a date without a precision is exact.
+  // An unknown date has no value. A date without a precision is exact when it names a day, and
+  // approximate when it names only a month or year.
   if (next.finished_precision === 'unknown') next.finished_on = null;
   if (next.started_precision === 'unknown') next.started_on = null;
-  if (next.finished_on && !next.finished_precision) next.finished_precision = 'exact';
-  if (next.started_on && !next.started_precision) next.started_precision = 'exact';
+  if (next.finished_on && !next.finished_precision)
+    next.finished_precision = FULL_DAY.test(next.finished_on) ? 'exact' : 'approximate';
+  if (next.started_on && !next.started_precision)
+    next.started_precision = FULL_DAY.test(next.started_on) ? 'exact' : 'approximate';
+  // "Exact" means a day. Checked only when this patch touches the date, so an older record never
+  // blocks an unrelated edit.
+  if (
+    (p.finishedOn !== undefined || p.finishedPrecision !== undefined) &&
+    next.finished_precision === 'exact' &&
+    next.finished_on &&
+    !FULL_DAY.test(next.finished_on)
+  )
+    throw new HttpError(400, 'An exact finish date needs a day, like 2024-05-17.');
+  if (
+    (p.startedOn !== undefined || p.startedPrecision !== undefined) &&
+    next.started_precision === 'exact' &&
+    next.started_on &&
+    !FULL_DAY.test(next.started_on)
+  )
+    throw new HttpError(400, 'An exact start date needs a day, like 2024-05-17.');
   if (p.rating !== undefined) next.rating = p.rating;
   if (p.note !== undefined) next.note = p.note;
   if (p.takeaway !== undefined) next.takeaway = p.takeaway;

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api, type TasteStrength, type Tune as TuneData, type WeightKey } from '../api.ts';
-import { Notice } from '../components.tsx';
+import { LoadError, Notice } from '../components.tsx';
 import { hrefFor, onLinkClick } from '../url.ts';
 
 /**
@@ -20,17 +20,35 @@ export function Tune() {
   const [draft, setDraft] = useState<Record<WeightKey, number> | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const load = async () => {
-    const t = await api.get<TuneData>('/api/tune');
-    setData(t);
-    setDraft(t.weights);
+    try {
+      const t = await api.get<TuneData>('/api/tune');
+      setData(t);
+      setDraft(t.weights);
+      setLoadError(null);
+    } catch (e) {
+      setLoadError((e as Error).message);
+    }
   };
   useEffect(() => {
     void load();
   }, []);
 
-  if (!data || !draft) return <div className="page narrow" />;
+  if (!data || !draft)
+    return (
+      <div className="page narrow">
+        <div className="page-head">
+          <h1>Tune</h1>
+        </div>
+        {loadError ? (
+          <LoadError message={loadError} onRetry={() => void load()} />
+        ) : (
+          <p className="muted">Loading…</p>
+        )}
+      </div>
+    );
   const keys = Object.keys(data.defaults) as WeightKey[];
   const changed = keys.some((k) => draft[k] !== data.weights[k]);
   const custom = keys.some((k) => data.weights[k] !== data.defaults[k]);

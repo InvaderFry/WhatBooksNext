@@ -217,6 +217,37 @@ describe('progress and owner data (§13.6)', () => {
     });
   });
 
+  it('refuses dates that look right but are not on the calendar', async () => {
+    const item = await itemByTitle('mapmaking');
+    for (const finishedOn of ['2026-99-99', '2026-02-30', '2025-02-29', '2024-13', '2024-00-10']) {
+      const r = await api.patch(`/api/items/${item.id}`, { progress: 'finished', finishedOn });
+      expect(r.status, finishedOn).toBe(400);
+    }
+    expect((await api.get(`/api/items/${item.id}`)).body.user.progress).toBe('not_started');
+    expect(
+      (await api.patch(`/api/items/${item.id}`, { progress: 'finished', finishedOn: '2024-02-29' }))
+        .status,
+    ).toBe(200);
+  });
+
+  it('refuses an exact date that names only a month or year, and calls a bare month approximate', async () => {
+    const item = await itemByTitle('mapmaking');
+    const r = await api.patch(`/api/items/${item.id}`, {
+      progress: 'finished',
+      finishedOn: '2019',
+      finishedPrecision: 'exact',
+    });
+    expect(r.status).toBe(400);
+    expect(
+      (await api.patch(`/api/items/${item.id}`, { progress: 'into_it', startedOn: '2019-06' }))
+        .status,
+    ).toBe(200);
+    expect((await api.get(`/api/items/${item.id}`)).body.user).toMatchObject({
+      startedOn: '2019-06',
+      startedPrecision: 'approximate',
+    });
+  });
+
   it('takes an optional DNF reason and clears it when the book is restored', async () => {
     const item = await itemByTitle('mapmaking');
     await api.patch(`/api/items/${item.id}`, { progress: 'dnf', dnfReason: 'not_now' });

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useState } from 'react';
 import { api, daysAgo, formatBytes, formatDate, type Folder, type ScanStatus } from '../api.ts';
-import { Notice } from '../components.tsx';
+import { LoadError, Notice } from '../components.tsx';
 import { HistoryImport } from './HistoryImport.tsx';
 import { CalibreImport } from './CalibreImport.tsx';
 import { CsvImport, StorePurchaseImport } from './StoreBooks.tsx';
@@ -22,7 +22,15 @@ export function Settings({
 }) {
   const [folders, setFolders] = useState<Folder[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const load = useCallback(async () => setFolders(await api.get<Folder[]>('/api/folders')), []);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const load = useCallback(async () => {
+    try {
+      setFolders(await api.get<Folder[]>('/api/folders'));
+      setLoadError(null);
+    } catch (e) {
+      setLoadError((e as Error).message);
+    }
+  }, []);
   useEffect(() => {
     void load();
   }, [load, dataVersion]);
@@ -61,6 +69,7 @@ export function Settings({
         </ul>
       </nav>
       {error && <Notice kind="error">{error}</Notice>}
+      {loadError && <LoadError message={loadError} onRetry={() => void load()} />}
 
       <section aria-labelledby="folders-h" className="section">
         <div className="section-head">

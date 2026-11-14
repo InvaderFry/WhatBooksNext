@@ -110,6 +110,21 @@ export function Notice({
 }
 
 /**
+ * A page or section that couldn't load: what went wrong and a Retry, never an empty page.
+ * Use it wherever the first load fails and there is nothing else to show.
+ */
+export function LoadError({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return (
+    <div className="notice notice-error load-error" role="alert">
+      <p>Couldn’t load this. {message}</p>
+      <button type="button" className="secondary small" onClick={onRetry}>
+        Retry
+      </button>
+    </div>
+  );
+}
+
+/**
  * A cover thumbnail, or a plain placeholder. Decorative: the title is always next to it, so the
  * image has empty alt text and screen readers don't hear every title twice.
  */

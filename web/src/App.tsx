@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, type AppState, type ScanStatus } from './api.ts';
+import { LoadError } from './components.tsx';
 import { Diagnostics } from './pages/Diagnostics.tsx';
 import { Health } from './pages/Health.tsx';
 import { Review } from './pages/Review.tsx';
@@ -34,8 +35,15 @@ export function App() {
   const [scan, setScan] = useState<ScanStatus | null>(null);
   const [dataVersion, setDataVersion] = useState(0);
 
+  // If the app can't be reached, say so with a Retry rather than leaving What next blank.
+  const [stateError, setStateError] = useState<string | null>(null);
   const refreshState = useCallback(async () => {
-    setState(await api.get<AppState>('/api/state'));
+    try {
+      setState(await api.get<AppState>('/api/state'));
+      setStateError(null);
+    } catch (e) {
+      setStateError((e as Error).message);
+    }
   }, []);
 
   /** Something changed the library (scan finished, restore, folder removed): reload views. */
@@ -52,7 +60,14 @@ export function App() {
     let timer: number | undefined;
     let cancelled = false;
     const tick = async () => {
-      const s = (await api.get<{ status: ScanStatus | null }>('/api/scan')).status;
+      let s: ScanStatus | null;
+      try {
+        s = (await api.get<{ status: ScanStatus | null }>('/api/scan')).status;
+      } catch {
+        // Unreachable for a moment (e.g. restarting): keep watching, more slowly.
+        if (!cancelled) timer = window.setTimeout(tick, 5000);
+        return;
+      }
       if (cancelled) return;
       setScan(s);
       if (s?.status === 'running') {
@@ -146,6 +161,17 @@ export function App() {
         <ReminderBanner key={dataVersion} onScanStarted={scanStarted} />
       )}
       <main id="main" tabIndex={-1}>
+        {stateError && (
+          <div className="page">
+            <LoadError
+              message={stateError}
+              onRetry={() => {
+                void refreshState();
+                setScanNonce((n) => n + 1);
+              }}
+            />
+          </div>
+        )}
         {view === 'next' && state && (
           <WhatNext key={dataVersion} params={params} onChanged={() => void refreshState()} />
         )}

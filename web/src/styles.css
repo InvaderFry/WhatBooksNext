@@ -633,6 +633,16 @@ legend {
   background: var(--error-bg);
   color: var(--error);
 }
+.load-error {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+}
+.load-error p {
+  margin: 0;
+  flex: 1 1 16rem;
+}
 .notice-success {
   background: var(--accent-soft);
 }
