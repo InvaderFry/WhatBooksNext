@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import request from 'supertest';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createApp } from './app.ts';
 import type { DB } from './db/database.ts';
 import { createBackup, restoreBackup, validateBackup } from './lib/backup.ts';
@@ -331,6 +331,44 @@ describe('Triage (§13.5)', () => {
     expect(db.prepare('SELECT triage FROM user_item WHERE item_id = ?').pluck().get(a)).toBe(
       'never',
     );
+  });
+
+  it('leaves a newer decision alone even when it has the same timestamp as the triage', async () => {
+    // Two edits in the same millisecond (e.g. two tabs at once) share `updated_at`.
+    vi.useFakeTimers({ toFake: ['Date'], now: new Date('2026-11-14T12:00:00.000Z') });
+    try {
+      const a = book('Invented A');
+      const done = await api.post('/api/triage/one', { id: a, action: 'want' });
+      await api.patch(`/api/items/${a}`, { triage: 'never' });
+      const u = await api.post('/api/triage/undo', { undo: done.body.undo });
+      expect(u.body).toEqual({ restored: 0, skipped: 1 });
+      expect(db.prepare('SELECT triage FROM user_item WHERE item_id = ?').pluck().get(a)).toBe(
+        'never',
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('leaves alone a book edited in the same millisecond as a bulk Never', async () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: new Date('2026-11-14T12:00:00.000Z') });
+    try {
+      const a = book('Invented A');
+      const b = book('Invented B');
+      const done = await api.post('/api/triage/bulk', {
+        ids: [a, b],
+        action: 'never',
+        preview: false,
+      });
+      await api.patch(`/api/items/${a}`, { triage: 'want' });
+      const u = await api.post('/api/triage/undo', { undo: done.body.undo });
+      expect(u.body).toEqual({ restored: 1, skipped: 1 });
+      expect(db.prepare('SELECT triage FROM user_item WHERE item_id = ?').pluck().get(a)).toBe(
+        'want',
+      );
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('refuses an unknown one-at-a-time action or book', async () => {

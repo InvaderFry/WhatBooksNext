@@ -1,5 +1,8 @@
 # Owner checklist: quality session and Windows checks
 
+**Status: not done yet (saved for later, 2026-11-14).** Nothing else waits on it: other work
+carries on, and anything new to check gets added here.
+
 Everything here is done in the app on your Windows PC with your USB drive. No command line is
 needed. Allow about **20 minutes** for part 1 and **25 minutes** for part 2. They can be done on
 different days.

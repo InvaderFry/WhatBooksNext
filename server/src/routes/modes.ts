@@ -47,10 +47,14 @@ function addDays(day: string, n: number): string {
   return d.toISOString().slice(0, 10);
 }
 
-/** Bulk triage undo: the exact prior fields of each touched item, kept in memory (last 10). */
+/**
+ * Triage undo: the exact prior fields of each touched item, kept in memory. `after` is the whole
+ * owner row just after the action, so Undo can tell whether anything changed since. Comparing the
+ * row, not `updated_at`, matters: two edits in the same millisecond share a timestamp.
+ */
 interface BulkUndo {
   id: string;
-  rows: { item_id: string; before: Record<string, unknown> | null; stamp: string }[];
+  rows: { item_id: string; before: Record<string, unknown> | null; after: string }[];
 }
 type TriageAction = 'want' | 'maybe' | 'never' | 'read';
 /** Undo depth: bulk selections can be large, so fewer are kept; one-at-a-time matches the page. */
@@ -281,14 +285,16 @@ export function registerModeRoutes(app: Express, d: ModeDeps): void {
         if (action === 'read')
           applyUserPatch(db, id, { progress: 'finished', finishedPrecision: 'unknown' });
         else applyUserPatch(db, id, { triage: action });
-        const stamp = db
-          .prepare('SELECT updated_at FROM user_item WHERE item_id = ?')
-          .pluck()
-          .get(id) as string;
-        undo.rows.push({ item_id: id, before, stamp });
+        undo.rows.push({ item_id: id, before, after: ownerRow(id) });
       }
     })();
     return undo;
+  }
+
+  /** The item's whole owner row, as comparable text ('' when it has none). */
+  function ownerRow(id: string): string {
+    const row = db.prepare('SELECT * FROM user_item WHERE item_id = ?').get(id);
+    return row ? JSON.stringify(row) : '';
   }
 
   function restore(u: BulkUndo): { restored: number; skipped: number } {
@@ -296,12 +302,9 @@ export function registerModeRoutes(app: Express, d: ModeDeps): void {
     const skipped: string[] = [];
     db.transaction(() => {
       for (const r of u.rows) {
-        const now = db
-          .prepare('SELECT updated_at FROM user_item WHERE item_id = ?')
-          .pluck()
-          .get(r.item_id) as string | undefined;
-        // Edited since: leave the newer change alone rather than overwrite it.
-        if (now !== r.stamp) {
+        // Edited since (any field, even within the same millisecond): leave the newer change
+        // alone rather than overwrite it.
+        if (ownerRow(r.item_id) !== r.after) {
           skipped.push(r.item_id);
           continue;
         }
