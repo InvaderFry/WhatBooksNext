@@ -1,7 +1,5 @@
 /** What the deep pass learns from a file's contents (PLAN.md §10). Facts, never owner data. */
 export interface EmbeddedMetadata {
-  /** Bounded opening-page text, kept locally for identity review. */
-  openingPages?: { label: string; text: string }[];
   title?: string;
   creators?: { name: string; role?: string }[];
   language?: string;
@@ -45,8 +43,19 @@ export interface PdfTypeResult {
   portraitPages: number;
 }
 
+/** One opening page's or section's text, kept locally for identity review. */
+export interface OpeningPage {
+  label: string;
+  text: string;
+}
+
 export interface MetaResult {
   metadata: EmbeddedMetadata;
+  /**
+   * Bounded opening-page text. Stored apart from `metadata` (table file_opening_text), so the
+   * lookups and fact refreshes that parse metadata don't carry it.
+   */
+  openingPages?: OpeningPage[];
   wordCount: number | null;
   pageCount: number | null;
   pdfType?: PdfTypeResult;

@@ -27,6 +27,8 @@ let requests: string[];
 /** Open Library answers by title; anything unknown gets the recorded "nothing found". */
 let olByTitle: Record<string, string>;
 let failing: boolean;
+/** Only ISBN searches fail: a lead that can't be asked. */
+let failingIsbn: boolean;
 /** When set, requests wait for it: a lookup run that stays "running". */
 let gate: Promise<void> | null;
 
@@ -35,6 +37,7 @@ const fetcher: Fetcher = async (url) => {
   if (gate) await gate;
   if (failing) return new Response('down', { status: 503 });
   const u = new URL(url);
+  if (failingIsbn && u.searchParams.has('isbn')) return new Response('down', { status: 503 });
   if (u.hostname === 'openlibrary.org') {
     const title = (u.searchParams.get('title') ?? '').toLowerCase();
     const body = olByTitle[u.searchParams.get('isbn') ?? title] ?? fixture('ol-search-none.json');
@@ -55,6 +58,7 @@ beforeEach(async () => {
   drive = tempDir('wbn-m3-drive-');
   requests = [];
   failing = false;
+  failingIsbn = false;
   gate = null;
   olByTitle = {
     'the time machine': fixture('ol-search-time-machine.json'),
@@ -872,6 +876,47 @@ it('uses a printed ISBN as a lead without accepting an unrelated book', async ()
     true,
   );
   expect(db.prepare('SELECT identity FROM items').pluck().get()).not.toBe('accepted');
+  // Opening text is kept apart from the metadata that lookups parse, and shown on request.
+  expect(db.prepare('SELECT metadata FROM files').pluck().get()).not.toContain('openingPages');
+  const evidence = await api.get(
+    `/api/items/${itemIdOf('unrelated-book.pdf')}/identification-context`,
+  );
+  expect(evidence.body.files[0].pages[0].text).toContain('Copyright A Writer');
+  expect(evidence.body.files[0].isbns).toEqual(['9780306406157']);
+});
+
+it('keeps the title answer when a printed ISBN lead cannot be asked', async () => {
+  failingIsbn = true;
+  await addAndScan({
+    'unrelated-book.pdf': makePdf({
+      pages: [
+        { text: ['Unrelated Book', 'Copyright A Writer', 'ISBN 9780306406157'] },
+        { text: textForIdentificationTest() },
+      ],
+    }),
+  });
+  expect(requests.some((url) => new URL(url).searchParams.get('isbn') === '9780306406157')).toBe(
+    true,
+  );
+  expect(
+    db.prepare("SELECT outcome FROM lookup_state WHERE source = 'openlibrary'").pluck().get(),
+  ).not.toBe('failed');
+});
+
+it('accepts an ISBN with its printed label, searches it, and forgets nothing else', async () => {
+  const id = createStoreItem(db, { title: 'Ambiguous', store: 'other' });
+  const response = await api.post(`/api/items/${id}/search`, {
+    isbn: 'ISBN-13: 978-0-306-40615-7',
+    source: 'openlibrary',
+  });
+  expect(response.status).toBe(200);
+  expect(requests.some((url) => new URL(url).searchParams.get('isbn') === '9780306406157')).toBe(
+    true,
+  );
+  expect(
+    (await api.post(`/api/items/${id}/search`, { isbn: '9'.repeat(100), source: 'openlibrary' }))
+      .status,
+  ).toBe(400);
 });
 
 function textForIdentificationTest() {

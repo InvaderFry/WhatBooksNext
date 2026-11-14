@@ -1,4 +1,5 @@
 import {
+  ISBN_LEAD_SEARCHES,
   LOOKUP_STOP_AFTER_FAILED_ITEMS,
   PICTURE_MIN_PAGES,
   PICTURE_WORDS_PER_PAGE,
@@ -907,6 +908,7 @@ async function lookUpOnce(
   // Real requests per source before asking: an answer counts as "the source answered" only
   // when a request went out (a re-read of the cache is not news from the source).
   const before = new Map(all.map((s) => [s.name, sources.requestCount(s.name)]));
+  const rejectedBefore = rejectedFor(db, itemId);
   const ask = (list: SourceAdapter[]) =>
     Promise.allSettled(
       list.map(async (s: SourceAdapter) => {
@@ -916,16 +918,23 @@ async function lookUpOnce(
           records = await s.search({ ...query, title: query.rawTitle }, opts);
         // Opening-page ISBNs are leads, not authoritative identifiers. Search them only
         // when title matching is unresolved, then score against the original file facts.
+        // A lead that fails (offline, rate limit) only loses that lead: the title answer stays.
+        // A printed ISBN's answer hardly changes, so a cached one is used even on a refresh.
         if (
           s.name === 'openlibrary' &&
           !query.isbn &&
-          decide(facts, records).decision !== 'accepted'
+          decide(facts, records, rejectedBefore).decision !== 'accepted'
         ) {
-          for (const isbn of facts.isbnCandidates.slice(0, 3)) {
-            const extra = await s.search({ ...query, isbn }, opts);
+          for (const isbn of facts.isbnCandidates.slice(0, ISBN_LEAD_SEARCHES)) {
+            let extra: SourceRecord[];
+            try {
+              extra = await s.search({ ...query, isbn }, { ...opts, refresh: false });
+            } catch {
+              break;
+            }
             const seen = new Set(records.map((r) => r.sourceId));
             records = [...records, ...extra.filter((r) => !seen.has(r.sourceId))];
-            if (decide(facts, records).decision === 'accepted') break;
+            if (decide(facts, records, rejectedBefore).decision === 'accepted') break;
           }
         }
         return { s, records };

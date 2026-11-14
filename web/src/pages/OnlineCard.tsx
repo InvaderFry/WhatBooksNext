@@ -39,11 +39,18 @@ export function OnlineCard({ itemId, onChanged }: { itemId: string; onChanged: (
   useEffect(() => {
     void load();
   }, [load]);
-  useEffect(() => {
-    setSource('');
+  // The search form's fields go with it: a closed search leaves no author or ISBN behind to
+  // narrow the next one unseen (Open Library searches an ISBN alone, ignoring the title).
+  const closeSearch = () => {
+    setQuery(null);
     setAuthor('');
     setIsbn('');
+  };
+  useEffect(() => {
+    setSource('');
     setQuery(null);
+    setAuthor('');
+    setIsbn('');
     setResults(null);
     setChanges(null);
     setError(null);
@@ -55,7 +62,7 @@ export function OnlineCard({ itemId, onChanged }: { itemId: string; onChanged: (
     try {
       await fn();
       setResults(null);
-      setQuery(null);
+      closeSearch();
       await load();
       onChanged();
     } catch (e) {
@@ -321,7 +328,15 @@ export function OnlineCard({ itemId, onChanged }: { itemId: string; onChanged: (
       )}
       <div className="row-actions wrap">
         {query === null && (
-          <button type="button" className="secondary small" onClick={() => setQuery('')}>
+          <button
+            type="button"
+            className="secondary small"
+            onClick={() => {
+              setAuthor('');
+              setIsbn('');
+              setQuery('');
+            }}
+          >
             Search for the right match…
           </button>
         )}

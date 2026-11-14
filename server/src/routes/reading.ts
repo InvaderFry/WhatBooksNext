@@ -1,5 +1,8 @@
-import { identificationContext, saveIdentificationContext } from '../lib/identificationContext.ts';
-import { findIsbns } from '../scan/formats/text.ts';
+import {
+  identificationContext,
+  parseIsbnInput,
+  saveIdentificationContext,
+} from '../lib/identificationContext.ts';
 import type { Express, Request } from 'express';
 import { MATCH_ACCEPT, READ_NEXT_PAGE, RECENT_DAYS, TRIAGE_SESSION } from '../config.ts';
 import type { DB } from '../db/database.ts';
@@ -714,10 +717,7 @@ export function registerReadingRoutes(app: Express, d: ReadingDeps): void {
     route(async (req) => {
       const id = d.itemIdOr404(String(req.params.id));
       const q = String(req.body?.query ?? '').trim();
-      const isbnInput = typeof req.body?.isbn === 'string' ? req.body.isbn.trim() : '';
-      const isbn = isbnInput ? findIsbns(isbnInput)[0] : undefined;
-      if (isbnInput && (!isbn || isbnInput.length > 30 || !/^[\dXx\s-]+$/.test(isbnInput)))
-        throw new HttpError(400, 'Enter a valid ISBN-10 or ISBN-13.');
+      const isbn = parseIsbnInput(typeof req.body?.isbn === 'string' ? req.body.isbn : '');
       if (!isbn && q.length < 2) throw new HttpError(400, 'Type at least two letters.');
       if (q.length > 200) throw new HttpError(400, 'That search is too long.');
       const author =

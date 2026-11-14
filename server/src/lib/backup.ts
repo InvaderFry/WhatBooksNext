@@ -22,6 +22,7 @@ export const BACKUP_TABLES = [
   'series_publications',
   'items',
   'files',
+  'file_opening_text',
   'item_files',
   'locations',
   'user_item',
@@ -56,6 +57,7 @@ const ADDED_IN: Record<string, number> = {
   collection_coverage: 6,
   import_keys: 8,
   store_purchases: 15,
+  file_opening_text: 20,
 };
 
 /**

@@ -460,7 +460,8 @@ Choose **Use these details in search**, select a source, then **Search** and com
 and covers before confirming. Open Library supports ISBN searches; other catalogs vary.
 
 After the next scan, the panel also shows cached text from the first ten text-PDF pages (four for image-heavy PDFs) or first six
-non-navigation EPUB sections (up to 6,000 characters each), plus ISBN clues. Unresolved automatic Open Library lookups try up to three printed ISBNs,
+non-navigation EPUB sections (up to 6,000 characters each), plus ISBN clues (EPUBs are also
+checked for a copyright page in their last three sections). Unresolved automatic Open Library lookups try up to three printed ISBNs,
 checking the results against the original file facts. This includes opening
 PDF pages even when the rest of a comic has no text layer. Text stays local; only the title, author
 and ISBN entered in search go to catalogs. Copy distinctive text for a manual publisher-preview

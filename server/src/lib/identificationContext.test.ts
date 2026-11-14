@@ -7,6 +7,7 @@ import { memoryDb } from '../testing/helpers.ts';
 import { createStoreItem } from './store.ts';
 import {
   identificationContext,
+  parseIsbnInput,
   saveIdentificationContext,
   validateIdentificationContext,
 } from './identificationContext.ts';
@@ -84,4 +85,12 @@ it('invalidates prior lookups when a scan discovers printed ISBNs without promot
   const after = buildQuery({ ...facts, isbnCandidates: ['9780306406157'] });
   expect(JSON.stringify(after)).not.toBe(JSON.stringify(before));
   expect(after.isbn).toBeUndefined();
+});
+
+it('reads an ISBN copied with its printed label, and nothing else around it', () => {
+  expect(parseIsbnInput('ISBN-13: 978-0-306-40615-7')).toBe('9780306406157');
+  expect(parseIsbnInput('isbn 0-306-40615-2')).toBe('9780306406157');
+  expect(parseIsbnInput('  ')).toBeUndefined();
+  for (const bad of ['Price 9780306406157', '9780306406158', 'x'.repeat(31)])
+    expect(() => parseIsbnInput(bad)).toThrow();
 });

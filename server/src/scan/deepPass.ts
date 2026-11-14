@@ -27,7 +27,7 @@ import { TaskError, type TaskRunner } from './pool.ts';
  * at the current version: a cancelled or interrupted scan resumes where it stopped, and
  * failures are retried (§9.6). Raise a version when its reader improves.
  */
-export const STAGE_VERSIONS = { meta: 2, thumb: 1, full_hash: 1 } as const;
+export const STAGE_VERSIONS = { meta: 3, thumb: 1, full_hash: 1 } as const;
 type Stage = keyof typeof STAGE_VERSIONS;
 
 export interface DeepProgress {
@@ -350,6 +350,13 @@ function writeMeta(db: DB, fileId: string, m: MetaResult, partialHash: string): 
     partialHash,
     fileId,
   );
+  // Opening text lives in its own table: lookups parse `metadata` often and don't need it.
+  if (m.openingPages?.length)
+    db.prepare(
+      `INSERT INTO file_opening_text (file_id, pages) VALUES (?, ?)
+       ON CONFLICT (file_id) DO UPDATE SET pages = excluded.pages`,
+    ).run(fileId, JSON.stringify(m.openingPages));
+  else db.prepare('DELETE FROM file_opening_text WHERE file_id = ?').run(fileId);
 }
 
 /**
