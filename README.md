@@ -74,6 +74,13 @@ copy first). Every file keeps its own Open button on the book's page. **Triage**
 optional. It can take just the **new arrivals** from your last scan, or **one folder**, and can
 mark **several at once** as Already read or Never, with a preview first and Undo after.
 
+**Saved views.** Once What next shows the choices you want ("30 min", "Comics and manga", "Ready
+to read only"), press **Save these choices…** and give them a name, such as "30-minute comics,
+ready now". The name then appears as a button above the choices: one tap brings them all back.
+**Edit saved views** removes one. You can keep up to 12, and they're included in backups. On a
+narrow screen the choices fold into one line ("Showing Read next · 30 min · …") with a **Change**
+button, and the Library's filters fold behind **Filters and sort**, so books start near the top.
+
 **The ten modes.** _What are you after?_ on What next switches between them. Each states its rule
 on screen, and none ever shows a finished, Never, hidden or "did not finish" book:
 

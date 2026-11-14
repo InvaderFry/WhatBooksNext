@@ -105,6 +105,11 @@ export function App() {
       item: 'Book',
     };
     document.title = `${titles[view] ?? 'What next'} · whatBooksNext`;
+    // On a phone the menu is one row that scrolls sideways: bring the current page's item to the
+    // middle, clear of the fade at the right edge.
+    document
+      .querySelector('nav[aria-label="Main"] a[aria-current="page"]')
+      ?.scrollIntoView({ block: 'nearest', inline: 'center' });
   }, [view]);
 
   const scanStarted = () => {

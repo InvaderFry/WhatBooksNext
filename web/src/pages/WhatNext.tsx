@@ -1,10 +1,12 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useId, useState } from 'react';
 import {
   api,
   PROGRESS_LABELS,
   type Card,
   type ModeId,
   type ReadNext,
+  type SavedView,
+  type SavedViews as SavedViewsData,
   type TriageList,
 } from '../api.ts';
 import {
@@ -15,6 +17,7 @@ import {
   Formats,
   KindText,
   Notice,
+  useNarrow,
 } from '../components.tsx';
 import { hrefFor, onLinkClick, updateParams, type Params } from '../url.ts';
 import { LookupBanner } from './LookupBanner.tsx';
@@ -45,6 +48,37 @@ function addNotInMood(id: string) {
 
 const MODE_KEY = 'wbn:surprise-last';
 
+/** The What next choices in the address bar: what a saved view stores and restores. */
+const CHOICE_KEYS = ['m', 'time', 'mode', 'show', 'ready', 'complete', 'mood', 'topic'] as const;
+
+/** The choices as they'd be saved: blanks and the page's defaults left out. */
+function choicesOf(p: Params): Record<string, string> {
+  const defaults: Record<string, string> = {
+    m: 'read_next',
+    time: 'any',
+    mode: 'read_for',
+    show: 'all',
+    mood: 'escape',
+  };
+  const out: Record<string, string> = {};
+  for (const k of CHOICE_KEYS) {
+    const v = p[k];
+    if (v && v !== defaults[k]) out[k] = v;
+  }
+  // A mood only matters in Mood; "finish" only once a time is chosen.
+  if (out.m !== 'mood') delete out.mood;
+  if (!out.time) delete out.mode;
+  return out;
+}
+
+const sameChoices = (a: Record<string, string>, b: Record<string, string>) =>
+  JSON.stringify(Object.entries(a).sort()) === JSON.stringify(Object.entries(b).sort());
+
+/** Applies a saved view: its choices, and every other choice back to the default. */
+function applyChoices(c: Record<string, string>) {
+  updateParams(Object.fromEntries(CHOICE_KEYS.map((k) => [k, c[k] ?? ''])));
+}
+
 export function WhatNext({ params, onChanged }: { params: Params; onChanged: () => void }) {
   const view = (params.m as ModeId | undefined) ?? 'read_next';
   const time = params.time ?? 'any';
@@ -68,6 +102,10 @@ export function WhatNext({ params, onChanged }: { params: Params; onChanged: () 
     }
   });
   const [roll, setRoll] = useState(0);
+  // On a phone the choices fold into one line, so the first pick is near the top (owner review).
+  const narrow = useNarrow();
+  const [choicesOpen, setChoicesOpen] = useState(false);
+  const choicesId = useId();
 
   const query = useCallback(
     (offset: number) =>
@@ -135,6 +173,23 @@ export function WhatNext({ params, onChanged }: { params: Params; onChanged: () 
       ? '2 hours'
       : (data?.presets.find((p) => p.id === time)?.label ?? 'Any length');
   const situation = { view, time, mode, ready, show, complete, mood, topic };
+  const KIND_TEXT = { books: 'Books', tech: 'Tech', comics: 'Comics and manga', all: 'All kinds' };
+  const summary = [
+    info?.label ?? 'Read next',
+    view === 'mood' && data?.moods.find((x) => x.id === mood)?.label,
+    usesTime &&
+      (finishing && !oneSitting
+        ? `Finish within ${budgetLabel.toLowerCase()}`
+        : oneSitting && time === 'any'
+          ? '2 h'
+          : budgetLabel),
+    view !== 'still_relevant' && KIND_TEXT[show],
+    ready && 'Ready to read',
+    complete && view !== 'continue' && view !== 'still_relevant' && 'Complete stories',
+    topic,
+  ]
+    .filter(Boolean)
+    .join(' · ');
 
   const onDone = (c: Card) => (msg: string, hide?: boolean) => {
     setAnnounce(msg);
@@ -149,7 +204,9 @@ export function WhatNext({ params, onChanged }: { params: Params; onChanged: () 
     <div className="page">
       <div className="page-head">
         <h1>What next</h1>
-        <p className="muted">Picks from books you already own, with the reasons behind each.</p>
+        <p className="muted hide-narrow">
+          Picks from books you already own, with the reasons behind each.
+        </p>
       </div>
       <LookupBanner onFinished={() => void load()} />
       <TriageOffer />
@@ -170,7 +227,31 @@ export function WhatNext({ params, onChanged }: { params: Params; onChanged: () 
         </div>
       )}
 
-      <form className="time-control" onSubmit={(e) => e.preventDefault()} aria-label="Choices">
+      <SavedViews params={params} />
+      {narrow && (
+        <div className="choices-summary">
+          <p>
+            <span className="muted small">Showing </span>
+            <strong>{summary}</strong>
+          </p>
+          <button
+            type="button"
+            className="secondary small"
+            aria-expanded={choicesOpen}
+            aria-controls={choicesId}
+            onClick={() => setChoicesOpen(!choicesOpen)}
+          >
+            {choicesOpen ? 'Done' : 'Change'}
+          </button>
+        </div>
+      )}
+      <form
+        id={choicesId}
+        className="time-control"
+        onSubmit={(e) => e.preventDefault()}
+        aria-label="Choices"
+        hidden={narrow && !choicesOpen}
+      >
         <fieldset className="segmented modes">
           <legend>What are you after?</legend>
           {(data?.modes ?? []).map((m) => (
@@ -905,5 +986,161 @@ function NewArrivalsOffer() {
       </button>
       .
     </div>
+  );
+}
+
+/**
+ * Saved views: the current choices under a name ("30-minute comics, ready now"), one tap to
+ * come back to. Stored with the owner's settings, so backups keep them. If the list can't be
+ * loaded, the row stays hidden rather than risk saving over it.
+ */
+function SavedViews({ params }: { params: Params }) {
+  const [data, setData] = useState<SavedViewsData | null>(null);
+  const [naming, setNaming] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [announce, setAnnounce] = useState('');
+  const nameId = useId();
+
+  useEffect(() => {
+    api
+      .get<SavedViewsData>('/api/saved-views')
+      .then(setData)
+      .catch(() => setData(null));
+  }, []);
+
+  if (!data) return null;
+  const current = choicesOf(params);
+  const active = data.views.find((v) => sameChoices(choicesOf(v.params), current));
+
+  const save = async (views: Omit<SavedView, 'id'>[] | SavedView[], done: string) => {
+    setBusy(true);
+    setError(null);
+    try {
+      setData(await api.put<SavedViewsData>('/api/saved-views', { views }));
+      setAnnounce(done);
+      return true;
+    } catch (e) {
+      setError((e as Error).message);
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <section className="saved-views" aria-label="Saved views">
+      {data.views.length > 0 && (
+        <ul className="saved-view-list">
+          {data.views.map((v) => (
+            <li key={v.id}>
+              <a
+                className="view-chip"
+                href={hrefFor({ view: 'next', ...choicesOf(v.params) })}
+                aria-current={active?.id === v.id ? 'true' : undefined}
+                onClick={(e) => {
+                  if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+                  e.preventDefault();
+                  applyChoices(choicesOf(v.params));
+                  setAnnounce(`Showing ${v.name}.`);
+                }}
+              >
+                {v.name}
+              </a>
+              {editing && (
+                <button
+                  type="button"
+                  className="view-remove"
+                  disabled={busy}
+                  aria-label={`Remove saved view ${v.name}`}
+                  onClick={() =>
+                    void save(
+                      data.views.filter((x) => x.id !== v.id),
+                      `Removed ${v.name}.`,
+                    )
+                  }
+                >
+                  <span aria-hidden="true">×</span>
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+      {!naming && (
+        <div className="row-actions saved-view-actions">
+          {!active && data.views.length < data.max && (
+            <button
+              type="button"
+              className="link-button small"
+              onClick={() => {
+                setNaming(true);
+                setEditing(false);
+              }}
+            >
+              Save these choices…
+            </button>
+          )}
+          {data.views.length > 0 && (
+            <button
+              type="button"
+              className="link-button small"
+              aria-pressed={editing}
+              onClick={() => setEditing(!editing)}
+            >
+              {editing ? 'Done' : 'Edit saved views'}
+            </button>
+          )}
+        </div>
+      )}
+      {naming && (
+        <form
+          className="row-actions wrap saved-view-form"
+          onSubmit={async (e) => {
+            e.preventDefault();
+            const clean = name.trim();
+            if (!clean) return;
+            const ok = await save(
+              [...data.views, { name: clean, params: current }],
+              `Saved ${clean}.`,
+            );
+            if (ok) {
+              setNaming(false);
+              setName('');
+            }
+          }}
+        >
+          <label htmlFor={nameId}>Name these choices</label>
+          <input
+            id={nameId}
+            value={name}
+            maxLength={40}
+            autoFocus
+            placeholder="e.g. 30-minute comics, ready now"
+            onChange={(e) => setName(e.target.value)}
+          />
+          <button type="submit" className="small" disabled={busy || !name.trim()}>
+            Save
+          </button>
+          <button
+            type="button"
+            className="secondary small"
+            onClick={() => {
+              setNaming(false);
+              setName('');
+              setError(null);
+            }}
+          >
+            Cancel
+          </button>
+        </form>
+      )}
+      {error && <Notice kind="error">{error}</Notice>}
+      <div className="visually-hidden" aria-live="polite">
+        {announce}
+      </div>
+    </section>
   );
 }

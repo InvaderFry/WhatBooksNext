@@ -98,7 +98,10 @@ export function LookupBanner({
               ? `Checking published volumes: ${s.series.done} of ${s.series.total} series`
               : `${s.label === 'fresh' ? 'Looking up all books again' : s.label === 'due' ? 'Refreshing due books' : 'Looking up books online'}: ${s.done} of ${s.total}`}
             {s.estimateSeconds !== null && ` · ${formatDuration(s.estimateSeconds)} left`}.
-            <span className="muted"> Picks improve as it goes; you can keep using the app.</span>
+            <span className="muted hide-narrow">
+              {' '}
+              Picks improve as it goes; you can keep using the app.
+            </span>
           </p>
           <button
             type="button"
@@ -114,7 +117,7 @@ export function LookupBanner({
             {data.pending.toLocaleString()} {data.pending === 1 ? 'book hasn’t' : 'books haven’t'}{' '}
             been looked up online yet, so {data.pending === 1 ? 'its' : 'their'} ratings and details
             are missing.{' '}
-            <span className="muted">
+            <span className="muted hide-narrow">
               Open Library allows about one lookup a second, so a big library takes a while. It runs
               in the background and carries on where it stopped.
             </span>

@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import {
   FORMAT_LABELS,
   KIND_LABELS,
@@ -107,6 +107,24 @@ export function Notice({
       {children}
     </div>
   );
+}
+
+/** Phone-width screens, where pages fold their less-used controls away (same width as the CSS). */
+export const NARROW_QUERY = '(max-width: 40rem)';
+
+/** True on a phone-width screen; follows rotation and window resizing. */
+export function useNarrow(): boolean {
+  const [narrow, setNarrow] = useState(
+    () => typeof window.matchMedia === 'function' && window.matchMedia(NARROW_QUERY).matches,
+  );
+  useEffect(() => {
+    if (typeof window.matchMedia !== 'function') return;
+    const m = window.matchMedia(NARROW_QUERY);
+    const on = () => setNarrow(m.matches);
+    m.addEventListener('change', on);
+    return () => m.removeEventListener('change', on);
+  }, []);
+  return narrow;
 }
 
 /**

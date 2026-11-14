@@ -564,6 +564,17 @@ export type ModeId =
   | 'surprise';
 export type Mood = 'escape' | 'learn' | 'skim';
 
+/** A named set of What next choices (`server/src/lib/savedViews.ts`). */
+export interface SavedView {
+  id: string;
+  name: string;
+  params: Record<string, string>;
+}
+export interface SavedViews {
+  views: SavedView[];
+  max: number;
+}
+
 export interface ReadNext {
   view: ModeId;
   cards: Card[];

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import {
   api,
   FORMAT_LABELS,
@@ -10,6 +10,7 @@ import {
   type ItemSummary,
 } from '../api.ts';
 import {
+  useNarrow,
   AvailabilityLabels,
   StoreLinks,
   Cover,
@@ -48,6 +49,10 @@ export function Library({
   const [folders, setFolders] = useState<Folder[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState(params.q ?? '');
+  // On a phone the filters fold behind one button, so books start near the top (owner review).
+  const narrow = useNarrow();
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const filtersId = useId();
 
   const query = new URLSearchParams(
     Object.entries({
@@ -132,6 +137,18 @@ export function Library({
     params.shortlisted,
   );
 
+  const filterCount = [
+    params.kind,
+    params.progress,
+    params.format,
+    params.availability,
+    params.store,
+    params.folder,
+    params.ready,
+    params.shortlisted,
+  ].filter(Boolean).length;
+  const folded = narrow && !filtersOpen;
+
   return (
     <div className="page">
       <div className="page-head">
@@ -164,111 +181,132 @@ export function Library({
             placeholder="e.g. glass harbor, or an author's name"
           />
         </div>
-        <Select
-          id="kind"
-          label="Kind"
-          value={params.kind}
-          options={{ ...KIND_LABELS, unknown: 'Unknown' }}
-        />
-        <Select id="progress" label="Progress" value={params.progress} options={PROGRESS_LABELS} />
-        <Select id="format" label="Format" value={params.format} options={FORMAT_LABELS} />
-        <Select
-          id="availability"
-          label="Availability"
-          value={params.availability}
-          options={AVAILABILITY_OPTIONS}
-        />
-        {/* Where it's owned (owner decision 2026-11-12): beside Availability, which is about files. */}
-        <Select
-          id="store"
-          label="Store"
-          value={params.store}
-          options={Object.fromEntries(
-            [...Object.keys(STORE_LABELS), 'none']
-              .filter((k) => (storeCounts[k] ?? 0) > 0 || params.store === k)
-              .map((k) => [
-                k,
-                `${k === 'none' ? 'Not in a store (your files)' : STORE_LABELS[k]} (${(storeCounts[k] ?? 0).toLocaleString()})`,
-              ]),
-          )}
-        />
-        {folders.length > 1 && (
-          <Select
-            id="folder"
-            label="Folder"
-            value={params.folder}
-            options={Object.fromEntries(folders.map((f) => [f.id, f.displayPath]))}
-          />
-        )}
-        <Select
-          id="sort"
-          label="Sort by"
-          value={params.sort}
-          allLabel="Title"
-          options={{
-            added: 'First seen',
-            touched: 'Last touched',
-            rating: 'Your rating',
-            community: 'Online rating',
-          }}
-        />
-        <div className="field">
-          <label htmlFor="dir">Order</label>
-          <select
-            id="dir"
-            value={params.dir ?? 'asc'}
-            onChange={(e) => updateParams({ dir: e.target.value === 'asc' ? '' : e.target.value })}
-          >
-            <option value="asc">
-              {params.sort && params.sort !== 'title' ? 'Oldest / lowest first' : 'A to Z'}
-            </option>
-            <option value="desc">
-              {params.sort && params.sort !== 'title' ? 'Newest / highest first' : 'Z to A'}
-            </option>
-          </select>
-        </div>
-        <div className="checks">
-          <label>
-            <input
-              type="checkbox"
-              checked={params.ready === '1'}
-              onChange={(e) => updateParams({ ready: e.target.checked ? '1' : '' })}
-            />
-            Ready to read
-          </label>
-          <label>
-            <input
-              type="checkbox"
-              checked={params.shortlisted === '1'}
-              onChange={(e) => updateParams({ shortlisted: e.target.checked ? '1' : '' })}
-            />
-            On shortlist
-          </label>
-        </div>
-        {filtersActive && (
+        {narrow && (
           <button
             type="button"
-            className="link-button"
-            onClick={() => {
-              setSearch('');
-              updateParams({
-                q: '',
-                kind: '',
-                progress: '',
-                format: '',
-                availability: '',
-                store: '',
-                folder: '',
-                ready: '',
-                shortlisted: '',
-              });
-            }}
+            className="secondary small filters-toggle"
+            aria-expanded={filtersOpen}
+            aria-controls={filtersId}
+            onClick={() => setFiltersOpen(!filtersOpen)}
           >
-            Clear filters
+            {filtersOpen ? 'Hide filters' : 'Filters and sort'}
+            {filterCount > 0 && ` (${filterCount} on)`}
           </button>
         )}
+        <div id={filtersId} className="more-filters" hidden={folded}>
+          <Select
+            id="kind"
+            label="Kind"
+            value={params.kind}
+            options={{ ...KIND_LABELS, unknown: 'Unknown' }}
+          />
+          <Select
+            id="progress"
+            label="Progress"
+            value={params.progress}
+            options={PROGRESS_LABELS}
+          />
+          <Select id="format" label="Format" value={params.format} options={FORMAT_LABELS} />
+          <Select
+            id="availability"
+            label="Availability"
+            value={params.availability}
+            options={AVAILABILITY_OPTIONS}
+          />
+          {/* Where it's owned (owner decision 2026-11-12): beside Availability, which is about files. */}
+          <Select
+            id="store"
+            label="Store"
+            value={params.store}
+            options={Object.fromEntries(
+              [...Object.keys(STORE_LABELS), 'none']
+                .filter((k) => (storeCounts[k] ?? 0) > 0 || params.store === k)
+                .map((k) => [
+                  k,
+                  `${k === 'none' ? 'Not in a store (your files)' : STORE_LABELS[k]} (${(storeCounts[k] ?? 0).toLocaleString()})`,
+                ]),
+            )}
+          />
+          {folders.length > 1 && (
+            <Select
+              id="folder"
+              label="Folder"
+              value={params.folder}
+              options={Object.fromEntries(folders.map((f) => [f.id, f.displayPath]))}
+            />
+          )}
+          <Select
+            id="sort"
+            label="Sort by"
+            value={params.sort}
+            allLabel="Title"
+            options={{
+              added: 'First seen',
+              touched: 'Last touched',
+              rating: 'Your rating',
+              community: 'Online rating',
+            }}
+          />
+          <div className="field">
+            <label htmlFor="dir">Order</label>
+            <select
+              id="dir"
+              value={params.dir ?? 'asc'}
+              onChange={(e) =>
+                updateParams({ dir: e.target.value === 'asc' ? '' : e.target.value })
+              }
+            >
+              <option value="asc">
+                {params.sort && params.sort !== 'title' ? 'Oldest / lowest first' : 'A to Z'}
+              </option>
+              <option value="desc">
+                {params.sort && params.sort !== 'title' ? 'Newest / highest first' : 'Z to A'}
+              </option>
+            </select>
+          </div>
+          <div className="checks">
+            <label>
+              <input
+                type="checkbox"
+                checked={params.ready === '1'}
+                onChange={(e) => updateParams({ ready: e.target.checked ? '1' : '' })}
+              />
+              Ready to read
+            </label>
+            <label>
+              <input
+                type="checkbox"
+                checked={params.shortlisted === '1'}
+                onChange={(e) => updateParams({ shortlisted: e.target.checked ? '1' : '' })}
+              />
+              On shortlist
+            </label>
+          </div>
+          {filtersActive && (
+            <button
+              type="button"
+              className="link-button"
+              onClick={() => {
+                setSearch('');
+                updateParams({
+                  q: '',
+                  kind: '',
+                  progress: '',
+                  format: '',
+                  availability: '',
+                  store: '',
+                  folder: '',
+                  ready: '',
+                  shortlisted: '',
+                });
+              }}
+            >
+              Clear filters
+            </button>
+          )}
+        </div>
       </form>
-      <p className="hint">
+      <p className="hint" hidden={folded}>
         <strong>Ready to read</strong> keeps books with a file on this PC right now, or marked “Also
         in iCloud”.
       </p>
