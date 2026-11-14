@@ -549,6 +549,9 @@ try {
       'review-runs',
       '/?view=review',
       async (p) => {
+        // An invented cover: a plain coloured page, as a data address (allowed by the CSP).
+        const cover = (fill: string) =>
+          `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="120" height="180"><rect width="120" height="180" fill="${fill}"/></svg>`)}`;
         await p.route('**/api/review/runs', (route) =>
           route.fulfill({
             json: {
@@ -558,6 +561,7 @@ try {
                   series: 'Copperline v4',
                   folder: 'Comics/Copperline',
                   itemIds: ['a', 'b', 'c'],
+                  numbers: ['1', '2', '3'],
                   runs: [
                     {
                       source: 'metron',
@@ -567,6 +571,12 @@ try {
                       volume: 4,
                       publisher: 'Invented Press',
                       issues: 3,
+                      example: {
+                        title: 'Copperline #1',
+                        year: 2001,
+                        coverUrl: cover('#3d6b8f'),
+                        url: 'https://metron.cloud/series/invented-copperline-2001/',
+                      },
                     },
                     {
                       source: 'metron',
@@ -576,6 +586,7 @@ try {
                       volume: 1,
                       publisher: 'Invented Press',
                       issues: 3,
+                      example: { title: 'Copperline #1', year: 1984 },
                     },
                   ],
                 },

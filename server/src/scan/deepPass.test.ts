@@ -215,6 +215,23 @@ describe('deep pass', () => {
     expect(runner.tasks).toEqual([]);
   });
 
+  it('redraws only PDF covers after the PDF cover reader improves', async () => {
+    writeFiles(drive, {
+      'a.pdf': makePdf({ pages: [{ text: textLines(5) }] }),
+      'b.cbz': makeCbz(),
+      'c.epub': makeEpub({ title: 'C' }),
+    });
+    await addFolder(db, platform, { path: drive });
+    await scan();
+    // As the earlier cover reader left them.
+    db.prepare("UPDATE files SET stages = json_set(stages, '$.thumb', 1)").run();
+    runner.tasks.length = 0;
+    await scan();
+    expect(runner.readsOf('a.pdf')).toEqual(['thumb']);
+    expect(runner.readsOf('b.cbz')).toEqual([]);
+    expect(runner.readsOf('c.epub')).toEqual([]);
+  });
+
   it('resumes a cancelled deep pass where it stopped', async () => {
     writeFiles(
       drive,

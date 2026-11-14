@@ -343,8 +343,10 @@ function RunChoices({
       <h2 id="runs-h">Which run is it?</h2>
       <p className="muted">
         {issues.toLocaleString()} comic issues in {groups.length.toLocaleString()} series can’t tell
-        which run they belong to. Choose the run once for each series; every issue in that folder
-        with a match from it is confirmed. You can still change any issue on its page.
+        which run they belong to. Each choice below is a series of that name with issues numbered
+        like yours. Compare its cover with your copy, or open it on the source’s site, then choose
+        the one you own: every issue in that folder with a match from it is confirmed. Not sure?
+        Leave it, and answer issue by issue further down. You can change any issue on its page.
       </p>
       <ul className="run-groups">
         {groups.map((g) => (
@@ -352,45 +354,73 @@ function RunChoices({
             <h3>
               {g.series} <span className="muted small">· {g.itemIds.length} issues</span>
             </h3>
-            <p className="small muted">Folder: {g.folder || '(top of the library folder)'}</p>
+            <p className="small muted">
+              Folder: {g.folder || '(top of the library folder)'} · Your issues:{' '}
+              {g.numbers.map((n) => `#${n}`).join(', ')}
+            </p>
             <ul className="run-options">
               {g.runs.map((r) => {
+                const source = RUN_SOURCES[r.source] ?? r.source;
                 const details = [
                   r.startYear ? `began ${r.startYear}` : null,
                   r.volume ? `volume ${r.volume}` : null,
                   r.publisher ?? null,
-                  RUN_SOURCES[r.source],
+                  source,
                 ].filter(Boolean);
+                const example = `${r.example.title}${r.example.year ? ` (${r.example.year})` : ''}`;
                 return (
-                  <li key={`${r.source}:${r.seriesId}`}>
-                    <button
-                      type="button"
-                      className="secondary small"
-                      onClick={() =>
-                        run(
-                          async () => {
-                            const answer = await api.post<{
-                              confirmed: number;
-                              settled: number;
-                              left: number;
-                            }>('/api/review/runs', {
-                              key: g.key,
-                              source: r.source,
-                              seriesId: r.seriesId,
-                            });
-                            return answer;
-                          },
-                          `${r.name} confirmed for ${r.issues} issue${r.issues === 1 ? '' : 's'}`,
-                        )
-                      }
-                    >
-                      This run for all
-                    </button>{' '}
-                    <strong>{r.name}</strong> <span className="small">({details.join(' · ')})</span>
-                    <span className="small muted">
-                      {' '}
-                      — matches {r.issues} of {g.itemIds.length} issues
-                    </span>
+                  <li key={`${r.source}:${r.seriesId}`} className="candidate run-option">
+                    <div className="candidate-content">
+                      {r.example.coverUrl ? (
+                        <BookImage
+                          key={r.example.coverUrl}
+                          url={r.example.coverUrl}
+                          caption={`${source} cover`}
+                          label={`${source} cover — ${example}`}
+                        />
+                      ) : (
+                        <span className="muted small">No cover supplied by {source}.</span>
+                      )}
+                      <div className="candidate-details">
+                        <strong>{r.name}</strong>{' '}
+                        <span className="muted small">· {details.join(' · ')}</span>
+                        <div className="small">
+                          Has the same issue numbers as {r.issues} of your {g.itemIds.length}. Cover
+                          shown: {example}.
+                        </div>
+                        {r.example.url && (
+                          <a
+                            className="small"
+                            href={r.example.url}
+                            target="_blank"
+                            rel="noreferrer noopener"
+                          >
+                            View on {source}
+                            <span className="visually-hidden"> (opens in a new tab)</span>
+                          </a>
+                        )}
+                      </div>
+                    </div>
+                    <div className="row-actions">
+                      <button
+                        type="button"
+                        className="small"
+                        aria-label={`This run for all ${g.itemIds.length} issues: ${r.name}${r.startYear ? `, began ${r.startYear}` : ''}`}
+                        onClick={() =>
+                          run(
+                            () =>
+                              api.post('/api/review/runs', {
+                                key: g.key,
+                                source: r.source,
+                                seriesId: r.seriesId,
+                              }),
+                            `${r.name} confirmed for ${r.issues} issue${r.issues === 1 ? '' : 's'}`,
+                          )
+                        }
+                      >
+                        This run for all
+                      </button>
+                    </div>
                   </li>
                 );
               })}

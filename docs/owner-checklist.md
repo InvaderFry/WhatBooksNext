@@ -103,6 +103,10 @@ the letter back at the end.
     subtitle ("Series: Other Name"), are its issues now matched to the series itself (as
     unconfirmed) rather than tied with the spin-off?
 
+16. Plug in the drive and click **Scan now**. When it's done, find a PDF comic or art book
+    whose cover was a grey or blank page. Does it show its real cover now?
+17. In **Which run is it?**, does each choice show a cover and a **View on Metron** link?
+
 ## You can skip these
 
 - **iCloud or OneDrive downloads:** you have neither on the PC, so there's nothing to test.
@@ -112,6 +116,6 @@ the letter back at the end.
 ## What to send back
 
 - Part 1: your yes/no for each of the 5 situations, plus anything you had to correct.
-- Part 2: worked / didn't work / skipped for checks 1–15, and what happened for any that didn't
+- Part 2: worked / didn't work / skipped for checks 1–17, and what happened for any that didn't
   work.
 - **Settings → Diagnostics → Copy report** (it leaves out folder names unless you tick the box).

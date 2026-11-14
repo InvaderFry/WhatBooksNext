@@ -35,7 +35,8 @@ import { normalizeForCompare, titleCompareKey } from './filename.ts';
 // Version 16 adds opening-page ISBN discovery and EPUB printed-ISBN evidence.
 // Version 17 ranks a spin-off ("Series: Other Name #5") below the series itself, uses a comic's
 // series volume ("Series v4 01") against the source's, and searches Metron by year and volume.
-export const MATCH_VERSION = 17;
+// Version 18 also ranks a spin-off with a number joined to the name ("Series 8 #2") lower.
+export const MATCH_VERSION = 18;
 
 export interface MatchFacts {
   title: string;
@@ -196,12 +197,31 @@ const SUBTITLE_MARK = /[:—–]| - /;
 /**
  * Do two numbered titles name the same series? Yes when the names before their numbers agree,
  * or when neither carries a subtitle there (spellings like "Batman (2011-2016)" are left to the
- * other checks). A subtitle on one side only is another series that shares the main title.
+ * other checks). A subtitle on one side only is another series that shares the main title, as is
+ * a number joined to the name that isn't the issue's ("Copperline 8 #2" against "Copperline #2").
  */
-function sameNamedSeries(mine: string[], theirs: string[]): boolean {
-  const key = (t: string) => titleCompareKey(withoutNumber(beforeNumber(t)));
-  const ours = mine.map(key).filter(Boolean);
-  if (theirs.some((t) => ours.includes(key(t)))) return true;
+function sameNamedSeries(
+  mine: string[],
+  theirs: string[],
+  ourNum: string,
+  theirNum: string,
+): boolean {
+  const their = theirs.map((t) => titleCompareKey(beforeNumber(t))).filter(Boolean);
+  // Ours as written first: a series hint carries no issue number to cut ("Copperline 8").
+  const written = mine.map(titleCompareKey).filter(Boolean);
+  if (their.some((k) => written.includes(k))) return true;
+  // The compare key drops punctuation and keeps zeros: issue "1.5" reads "15" there, "#001"
+  // reads "001". Either way it's the issue's own number, not a number in the series' name.
+  const isNumber = (rest: string, num: string) =>
+    rest.replace(/^0+(?=\d)/, '') === num.replace(/\D/g, '').replace(/^0+(?=\d)/, '');
+  const joined = (a: string, b: string, num: string) => {
+    const rest = a.startsWith(b) ? a.slice(b.length) : '';
+    return /^\d{1,4}$/.test(rest) && !isNumber(rest, num);
+  };
+  if (their.some((k) => written.some((o) => joined(o, k, ourNum) || joined(k, o, theirNum))))
+    return false;
+  const cut = mine.map((t) => titleCompareKey(beforeNumber(t))).filter(Boolean);
+  if (their.some((k) => cut.includes(k))) return true;
   return ![...mine, ...theirs].some((t) => SUBTITLE_MARK.test(beforeNumber(t)));
 }
 
@@ -285,7 +305,7 @@ function titleScore(f: MatchFacts, r: SourceRecord): number {
     // Both numbered: the same series only when the names before the numbers agree. A record
     // that adds a name before its number ("Copperline: Maximised #5" against "Copperline #5") is
     // a spin-off sharing the main title, as is ours adding one the record lacks.
-    if (a && b) return sameNamedSeries(mine, theirs) ? 1 : MAIN_TITLE_ONLY;
+    if (a && b) return sameNamedSeries(mine, theirs, a, b) ? 1 : MAIN_TITLE_ONLY;
     // A volume against a record with no number is only the series' name: never certain,
     // except on AniList, whose records are whole series by design (scope "series"). For a comic
     // or manga, a record that doesn't say it's a comic is most likely a prose book that shares

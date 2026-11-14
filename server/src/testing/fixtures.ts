@@ -285,7 +285,19 @@ export interface PdfPage {
   /** A JPEG drawn over the whole page. */
   image?: Buffer;
   imageGray?: boolean;
+  /** A JPEG 2000 picture drawn over the whole page, as comic and art-book PDFs often store them. */
+  jpx?: { data: Buffer; width: number; height: number };
 }
+
+/** A 16×16 solid red JPEG 2000 picture (made with OpenJPEG), for PDFs that store pictures so. */
+export const RED_JPX = {
+  width: 16,
+  height: 16,
+  data: Buffer.from(
+    'AAAADGpQICANCocKAAAAFGZ0eXBqcDIgAAAAAGpwMiAAAAAtanAyaAAAABZpaGRyAAAAEAAAABAAAwcHAAAAAAAPY29scgEAAAAAABAAAACtanAyY/9P/1EALwAAAAAAEAAAABAAAAAAAAAAAAAAABAAAAAQAAAAAAAAAAAAAwcBAQcBAQcBAf9SAAwAAAABAAQEBAAB/1wAEEBASEhQSEhQSEhQSEhQ/2QAJQABQ3JlYXRlZCBieSBPcGVuSlBFRyB2ZXJzaW9uIDIuNS40/5AACgAAAAAAKQAB/5PPtAgET8+0CAifz7QICJ+AgICAgICAgICAgID/2Q==',
+    'base64',
+  ),
+};
 
 export interface PdfOptions {
   pages: PdfPage[];
@@ -338,6 +350,19 @@ export function makePdf(o: PdfOptions): Buffer {
       );
       resources += ` /XObject << /Im1 ${img} 0 R >>`;
       content += `q ${w} 0 0 ${h} 0 0 cm /Im1 Do Q\n`;
+    }
+    if (p.jpx) {
+      const img = add(
+        Buffer.concat([
+          Buffer.from(
+            `<< /Type /XObject /Subtype /Image /Width ${p.jpx.width} /Height ${p.jpx.height} /Filter /JPXDecode /Length ${p.jpx.data.length} >>\nstream\n`,
+          ),
+          p.jpx.data,
+          Buffer.from('\nendstream'),
+        ]),
+      );
+      resources += ` /XObject << /Im2 ${img} 0 R >>`;
+      content += `q ${w} 0 0 ${h} 0 0 cm /Im2 Do Q\n`;
     }
     const lines = (mode: number, text: string[]) => {
       let s = `BT /F1 11 Tf ${mode} Tr 14 TL 50 ${h - 60} Td\n`;
