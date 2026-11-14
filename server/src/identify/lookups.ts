@@ -136,6 +136,7 @@ export function matchFactsFor(db: DB, itemId: string): MatchFacts | null {
     years: [...years],
     isbns: [...isbns].filter((x) => x.length === 10 || x.length === 13),
     isbnCandidates: [...candidates],
+    runVolume: runVolumeOf(parse),
     kind: i.kind_override ?? i.kind,
   };
 }
@@ -145,10 +146,27 @@ export function matchFactsFor(db: DB, itemId: string): MatchFacts | null {
  * are certainly in: matched with certainty or confirmed by the owner. A source whose sibling
  * issues point at two different runs gives no hint.
  */
+/** A comic's series volume from its parsed filename ("Series v4 01" → 4), or null. */
+export function runVolumeOf(parse: ParsedName | null): number | null {
+  const v = parse?.seriesVolume?.value;
+  return v && /^\d{1,2}$/.test(v) ? Number(v) : null;
+}
+
+/**
+ * Which run of a name a file says it is: its series volume ("v4") and a start year joined to
+ * the name ("rai1992"). Files of one series in one folder share a run only when these agree:
+ * "Series 01", "Series v2 01" and "Series v4 01" side by side are three runs.
+ */
+export function runKeyOf(parsed: string | null): string {
+  const p = parseJson<ParsedName | null>(parsed, null);
+  return `${runVolumeOf(p) ?? ''}|${p?.startYear?.value ?? ''}`;
+}
+
 export function runHintsFor(db: DB, itemId: string): { source: string; id: string }[] {
   const rows = db
     .prepare(
-      `SELECT DISTINCT o.match_source AS source, json_extract(m.data, '$.series.id') AS id
+      `SELECT DISTINCT o.match_source AS source, json_extract(m.data, '$.series.id') AS id,
+         fi.parsed AS mine, fo.parsed AS theirs
        FROM items i
        JOIN item_files xi ON xi.item_id = i.id AND xi.is_primary = 1
        JOIN files fi ON fi.id = xi.file_id
@@ -161,10 +179,15 @@ export function runHintsFor(db: DB, itemId: string): { source: string; id: strin
          AND o.match_source IN ('metron', 'comicvine')
          AND lower(o.series_hint) = lower(i.series_hint)`,
     )
-    .all(itemId) as { source: string; id: string | number | null }[];
+    .all(itemId) as {
+    source: string;
+    id: string | number | null;
+    mine: string | null;
+    theirs: string | null;
+  }[];
   const bySource = new Map<string, Set<string>>();
   for (const r of rows) {
-    if (r.id === null) continue;
+    if (r.id === null || runKeyOf(r.mine) !== runKeyOf(r.theirs)) continue;
     if (!bySource.has(r.source)) bySource.set(r.source, new Set());
     bySource.get(r.source)!.add(String(r.id));
   }

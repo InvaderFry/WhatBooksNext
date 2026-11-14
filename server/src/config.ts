@@ -318,6 +318,22 @@ export const MATCH_REVIEW = 0.6;
 /** Two candidates closer than this are a tie: neither is accepted (§11.2, §20). */
 export const MATCH_TIE_MARGIN = 0.05;
 
+/**
+ * A comic issue whose series volume ("Series v4 01") matches the run's number at the source.
+ * Enough to settle a tie between runs, but kept below MATCH_ACCEPT: sources and fans don't
+ * always number a title's runs alike, so the owner confirms it (a matching year still accepts).
+ */
+export const SERIES_VOLUME_AGREES = 0.89;
+
+/** At most this for a run the source numbers differently: below MATCH_REVIEW, never chosen. */
+export const SERIES_VOLUME_DIFFERS = 0.5;
+
+/**
+ * Extra Metron searches per issue, by run year or series volume, when the plain answer has no
+ * issue from that run. Each is asked once and cached; most issues need none.
+ */
+export const METRON_RUN_SEARCHES = 3;
+
 // ---- Estimates (§12.3, §20) ------------------------------------------------------------------
 
 /** Brysbaert (2019) meta-analysis of adult silent reading: ~260 wpm fiction, ~238 nonfiction. */

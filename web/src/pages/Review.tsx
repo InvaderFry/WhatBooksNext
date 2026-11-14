@@ -10,6 +10,7 @@ import {
   type LookupSourceChoice,
   type ReviewList,
   type ReviewRow,
+  type RunGroup,
 } from '../api.ts';
 import { Cover, Notice } from '../components.tsx';
 import { hrefFor, onLinkClick } from '../url.ts';
@@ -46,6 +47,7 @@ const KIND_TITLES: Record<ReviewRow['kind'], string> = {
 export function Review({ onChanged }: { onChanged: () => void }) {
   const [data, setData] = useState<ReviewList | null>(null);
   const [report, setReport] = useState<MatchReport | null>(null);
+  const [runs, setRuns] = useState<RunGroup[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
 
@@ -53,6 +55,7 @@ export function Review({ onChanged }: { onChanged: () => void }) {
     try {
       setData(await api.get('/api/review'));
       setReport(await api.get('/api/match-report'));
+      setRuns((await api.get<{ groups: RunGroup[] }>('/api/review/runs')).groups);
     } catch (e) {
       setError((e as Error).message);
     }
@@ -135,6 +138,7 @@ export function Review({ onChanged }: { onChanged: () => void }) {
             <BulkBar rows={data.rows} run={run} />
           </section>
         )}
+      {runs.length > 0 && <RunChoices groups={runs} run={run} />}
       {[1, 2, 3].map(
         (n) =>
           tier(n).length > 0 && (
@@ -317,6 +321,84 @@ function BulkBar({
         </div>
       )}
     </div>
+  );
+}
+
+const RUN_SOURCES: Record<string, string> = { metron: 'Metron', comicvine: 'ComicVine' };
+
+/**
+ * "Which run?": many comic runs share a name and issue numbers, so every issue of a series asks
+ * the same question. One answer here confirms the run for all the issues in that folder.
+ */
+function RunChoices({
+  groups,
+  run,
+}: {
+  groups: RunGroup[];
+  run: (fn: () => Promise<unknown>, message: string) => Promise<void>;
+}) {
+  const issues = groups.reduce((n, g) => n + g.itemIds.length, 0);
+  return (
+    <section className="section" aria-labelledby="runs-h">
+      <h2 id="runs-h">Which run is it?</h2>
+      <p className="muted">
+        {issues.toLocaleString()} comic issues in {groups.length.toLocaleString()} series can’t tell
+        which run they belong to. Choose the run once for each series; every issue in that folder
+        with a match from it is confirmed. You can still change any issue on its page.
+      </p>
+      <ul className="run-groups">
+        {groups.map((g) => (
+          <li key={g.key} className="card run-group">
+            <h3>
+              {g.series} <span className="muted small">· {g.itemIds.length} issues</span>
+            </h3>
+            <p className="small muted">Folder: {g.folder || '(top of the library folder)'}</p>
+            <ul className="run-options">
+              {g.runs.map((r) => {
+                const details = [
+                  r.startYear ? `began ${r.startYear}` : null,
+                  r.volume ? `volume ${r.volume}` : null,
+                  r.publisher ?? null,
+                  RUN_SOURCES[r.source],
+                ].filter(Boolean);
+                return (
+                  <li key={`${r.source}:${r.seriesId}`}>
+                    <button
+                      type="button"
+                      className="secondary small"
+                      onClick={() =>
+                        run(
+                          async () => {
+                            const answer = await api.post<{
+                              confirmed: number;
+                              settled: number;
+                              left: number;
+                            }>('/api/review/runs', {
+                              key: g.key,
+                              source: r.source,
+                              seriesId: r.seriesId,
+                            });
+                            return answer;
+                          },
+                          `${r.name} confirmed for ${r.issues} issue${r.issues === 1 ? '' : 's'}`,
+                        )
+                      }
+                    >
+                      This run for all
+                    </button>{' '}
+                    <strong>{r.name}</strong> <span className="small">({details.join(' · ')})</span>
+                    <span className="small muted">
+                      {' '}
+                      — matches {r.issues} of {g.itemIds.length} issues
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 

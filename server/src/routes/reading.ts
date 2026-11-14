@@ -1,3 +1,4 @@
+import { chooseRun, runGroups } from '../lib/runChoice.ts';
 import {
   identificationContext,
   parseIsbnInput,
@@ -799,6 +800,31 @@ export function registerReadingRoutes(app: Express, d: ReadingDeps): void {
       if (action !== 'accept' && action !== 'decline')
         throw new HttpError(400, 'action must be accept or decline.');
       return bulkReview(db, kind, action, req.body?.preview !== false);
+    }),
+  );
+  // "Which run?": a comic series' issues in one folder, answered together.
+  app.get(
+    '/api/review/runs',
+    route(() => ({ groups: runGroups(db) })),
+  );
+  app.post(
+    '/api/review/runs',
+    route(async (req) => {
+      if (d.scans.isRunning()) throw new HttpError(409, 'Wait for the scan to finish.');
+      const b = (req.body ?? {}) as Record<string, unknown>;
+      if (
+        typeof b.key !== 'string' ||
+        typeof b.source !== 'string' ||
+        typeof b.seriesId !== 'string'
+      )
+        throw new HttpError(400, 'key, source and seriesId are required.');
+      const { confirmed, leftIds } = chooseRun(db, b.key, b.source, b.seriesId);
+      // The rest follow from the run hint where the source's answers include the run (cache
+      // first). While a lookup run is going, it does this itself at the end.
+      const settled =
+        leftIds.length && !lookups.isRunning() ? await resolveRunTies(db, sources, leftIds) : 0;
+      d.matchChanged?.();
+      return { confirmed, settled, left: leftIds.length - settled };
     }),
   );
   app.get(
