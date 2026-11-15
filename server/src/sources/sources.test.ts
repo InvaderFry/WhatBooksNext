@@ -204,6 +204,104 @@ describe('the source client', () => {
     await expect(c.json('https://example.invalid/api', {}, null)).resolves.toEqual({ ok: 1 });
   });
 
+  /** A fetcher for pictures: each address answers as given; every call is recorded. */
+  const pictureHost = (answers: Record<string, () => Response>) => {
+    const calls: { url: string; init: RequestInit }[] = [];
+    const fetcher: Fetcher = async (url, init) => {
+      calls.push({ url, init });
+      const a = answers[url];
+      if (!a) return new Response('{"ok":1}', { status: 200 });
+      return a();
+    };
+    return { fetcher, calls };
+  };
+  const moved = (to: string) => () =>
+    new Response(null, { status: 302, headers: { location: to } });
+  const jpeg = () =>
+    new Response(new Uint8Array([0xff, 0xd8, 0xff]), { headers: { 'content-type': 'image/jpeg' } });
+
+  it('follows an Open Library cover’s redirects to archive.org, by hand', async () => {
+    const { fetcher, calls } = pictureHost({
+      'https://covers.openlibrary.org/b/id/90001-M.jpg': moved(
+        'https://archive.org/download/m_covers_0009/m_covers_0009_00.zip/0009000100-M.jpg',
+      ),
+      'https://archive.org/download/m_covers_0009/m_covers_0009_00.zip/0009000100-M.jpg': moved(
+        'https://ia800001.us.archive.org/view_archive.php?archive=/1/items/m_covers_0009&file=0009000100-M.jpg',
+      ),
+      'https://ia800001.us.archive.org/view_archive.php?archive=/1/items/m_covers_0009&file=0009000100-M.jpg':
+        jpeg,
+    });
+    const c = new SourceClient({ name: 'openlibrary', minIntervalMs: 0, fetcher, ...noSleep });
+    const bytes = await c.image('https://covers.openlibrary.org/b/id/90001-M.jpg', 1_000_000);
+    expect(bytes).toEqual(new Uint8Array([0xff, 0xd8, 0xff]));
+    expect(calls).toHaveLength(3);
+    expect(calls.every((x) => x.init.redirect === 'manual')).toBe(true);
+  });
+
+  it('refuses a cover redirect off its source’s image hosts, without pausing lookups', async () => {
+    const start = 'https://comicvine.gamespot.com/a/uploads/scale_medium/0/1/9001-cover.jpg';
+    for (const to of [
+      'https://evil.example/cover.jpg',
+      'http://comicvine.gamespot.com/a/cover.jpg',
+      'https://127.0.0.1/cover.jpg',
+      // archive.org is for Open Library's covers only.
+      'https://archive.org/download/x/cover.jpg',
+    ]) {
+      const { fetcher, calls } = pictureHost({ [start]: moved(to), [to]: jpeg });
+      const c = new SourceClient({ name: 'comicvine', minIntervalMs: 0, fetcher, ...noSleep });
+      for (let i = 0; i < CIRCUIT_FAILURES + 1; i++)
+        await expect(c.image(start, 1_000_000)).rejects.toThrow('redirected the picture');
+      expect(calls.map((x) => x.url)).not.toContain(to);
+      expect(c.status().state).not.toBe('paused');
+      await expect(c.json('https://example.invalid/api', {}, null)).resolves.toEqual({ ok: 1 });
+    }
+    const { fetcher } = pictureHost({
+      'https://covers.openlibrary.org/b/id/90002-M.jpg': moved(
+        'https://archive.org.evil.example/cover.jpg',
+      ),
+    });
+    const ol = new SourceClient({ name: 'openlibrary', minIntervalMs: 0, fetcher, ...noSleep });
+    await expect(
+      ol.image('https://covers.openlibrary.org/b/id/90002-M.jpg', 1_000_000),
+    ).rejects.toThrow('redirected the picture');
+  });
+
+  it('gives up on a cover after a few redirects', async () => {
+    const hop = (n: number) => `https://covers.openlibrary.org/b/id/9000${n}-M.jpg`;
+    const answers: Record<string, () => Response> = {};
+    for (let n = 0; n < 10; n++) answers[hop(n)] = moved(hop(n + 1));
+    const { fetcher, calls } = pictureHost(answers);
+    const c = new SourceClient({ name: 'openlibrary', minIntervalMs: 0, fetcher, ...noSleep });
+    await expect(c.image(hop(0), 1_000_000)).rejects.toThrow('too many');
+    expect(calls.length).toBeLessThanOrEqual(4);
+  });
+
+  it('refuses a picture whose stated size is over the limit before reading it', async () => {
+    let read = false;
+    const body = new ReadableStream<Uint8Array>(
+      {
+        pull(ctl) {
+          read = true;
+          ctl.enqueue(new Uint8Array(10));
+          ctl.close();
+        },
+      },
+      // Nothing is pulled until someone reads.
+      { highWaterMark: 0 },
+    );
+    const { fetcher } = pictureHost({
+      'https://covers.openlibrary.org/b/id/90003-M.jpg': () =>
+        new Response(body, {
+          headers: { 'content-type': 'image/jpeg', 'content-length': '9000000' },
+        }),
+    });
+    const c = new SourceClient({ name: 'openlibrary', minIntervalMs: 0, fetcher, ...noSleep });
+    await expect(
+      c.image('https://covers.openlibrary.org/b/id/90003-M.jpg', 1_000_000),
+    ).rejects.toThrow('larger than allowed');
+    expect(read).toBe(false);
+  });
+
   it('waits as long as a 429 asks, then tries once more', async () => {
     let n = 0;
     const waits: number[] = [];

@@ -20,7 +20,7 @@ const user = (title: string) =>
   db
     .prepare('SELECT u.* FROM user_item u JOIN items i ON i.id = u.item_id WHERE i.title = ?')
     .get(title) as Record<string, unknown>;
-const owned = async (title = 'The Copper Orchard', isbn = '9780000000017') =>
+const owned = async (title = 'The Copper Orchard', isbn = '9780000000019') =>
   (await post('/api/store/items', { title, author: 'Wenna Vale', isbn, store: 'kindle' })).body
     .itemId as string;
 
@@ -102,7 +102,7 @@ describe('Goodreads and StoryGraph history imports', () => {
 
   it('attaches corroborated ISBN matches to owned books and requires confirmation for title matches', async () => {
     const isbn = await owned();
-    const title = await owned('Paper Weather', '9780000000031');
+    const title = await owned('Paper Weather', '9780000000033');
     const p = (
       await post('/api/import/history/preview', { source: 'goodreads', text: fixture('goodreads') })
     ).body;
@@ -137,7 +137,7 @@ describe('Goodreads and StoryGraph history imports', () => {
       id,
     );
     const text =
-      'Title,Authors,ISBN/UID,Read Status\nAlternate Title,"Ada Fen, Pim Arkwright",9780000000017,read\nShared Almanac,"Ada Fen, Pim Arkwright",,read';
+      'Title,Authors,ISBN/UID,Read Status\nAlternate Title,"Ada Fen, Pim Arkwright",9780000000019,read\nShared Almanac,"Ada Fen, Pim Arkwright",,read';
     const p = (await post('/api/import/history/preview', { source: 'storygraph', text })).body;
     expect(p.rows[0]).toMatchObject({ outcome: 'isbn', itemId: id });
     await post('/api/import/history', { source: 'storygraph', text });
@@ -204,7 +204,7 @@ describe('Goodreads and StoryGraph history imports', () => {
   });
 
   it('skips possible matches unless confirmed instead of creating another copy', async () => {
-    const id = await owned('Paper Weather', '9780000000031');
+    const id = await owned('Paper Weather', '9780000000033');
     db.prepare('UPDATE items SET creators = ? WHERE id = ?').run(
       JSON.stringify([{ name: 'Pim Arkwright' }]),
       id,
@@ -339,6 +339,20 @@ describe('Goodreads and StoryGraph history imports', () => {
       finished_precision: 'unknown',
     });
     expect(user('Odd Weather')).toMatchObject({ rating: 6, finished_on: '2023-02-28' });
+  });
+
+  it('imports a row whose ISBN has a wrong check digit without the ISBN, and says so', async () => {
+    const text =
+      'Title,Author,ISBN13,Exclusive Shelf,Date Read\nHollow Weather,Ada Fen,="9780306406158",read,2023/02/28';
+    const p = (await post('/api/import/history/preview', { source: 'goodreads', text })).body;
+    expect(p.problems).toContain(
+      'Row 2: ISBN “9780306406158” isn’t a valid ISBN (its check digit is wrong), left out.',
+    );
+    await post('/api/import/history', { source: 'goodreads', text, keepUnmatched: true });
+    expect(user('Hollow Weather')).toMatchObject({ progress: 'finished' });
+    expect(
+      db.prepare("SELECT identifiers FROM items WHERE title = 'Hollow Weather'").pluck().get(),
+    ).toBe('{}');
   });
 
   it('keeps approximate dates and never substitutes the upload date', async () => {

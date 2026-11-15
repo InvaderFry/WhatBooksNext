@@ -46,7 +46,7 @@ beforeEach(async () => {
     'Other/salt-and-signal.epub': makeEpub({
       title: 'Salt and Signal',
       creators: ['Mabry Quell'],
-      identifiers: ['9780000000024'],
+      identifiers: ['9780000000026'],
       chapters: [900],
       seed: 2,
     }),
@@ -69,7 +69,7 @@ beforeEach(async () => {
       authors: ['Mabry Quell'],
       path: 'Mabry Quell/Salt and Signal (2)',
       formats: [{ format: 'EPUB', name: 'Salt and Signal - Mabry Quell' }],
-      isbn: '978-0-00-000002-4',
+      isbn: '978-0-00-000002-6',
       rating: 0,
       read: false,
     },

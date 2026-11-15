@@ -121,6 +121,9 @@ the letter back at the end.
 22. On a book you're reading, try to set its **Started** date to next year. Is it refused with
     "The start date is in the future"? Your current dates on other books are left as they are.
 
+23. Open a store book (one without a file) that showed a cover before you updated. Does it
+    still have one? And after the next lookups, do newly added store books get covers as before?
+
 ## You can skip these
 
 - **iCloud or OneDrive downloads:** you have neither on the PC, so there's nothing to test.
@@ -130,6 +133,6 @@ the letter back at the end.
 ## What to send back
 
 - Part 1: your yes/no for each of the 5 situations, plus anything you had to correct.
-- Part 2: worked / didn't work / skipped for checks 1–22, and what happened for any that didn't
+- Part 2: worked / didn't work / skipped for checks 1–23, and what happened for any that didn't
   work.
 - **Settings → Diagnostics → Copy report** (it leaves out folder names unless you tick the box).

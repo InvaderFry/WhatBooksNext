@@ -401,6 +401,27 @@ export function AddFolderForm({
   );
 }
 
+/**
+ * What a folder's scan couldn't cover, as counts (never folder names): folders that couldn't be
+ * listed, shortcuts and links skipped (§9.3), and folders nested too deeply to scan.
+ */
+function skippedText(f: ScanStatus['folders'][number]): string {
+  const n = (count: number, one: string, many: string) =>
+    `${count.toLocaleString()} ${count === 1 ? one : many}`;
+  return [
+    f.dirErrors > 0 && n(f.dirErrors, 'folder couldn’t be read', 'folders couldn’t be read'),
+    f.linksSkipped > 0 && n(f.linksSkipped, 'shortcut skipped', 'shortcuts skipped'),
+    (f.dirsTooDeep ?? 0) > 0 &&
+      n(
+        f.dirsTooDeep!,
+        'folder too deeply nested, not scanned',
+        'folders too deeply nested, not scanned',
+      ),
+  ]
+    .filter(Boolean)
+    .join(' · ');
+}
+
 function LastScan({ scan }: { scan: ScanStatus }) {
   const statusText: Record<string, string> = {
     completed: 'Complete',
@@ -454,7 +475,10 @@ function LastScan({ scan }: { scan: ScanStatus }) {
           {scan.folders.map((f) => (
             <tr key={f.folderId}>
               <td>{f.displayPath}</td>
-              <td>{statusText[f.status] ?? f.status}</td>
+              <td>
+                {statusText[f.status] ?? f.status}
+                {skippedText(f) && <div className="small muted">{skippedText(f)}</div>}
+              </td>
               <td>{f.filesSeen.toLocaleString()}</td>
               <td>{f.newFiles}</td>
               <td>{f.missing}</td>

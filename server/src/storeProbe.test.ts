@@ -17,7 +17,7 @@ const SECRETS = [
   'INVENTED0001',
   'inv3nted-vol-0001',
   'someone@example.invalid',
-  '9780000000017',
+  '9780000000019',
 ];
 
 /** An invented Google-style batch answer: positional arrays, with JSON inside a string. */
@@ -48,7 +48,7 @@ describe('the look-around script’s privacy rules', () => {
     expect(describeString('PURCHASE_TYPE_SAMPLE', OWN)).toBe('"PURCHASE_TYPE_SAMPLE"');
     expect(describeString('The Ember Orchard', OWN)).toBe('text(10–50)');
     expect(describeString('INVENTED0001', OWN)).toBe('id-like(12)');
-    expect(describeString('9780000000017', OWN)).toBe('digits(13)');
+    expect(describeString('9780000000019', OWN)).toBe('digits(13)');
     expect(describeString('someone@example.invalid', OWN)).toBe('text(10–50)');
     expect(describeString('2026-11-11T12:00:00Z', OWN)).toBe('date text');
   });
@@ -102,7 +102,7 @@ describe('the look-around script’s privacy rules', () => {
     p.addEmbedded('window.__NUXT__', {
       user: { email: 'someone@example.invalid' },
       ['someone@example.invalid']: { name: 'Nell Varga' },
-      library: [{ title: 'The Ember Orchard', isbn: '9780000000017' }],
+      library: [{ title: 'The Ember Orchard', isbn: '9780000000019' }],
     });
     const text = p.report({
       page: 'https://play.google.com/books?id=INVENTED0001',

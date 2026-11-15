@@ -28,7 +28,7 @@
           "chapter": "1",
           "chapter_type": "volume",
           "title": "Volume 1",
-          "isbn": "9780000000024",
+          "isbn": "9780000000026",
           "release_type_name": "Volume",
           "read_url": "https://globalcomix.com/read/inv-9200001/starfall-academy-volume-1",
           "comic_type": { "entity_type": "ComicType", "id": 1, "name": "Comic" },

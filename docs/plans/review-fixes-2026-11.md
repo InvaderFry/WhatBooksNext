@@ -120,6 +120,10 @@ Small, server-only.
 
 ## Stage 3: Guard rails
 
+**Done** (2026-11-15). Notes in `docs/milestones/M6.md`. Two owner answers changed the plan:
+Open Library cover redirects may go to archive.org (3.2), and depth skips show in Settings → Last
+scan (3.4).
+
 - **3.1 Match report in CI.** `CLAUDE.md` requires 0 wrong high-confidence matches from
   `npm run report:matches`, and nothing enforces it. Add a test that runs the same report over
   `fixtures/sources/` and fails on any. First read `scripts/reportMatches.ts` to see how it

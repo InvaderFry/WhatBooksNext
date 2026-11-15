@@ -609,7 +609,7 @@ describe('reading GlobalComix purchases', () => {
       acquisition: { type: 'purchase', evidence: 'GlobalComix digital purchase' },
       series: 'Starfall Academy',
       seriesIndex: '1',
-      isbn: '9780000000024',
+      isbn: '9780000000026',
       kind: 'comic',
       acquiredAt: { value: '2025-03-04', precision: 'day' },
       readingStatus: 'finished',

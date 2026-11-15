@@ -1,6 +1,13 @@
-import { CIRCUIT_FAILURES, CIRCUIT_PAUSE_MS, SOURCE_TIMEOUT_MS, USER_AGENT } from '../config.ts';
+import {
+  CIRCUIT_FAILURES,
+  CIRCUIT_PAUSE_MS,
+  COVER_MAX_REDIRECTS,
+  SOURCE_TIMEOUT_MS,
+  USER_AGENT,
+} from '../config.ts';
 import type { DB } from '../db/database.ts';
 import { nowIso } from '../util.ts';
+import { coverRedirectUrl } from './covers.ts';
 import { SourceError, type Fetcher, type SourceName } from './types.ts';
 
 /**
@@ -163,9 +170,37 @@ export class SourceClient {
    * Null when the source has no such image (404).
    */
   async image(url: string, maxBytes: number): Promise<Uint8Array | null> {
-    const run = this.queue.then(() => this.request(url, {}, false, { image: maxBytes }));
+    const run = this.queue.then(() => this.followPicture(url, maxBytes));
     this.queue = run.catch(() => undefined);
-    return (await run) as Uint8Array | null;
+    return await run;
+  }
+
+  /**
+   * Redirects are followed by hand, each one checked against the source's image hosts, so a
+   * picture can never lead the app to another address (a local one, say). A refused redirect
+   * is a picture that can't be had: it never counts toward the pause after failures.
+   */
+  private async followPicture(url: string, maxBytes: number): Promise<Uint8Array | null> {
+    let at = url;
+    for (let hop = 0; ; hop++) {
+      const got = await this.request(at, {}, false, { image: maxBytes });
+      if (!(got instanceof Redirect)) return got as Uint8Array | null;
+      if (hop >= COVER_MAX_REDIRECTS)
+        throw new SourceError(this.name, 'The picture was redirected too many times.', false);
+      let next: string | undefined;
+      try {
+        next = coverRedirectUrl(this.name, new URL(got.location, at).href);
+      } catch {
+        next = undefined;
+      }
+      if (!next)
+        throw new SourceError(
+          this.name,
+          'The image host redirected the picture to an address that isn’t allowed.',
+          false,
+        );
+      at = next;
+    }
   }
 
   private async request(
@@ -209,6 +244,8 @@ export class SourceClient {
         },
         body: init.body !== undefined ? JSON.stringify(init.body) : undefined,
         signal: AbortSignal.timeout(SOURCE_TIMEOUT_MS),
+        // Pictures: redirects come back here to be checked (followPicture), never followed blind.
+        ...(as ? { redirect: 'manual' as const } : {}),
       });
     } catch (err) {
       const e = err as Error;
@@ -261,6 +298,13 @@ export class SourceClient {
         ),
       );
     }
+    if (as && [301, 302, 303, 307, 308].includes(res.status)) {
+      const location = res.headers.get('location');
+      await res.body?.cancel().catch(() => undefined);
+      if (!location)
+        throw fail(new SourceError(this.name, 'The picture was redirected nowhere.', false));
+      return new Redirect(location);
+    }
     if (as && res.status === 404) {
       // No such cover: an answer, not a failure.
       this.failures = 0;
@@ -282,6 +326,11 @@ export class SourceClient {
         throw fail(
           new SourceError(this.name, 'The source sent something that isn’t a picture.', false),
         );
+      // A stated size over the limit is refused before the picture is read.
+      if (Number(res.headers.get('content-length') ?? 0) > as.image) {
+        await res.body?.cancel().catch(() => undefined);
+        throw fail(new SourceError(this.name, 'The picture is larger than allowed.', false));
+      }
       const buf = new Uint8Array(await res.arrayBuffer());
       if (buf.byteLength > as.image)
         throw fail(new SourceError(this.name, 'The picture is larger than allowed.', false));
@@ -330,4 +379,12 @@ function retryAfter(h: Headers, now: number): number | null {
     if (ms > 0 && ms < 3_600_000) return ms;
   }
   return null;
+}
+
+/** A picture's answer that points elsewhere; `followPicture` decides whether to go there. */
+class Redirect {
+  readonly location: string;
+  constructor(location: string) {
+    this.location = location;
+  }
 }

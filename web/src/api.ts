@@ -351,6 +351,8 @@ export interface FolderScan {
   dirsListed: number;
   dirErrors: number;
   linksSkipped: number;
+  /** Missing from scans made before it was counted. */
+  dirsTooDeep?: number;
   filesSeen: number;
   newFiles: number;
   missing: number;

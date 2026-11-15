@@ -232,6 +232,7 @@ function emptySummary(folderId: string): FolderScanSummary {
     dirsListed: 0,
     dirErrors: 0,
     linksSkipped: 0,
+    dirsTooDeep: 0,
     filesSeen: 0,
     newFiles: 0,
     missing: 0,

@@ -15,6 +15,7 @@ import {
   isbnIndex,
   itemsWithTitle,
   linkWouldFill,
+  isbnProblem,
   normIsbn,
   ownerChanges,
   setLocationLink,
@@ -295,7 +296,7 @@ function readRecord(
     unit,
     series: str(r.series, 300),
     seriesIndex,
-    isbn: normIsbn(str(r.isbn, 40)),
+    isbn: isbnOrProblem(str(r.isbn, 40), problems, where),
     acquisition,
     evidence: str(acq.evidence, 200) ?? '',
     acquiredAt,
@@ -742,4 +743,11 @@ export function lastStoreImports(db: DB): {
     reason: r.completion_reason,
     counts: parseJson<Record<string, unknown>>(r.counts, {}),
   }));
+}
+
+/** The record's ISBN, or none plus a problem line when it isn't a valid one. */
+function isbnOrProblem(raw: string | null, problems: string[], where: string): string | null {
+  const bad = isbnProblem(raw);
+  if (bad) problems.push(`${where}: ${bad}`);
+  return normIsbn(raw);
 }

@@ -26,6 +26,8 @@ export interface FolderScanSummary {
   dirsListed: number;
   dirErrors: number;
   linksSkipped: number;
+  /** Folders nested past MAX_SCAN_DEPTH, so not scanned. A count only, never their names. */
+  dirsTooDeep: number;
   filesSeen: number;
   newFiles: number;
   missing: number;
@@ -88,6 +90,7 @@ export async function lightScanFolder(
     dirsListed: 0,
     dirErrors: 0,
     linksSkipped: 0,
+    dirsTooDeep: 0,
     filesSeen: 0,
     newFiles: 0,
     missing: 0,
@@ -134,7 +137,10 @@ export async function lightScanFolder(
           summary.linksSkipped++;
           continue;
         }
-        if (depth + 1 > MAX_SCAN_DEPTH) continue;
+        if (depth + 1 > MAX_SCAN_DEPTH) {
+          summary.dirsTooDeep++;
+          continue;
+        }
         stack.push({ abs: path.join(abs, e.name), rel: childRel, depth: depth + 1 });
         continue;
       }

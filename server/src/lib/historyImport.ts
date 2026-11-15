@@ -7,6 +7,7 @@ import { applyUserPatch, isFutureDate, type UserPatch } from './progress.ts';
 import {
   isbnIndex,
   itemsWithTitle,
+  isbnProblem,
   normIsbn,
   parseCsv,
   progressFrom,
@@ -107,7 +108,10 @@ function readRows(text: string, source: HistorySource) {
     const isbnText = (
       source === 'goodreads' ? get('isbn13') || get('isbn') : get('isbn/uid')
     ).replace(/^="(.*)"$/, '$1');
-    const isbn = /^[\dXx\s-]+$/.test(isbnText) ? normIsbn(isbnText) : null;
+    const looksLikeIsbn = /^[\dXx\s-]+$/.test(isbnText);
+    const isbn = looksLikeIsbn ? normIsbn(isbnText) : null;
+    const badIsbn = looksLikeIsbn ? isbnProblem(isbnText) : null;
+    if (badIsbn) problems.push(`Row ${line}: ${badIsbn}`);
     const key = rowKey({ title, author, isbn, store: 'other' });
     if (seen.has(key)) {
       problems.push(`Row ${line}: same book as an earlier row, skipped.`);

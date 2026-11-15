@@ -43,7 +43,7 @@ beforeEach(async () => {
     'ember.epub': makeEpub({
       title: 'The Ember Orchard',
       creators: ['Nell Varga'],
-      identifiers: ['9780000000017'],
+      identifiers: ['9780000000019'],
       chapters: [900],
     }),
   });
@@ -243,7 +243,7 @@ describe('the store CSV url column', () => {
   });
 
   it('adds a link to an existing book matched by ISBN', async () => {
-    const text = `title,store,isbn,url\nEmber Orchard,Kindle,9780000000017,${link}\n`;
+    const text = `title,store,isbn,url\nEmber Orchard,Kindle,9780000000019,${link}\n`;
     expect((await api.post('/api/import/csv', { text })).body).toMatchObject({
       attached: 1,
       links: 1,
