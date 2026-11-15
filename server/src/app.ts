@@ -417,6 +417,7 @@ export function createApp(ctx: AppContext) {
         sort: str(req.query.sort),
         dir: req.query.dir === 'desc' ? 'desc' : 'asc',
         offset: int(req.query.offset),
+        after: str(req.query.after),
         limit: int(req.query.limit),
       };
       // The rank data carries the chosen online rating; the Library shows and sorts by it.

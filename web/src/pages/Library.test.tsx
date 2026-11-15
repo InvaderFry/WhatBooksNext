@@ -37,13 +37,16 @@ const book = (n: number): ItemSummary =>
     availability: { state: 'present', readyToRead: true, labels: [] },
   }) as unknown as ItemSummary;
 
-const LIBRARY = Array.from({ length: 1150 }, (_, i) => book(i + 1));
+/** The library in sorted order; a test may add or remove books while the page is open. */
+let LIBRARY: ItemSummary[];
 
 /** Answers like the real server, including its cap of 1,000 books per answer. */
 let failItems: boolean;
 let failShortlist: boolean;
 /** While set, answers for "more" pages wait for it. */
 let holdMore: Promise<void> | null;
+/** While set, first pages for this search wait for it. */
+let holdFirst: { q: string; until: Promise<void> } | null;
 let requests: string[];
 
 const json = (status: number, body: unknown) =>
@@ -60,14 +63,32 @@ async function fakeFetch(input: RequestInfo | URL): Promise<Response> {
     return failShortlist ? json(500, { error: 'Test failure.' }) : json(200, { ok: true });
   if (url.pathname === '/api/items') {
     if (failItems) return json(500, { error: 'Test failure.' });
+    const after = url.searchParams.get('after');
     const offset = Number(url.searchParams.get('offset') ?? 0);
-    if (offset > 0 && holdMore) await holdMore;
-    const limit = Math.min(Number(url.searchParams.get('limit') ?? 100), 1000);
     const q = (url.searchParams.get('q') ?? '').toLowerCase();
+    if ((after || offset > 0) && holdMore) await holdMore;
+    if (!after && offset === 0 && holdFirst && holdFirst.q === q) await holdFirst.until;
+    const limit = Math.min(Number(url.searchParams.get('limit') ?? 100), 1000);
     const list = LIBRARY.filter((b) => b.title.toLowerCase().includes(q));
+    // Like queryLibrary: "after" continues from that book wherever it now sorts.
+    let start = offset;
+    if (after) {
+      const at = list.findIndex((b) => b.id === after);
+      if (at < 0)
+        return json(200, {
+          total: list.length,
+          items: [],
+          hasMore: false,
+          anchorMissing: true,
+          storeCounts: {},
+        });
+      start = at + 1;
+    }
+    const items = list.slice(start, start + limit);
     return json(200, {
       total: list.length,
-      items: list.slice(offset, offset + limit),
+      items,
+      hasMore: start + items.length < list.length,
       storeCounts: {},
     });
   }
@@ -75,13 +96,16 @@ async function fakeFetch(input: RequestInfo | URL): Promise<Response> {
 }
 
 const rows = () => document.querySelectorAll('.item-row').length;
-const showMore = () => screen.queryByRole('button', { name: /^Show \d+ more$/ });
+const showMore = () => screen.queryByRole('button', { name: /^Show (\d+ )?more$/ });
+const titles = () => [...document.querySelectorAll('.item-title')].map((a) => a.textContent!);
 
 beforeEach(() => {
   failItems = false;
   failShortlist = false;
   holdMore = null;
+  holdFirst = null;
   requests = [];
+  LIBRARY = Array.from({ length: 1150 }, (_, i) => book(i + 1));
   window.history.replaceState(null, '', '/?view=library');
   vi.stubGlobal('fetch', vi.fn(fakeFetch));
 });
@@ -127,6 +151,65 @@ describe('the Library page', () => {
         a.textContent!.startsWith('Harbor'),
       ),
     ).toBe(true);
+  });
+
+  it('keeps paging when a book is added above the loaded ones, and offers to reload', async () => {
+    LIBRARY = LIBRARY.slice(0, 300);
+    render(<Library state={STATE} onScanStarted={() => {}} />);
+    await waitFor(() => expect(rows()).toBe(100));
+    // A scan finds a new book that sorts first.
+    LIBRARY.unshift({ ...book(9999), id: 'new-arrival', title: 'Aardvark Atlas' });
+    for (let i = 0; i < 6 && showMore(); i++) {
+      fireEvent.click(showMore()!);
+      await waitFor(() => expect(screen.queryByRole('button', { name: 'Loading…' })).toBeNull());
+    }
+    expect(showMore()).toBeNull();
+    // Every book that was there is listed once, in order: nothing skipped or repeated.
+    expect(titles()).toEqual(LIBRARY.slice(1).map((b) => b.title));
+    fireEvent.click(screen.getByRole('button', { name: 'Reload the list' }));
+    await waitFor(() => expect(titles()[0]).toBe('Aardvark Atlas'));
+    expect(rows()).toBe(100);
+  });
+
+  it('starts again from the top when the last book shown has gone', async () => {
+    LIBRARY = LIBRARY.slice(0, 300);
+    render(<Library state={STATE} onScanStarted={() => {}} />);
+    await waitFor(() => expect(rows()).toBe(100));
+    LIBRARY.splice(99, 1);
+    fireEvent.click(showMore()!);
+    await waitFor(() => expect(screen.getByText(/starts again from the top/)).toBeTruthy());
+    expect(titles()).toEqual(LIBRARY.slice(0, 100).map((b) => b.title));
+  });
+
+  it('doesn’t page the new search with the old list while its first page loads', async () => {
+    render(<Library state={STATE} onScanStarted={() => {}} />);
+    await waitFor(() => expect(rows()).toBe(100));
+    fireEvent.click(showMore()!);
+    await waitFor(() => expect(rows()).toBe(200));
+    fireEvent.click(showMore()!);
+    await waitFor(() => expect(rows()).toBe(300));
+    let releaseFirst!: () => void;
+    let releaseMore!: () => void;
+    holdFirst = { q: 'harbor', until: new Promise<void>((r) => (releaseFirst = r)) };
+    holdMore = new Promise<void>((r) => (releaseMore = r));
+    act(() => updateParams({ q: 'harbor' }));
+    // The old list is still showing; paging it now would mix the two lists.
+    if (showMore()) fireEvent.click(showMore()!);
+    await new Promise((r) => setTimeout(r, 20));
+    // The new first page answers first, then the stray "more" answer.
+    await act(async () => {
+      releaseFirst();
+      await holdFirst!.until;
+    });
+    await waitFor(() => expect(screen.getByText('575 items match')).toBeTruthy());
+    await act(async () => {
+      releaseMore();
+      await holdMore;
+    });
+    await new Promise((r) => setTimeout(r, 20));
+    const harbor = LIBRARY.filter((b) => b.title.startsWith('Harbor'));
+    expect(titles()).toEqual(harbor.slice(0, rows()).map((b) => b.title));
+    expect(rows()).toBe(100);
   });
 
   it('clears an error once a later load works', async () => {

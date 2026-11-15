@@ -195,4 +195,31 @@ describe('Library paging past 1,000 books', () => {
     expect(last.body.items).toHaveLength(50);
     expect(last.body.items.at(-1).title).toBe('Ledger 1150');
   });
+
+  it('continues after a given book, however many were added before it', async () => {
+    for (let i = 1; i <= 250; i++)
+      createStoreItem(db, {
+        title: `Ledger ${String(i).padStart(4, '0')}`,
+        author: null,
+        store: 'kindle',
+      });
+    const first = (await api.get('/api/items?limit=100')).body;
+    expect(first.hasMore).toBe(true);
+    const lastShown = first.items.at(-1).id as string;
+    // A new book sorting first arrives between the two pages.
+    createStoreItem(db, { title: 'Aardvark Atlas', author: null, store: 'kindle' });
+    const next = (await api.get(`/api/items?after=${lastShown}&limit=100`)).body;
+    expect(next.total).toBe(251);
+    expect(next.items[0].title).toBe('Ledger 0101');
+    expect(next.items).toHaveLength(100);
+    const end = (await api.get(`/api/items?after=${next.items.at(-1).id}&limit=100`)).body;
+    expect(end.items.map((i: { title: string }) => i.title).at(-1)).toBe('Ledger 0250');
+    expect(end.hasMore).toBe(false);
+  });
+
+  it('says so when the book to continue after is no longer in the list', async () => {
+    createStoreItem(db, { title: 'Ledger 0001', author: null, store: 'kindle' });
+    const r = (await api.get('/api/items?after=gone-book&limit=100')).body;
+    expect(r).toMatchObject({ items: [], hasMore: false, anchorMissing: true, total: 1 });
+  });
 });
