@@ -59,7 +59,8 @@ owner has already made. Don't reopen those decisions. Then read the latest
   an owner correction): the fetcher skips it and tries the book's other confident matches.
 - **Review fixes** (`docs/plans/review-fixes-2026-11.md`): Stage 1 built (Library paging by
   offset, nested/data folder checks in `checkFolderPath`, impossible reading dates refused in
-  `applyUserPatch`, Library page errors). Stages 2 to 4 next; Stage 5 only if asked.
+  `applyUserPatch`, Library page errors). Stage 2 built (plain 400s for odd sorts and backup
+  dates; shutdown runs once). Stages 3 and 4 next; Stage 5 only if asked.
 - Automatic refresh: due rules are pure in `lib/refresh.ts`; `identify/refresher.ts` runs batches
   through `lookUpItem` (never a second lookup engine). `lookup_state.accepted_source_id` remembers
   the app's own accepted match: lookups keep it (a rival goes to Needs review as "Check this

@@ -105,6 +105,8 @@ answered, but the summary must say which default was used.
 
 ## Stage 2: Plain answers instead of crashes
 
+**Done** (2026-11-15). Notes in `docs/milestones/M6.md`.
+
 Small, server-only.
 
 - **2.1** `GET /api/items?sort=__proto__` answers 500. In `queryLibrary` look the sort up with

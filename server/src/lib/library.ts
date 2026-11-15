@@ -633,7 +633,8 @@ export function queryLibrary(
       a.community!.score - b.community!.score ||
       (a.community!.votes ?? -1) - (b.community!.votes ?? -1),
   };
-  const by = cmp[sort];
+  // Own keys only: "__proto__" or "toString" must be an unknown sort, not a built-in.
+  const by = Object.hasOwn(cmp, sort) ? cmp[sort] : undefined;
   if (!by) throw new HttpError(400, `Unknown sort "${sort}".`);
   list = [...list].sort((a, b) => {
     if (sort === 'community' && !a.community !== !b.community) return a.community ? -1 : 1;

@@ -88,10 +88,18 @@ async function main() {
     fail(err.message);
   });
 
+  // Ctrl+C twice (or Ctrl+C then a stop signal) must not close everything twice.
+  let stopping = false;
   const shutdown = async () => {
-    server.close();
-    await close();
-    db.close();
+    if (stopping) return;
+    stopping = true;
+    try {
+      server.close();
+      await close();
+      db.close();
+    } catch (err) {
+      console.error('Something went wrong while closing; stopping anyway.', err);
+    }
     process.exit(0);
   };
   process.on('SIGINT', shutdown);

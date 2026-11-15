@@ -410,6 +410,24 @@ describe('backup and restore (§16)', () => {
     expect(r.body.error).toMatch(/unknown column/);
   });
 
+  it('refuses a backup whose date isn’t a date, with the usual plain answer', async () => {
+    for (const createdAt of [{ when: 'yesterday' }, 12, undefined, 'not a date']) {
+      const backup = (await api.get('/api/backup')).body;
+      backup.createdAt = createdAt;
+      const r = await api.post('/api/restore/preview', { backup });
+      expect(r.status).toBe(400);
+      expect(r.body.error).toBe("That file isn't a whatBooksNext backup.");
+    }
+  });
+
+  it('answers an unknown Library sort plainly, even one named like a built-in', async () => {
+    for (const sort of ['__proto__', 'constructor', 'toString', 'shelf']) {
+      const r = await api.get(`/api/items?sort=${sort}`);
+      expect(r.status).toBe(400);
+      expect(r.body.error).toBe(`Unknown sort "${sort}".`);
+    }
+  });
+
   it('takes a pre-restore snapshot first', async () => {
     const backup = (await api.get('/api/backup')).body;
     const r = await api.post('/api/restore', { backup, confirm: true });
