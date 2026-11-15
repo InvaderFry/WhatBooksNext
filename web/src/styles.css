@@ -1885,3 +1885,22 @@ kbd {
   margin-block: 0.45rem;
   overflow-wrap: anywhere;
 }
+
+/* Search online sources on a book's page: each box with its label above it. */
+.online-search {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.6rem;
+  margin-block: 0.5rem;
+}
+.search-field {
+  display: grid;
+  gap: 0.3rem;
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+.search-field input {
+  width: 100%;
+  min-width: 0;
+}
