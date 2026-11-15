@@ -282,7 +282,7 @@ export function OnlineCard({ itemId, onChanged }: { itemId: string; onChanged: (
       />
       {query !== null && (
         <form
-          className="inline-form"
+          className="online-search"
           onSubmit={(e) => {
             e.preventDefault();
             void (async () => {
@@ -303,24 +303,36 @@ export function OnlineCard({ itemId, onChanged }: { itemId: string; onChanged: (
             })();
           }}
         >
-          <label className="visually-hidden" htmlFor="online-q">
-            Search online sources
-          </label>
-          <input id="online-q" value={query} onChange={(e) => setQuery(e.target.value)} />
-          <label htmlFor="online-author">Author</label>
-          <input
-            id="online-author"
-            value={author}
-            maxLength={100}
-            onChange={(e) => setAuthor(e.target.value)}
-          />
-          <label htmlFor="online-isbn">ISBN</label>
-          <input
-            id="online-isbn"
-            value={isbn}
-            maxLength={30}
-            onChange={(e) => setIsbn(e.target.value)}
-          />
+          {/* Each box with its own label above it: side by side, labels between boxes read as
+            belonging to either neighbour. */}
+          <div className="search-field">
+            <label htmlFor="online-q">
+              Title <span className="muted small">(for a comic: series and number)</span>
+            </label>
+            <input id="online-q" value={query} onChange={(e) => setQuery(e.target.value)} />
+          </div>
+          <div className="search-field">
+            <label htmlFor="online-author">
+              Author <span className="muted small">(optional)</span>
+            </label>
+            <input
+              id="online-author"
+              value={author}
+              maxLength={100}
+              onChange={(e) => setAuthor(e.target.value)}
+            />
+          </div>
+          <div className="search-field">
+            <label htmlFor="online-isbn">
+              ISBN <span className="muted small">(optional; searched alone)</span>
+            </label>
+            <input
+              id="online-isbn"
+              value={isbn}
+              maxLength={30}
+              onChange={(e) => setIsbn(e.target.value)}
+            />
+          </div>
           <button type="submit" className="small" disabled={busy}>
             Search
           </button>

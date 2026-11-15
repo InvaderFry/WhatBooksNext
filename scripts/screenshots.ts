@@ -261,6 +261,19 @@ try {
       },
     ],
     [
+      'item-search',
+      '/?view=library&q=glass',
+      async (p) => {
+        await p
+          .getByRole('link', { name: /^Glass Harbor$/ })
+          .first()
+          .click();
+        await p.getByRole('button', { name: 'Search for the right match…' }).click();
+        await p.getByLabel('Title (for a comic: series and number)').fill('Glass Harbor');
+        await p.getByLabel('Author (optional)').waitFor();
+      },
+    ],
+    [
       'item-detail-disagreement',
       '/?view=library&q=glass',
       async (p) => {

@@ -344,9 +344,10 @@ function RunChoices({
       <p className="muted">
         {issues.toLocaleString()} comic issues in {groups.length.toLocaleString()} series can’t tell
         which run they belong to. Each choice below is a series of that name with issues numbered
-        like yours. Compare its cover with your copy, or open it on the source’s site, then choose
-        the one you own: every issue in that folder with a match from it is confirmed. Not sure?
-        Leave it, and answer issue by issue further down. You can change any issue on its page.
+        like yours. Compare its cover with your copy (click one of your issue numbers to open that
+        issue and its file), or open it on the source’s site, then choose the one you own: every
+        issue in that folder with a match from it is confirmed. Not sure? Leave it, and answer issue
+        by issue further down. You can change any issue on its page.
       </p>
       <ul className="run-groups">
         {groups.map((g) => (
@@ -356,7 +357,19 @@ function RunChoices({
             </h3>
             <p className="small muted">
               Folder: {g.folder || '(top of the library folder)'} · Your issues:{' '}
-              {g.numbers.map((n) => `#${n}`).join(', ')}
+              {/* Each number opens that issue's page, to open the file and compare. */}
+              {g.itemIds.map((id, n) => (
+                <span key={id}>
+                  {n > 0 && ', '}
+                  <a
+                    href={hrefFor({ view: 'item', id })}
+                    onClick={onLinkClick({ view: 'item', id })}
+                    aria-label={`${g.series} #${g.numbers[n]}: open its page`}
+                  >
+                    #{g.numbers[n]}
+                  </a>
+                </span>
+              ))}
             </p>
             <ul className="run-options">
               {g.runs.map((r) => {
