@@ -146,6 +146,8 @@ scan (3.4).
 
 ## Stage 4: Tests for the web pages
 
+**Done** (2026-11-15). Notes in `docs/milestones/M6.md`.
+
 There are none; pages are checked only by screenshots.
 
 - Don't add a new test framework without asking. Vitest is already here. A DOM environment

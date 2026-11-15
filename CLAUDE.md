@@ -61,8 +61,8 @@ owner has already made. Don't reopen those decisions. Then read the latest
   offset, nested/data folder checks in `checkFolderPath`, impossible reading dates refused in
   `applyUserPatch`, Library page errors). Stage 2 built (plain 400s for odd sorts and backup
   dates; shutdown runs once). Stage 3 built (match report test, checked cover redirects incl.
-  archive.org for Open Library, ISBN check digits, depth-skip counts). Stage 4 next; Stage 5 only
-  if asked.
+  archive.org for Open Library, ISBN check digits, depth-skip counts). Stage 4 built (first page
+  tests). Stage 5 only if asked.
 - Automatic refresh: due rules are pure in `lib/refresh.ts`; `identify/refresher.ts` runs batches
   through `lookUpItem` (never a second lookup engine). `lookup_state.accepted_source_id` remembers
   the app's own accepted match: lookups keep it (a rival goes to Needs review as "Check this
@@ -108,7 +108,9 @@ owner has already made. Don't reopen those decisions. Then read the latest
 - `npm test`, `npm run typecheck`, `npm run lint` and `npm run format:check` must all pass. CI
   runs them on Ubuntu **and Windows**. `npm run build` builds the web UI.
 - Tests are sentences (`it("keeps a book's progress when its file moves")`). Route-level tests
-  run against in-memory SQLite (`server/src/testing/helpers.ts`).
+  run against in-memory SQLite (`server/src/testing/helpers.ts`). Page tests are
+  `web/src/**/*.test.tsx` with `// @vitest-environment jsdom` and Testing Library, against a
+  pretend `fetch` (see `web/src/pages/Library.test.tsx`).
 - **Check in a real browser:** `npm run screenshots` drives the demo library in Chromium (light
   and dark, desktop and phone). Look at the screenshots before calling UI work done.
 - Windows-specific code lives behind `server/src/platform/`: a long-lived PowerShell helper, a
