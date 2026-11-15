@@ -64,26 +64,87 @@ function isDirectory(p: string): boolean {
   }
 }
 
-export async function addFolder(
+/**
+ * How folder `a` sits against folder `b`: the same folder, inside it, containing it, or apart.
+ * Compared without regard to case (Windows paths) and on whole segments, so `E:\Books2` is not
+ * inside `E:\Books`.
+ */
+export function pathRelation(a: string, b: string): 'same' | 'inside' | 'contains' | null {
+  const key = (p: string) => {
+    const r = path.resolve(p).toLowerCase();
+    return r.endsWith(path.sep) ? r : r + path.sep;
+  };
+  const [ka, kb] = [key(a), key(b)];
+  if (ka === kb) return 'same';
+  if (ka.startsWith(kb)) return 'inside';
+  if (kb.startsWith(ka)) return 'contains';
+  return null;
+}
+
+/**
+ * The one check for a folder path the owner typed, for Add and for Reconnect: a full path that
+ * exists, not the app's data folder, and not the same as, inside or around another library
+ * folder (`exceptId` is the folder being reconnected). Returns the resolved path.
+ */
+export function checkFolderPath(
   db: DB,
-  platform: Platform,
-  input: { path: string; dataDir?: string },
-): Promise<FolderRow> {
-  const raw = (input.path ?? '').trim().replace(/^"(.*)"$/, '$1');
+  input: string,
+  opts: { dataDir?: string; exceptId?: string } = {},
+): string {
+  const raw = (input ?? '').trim().replace(/^"(.*)"$/, '$1');
   if (!raw) throw new HttpError(400, 'Enter a folder path.');
   if (!path.isAbsolute(raw)) throw new HttpError(400, 'Enter a full path, such as E:\\Books.');
   const abs = path.resolve(raw);
   if (!isDirectory(abs))
     throw new HttpError(400, "That folder can't be found. Is the drive connected?");
-  if (input.dataDir && (abs === input.dataDir || abs.startsWith(input.dataDir + path.sep))) {
-    throw new HttpError(400, "That's the app's own data folder.");
+  if (opts.dataDir) {
+    const rel = pathRelation(abs, opts.dataDir);
+    if (rel === 'same' || rel === 'inside')
+      throw new HttpError(400, "That's the app's own data folder.");
+    if (rel === 'contains')
+      throw new HttpError(400, `That folder holds the app's own data folder (${opts.dataDir}).`);
   }
-  const existing = db.prepare('SELECT * FROM folders').all() as FolderRow[];
+  const existing = db.prepare('SELECT id, display_path FROM folders').all() as {
+    id: string;
+    display_path: string;
+  }[];
   for (const f of existing) {
-    if (path.resolve(f.display_path).toLowerCase() === abs.toLowerCase()) {
-      throw new HttpError(409, 'That folder is already in the library.');
-    }
+    if (f.id === opts.exceptId) continue;
+    const rel = pathRelation(abs, f.display_path);
+    if (rel === 'same') throw new HttpError(409, 'That folder is already in the library.');
+    if (rel === 'inside')
+      throw new HttpError(
+        409,
+        `That folder is inside ${f.display_path}, which is already in the library, so its books are already listed.`,
+      );
+    if (rel === 'contains')
+      throw new HttpError(
+        409,
+        `That folder holds ${f.display_path}, which is already in the library. One library folder can't be inside another: its books would be listed twice.`,
+      );
   }
+  return abs;
+}
+
+/** Library folders that are inside another one: added before the check above existed (D4). */
+export function nestedFolders(db: DB): { inner: string; outer: string }[] {
+  const all = db
+    .prepare('SELECT display_path FROM folders ORDER BY display_path')
+    .pluck()
+    .all() as string[];
+  const out: { inner: string; outer: string }[] = [];
+  for (const inner of all)
+    for (const outer of all)
+      if (inner !== outer && pathRelation(inner, outer) === 'inside') out.push({ inner, outer });
+  return out;
+}
+
+export async function addFolder(
+  db: DB,
+  platform: Platform,
+  input: { path: string; dataDir?: string },
+): Promise<FolderRow> {
+  const abs = checkFolderPath(db, input.path, { dataDir: input.dataDir });
   const vol = await platform.describeVolume(abs);
   const now = nowIso();
   const row: FolderRow = {
@@ -120,12 +181,12 @@ export async function reconnectFolder(
   platform: Platform,
   folderId: string,
   newPath: string,
+  dataDir?: string,
 ): Promise<FolderRow> {
   const folder = db.prepare('SELECT * FROM folders WHERE id = ?').get(folderId) as
     FolderRow | undefined;
   if (!folder) throw new HttpError(404, 'No such folder.');
-  const abs = path.resolve(newPath.trim().replace(/^"(.*)"$/, '$1'));
-  if (!isDirectory(abs)) throw new HttpError(400, "That folder can't be found.");
+  const abs = checkFolderPath(db, newPath, { dataDir, exceptId: folderId });
   const vol = await platform.describeVolume(abs);
   db.prepare(
     `UPDATE folders SET display_path = ?, volume_id = ?, volume_serial = ?, volume_label = ?,

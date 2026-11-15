@@ -349,7 +349,13 @@ export function createApp(ctx: AppContext) {
     '/api/folders/:id/reconnect',
     route(async (req) => {
       if (scans.isRunning()) throw new HttpError(409, 'Wait for the scan to finish.');
-      await reconnectFolder(db, platform, String(req.params.id), String(req.body?.path ?? ''));
+      await reconnectFolder(
+        db,
+        platform,
+        String(req.params.id),
+        String(req.body?.path ?? ''),
+        ctx.dataDir ?? undefined,
+      );
       reach.invalidate();
       return { ok: true };
     }),

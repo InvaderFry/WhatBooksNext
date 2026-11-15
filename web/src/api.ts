@@ -302,6 +302,8 @@ export interface Health {
   notYetRead: number;
   notYetHashed: number;
   ignoredByType: Record<string, number>;
+  /** Library folders inside another library folder, added before that was refused. */
+  nestedFolders: { inner: string; outer: string }[];
 }
 
 export interface Reminder {

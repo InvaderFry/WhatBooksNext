@@ -142,6 +142,30 @@ describe('Calibre import (§14)', () => {
     expect(item.series).toMatchObject({ name: 'Lanterns of Ost', position: 2 });
   });
 
+  it('keeps a read date in the future unknown, says so, and imports the book', async () => {
+    fs.rmSync(path.join(library, 'metadata.db'));
+    makeCalibreDb(library, [
+      {
+        title: 'The Quiet Cartographer',
+        authors: ['Juno Tarrant'],
+        path: 'Juno Tarrant/The Quiet Cartographer (1)',
+        formats: [{ format: 'EPUB', name: 'The Quiet Cartographer - Juno Tarrant' }],
+        read: true,
+        readOn: '2999-01-02',
+      },
+    ]);
+    const p = (await api.post('/api/calibre/preview', { path: library, ...opts })).body;
+    expect(p.rows[0].applies).toEqual(['read (date 2999-01-02 is in the future, kept unknown)']);
+    const r = await api.post('/api/calibre/import', { path: library, ...opts });
+    expect(r.status).toBe(200);
+    const q = itemOf('The Quiet Cartographer - Juno Tarrant.epub');
+    expect((await api.get(`/api/items/${q}`)).body.user).toMatchObject({
+      progress: 'finished',
+      finishedOn: null,
+      finishedPrecision: 'unknown',
+    });
+  });
+
   it('brings no owner data when none is chosen', async () => {
     await api.post('/api/calibre/import', {
       path: library,

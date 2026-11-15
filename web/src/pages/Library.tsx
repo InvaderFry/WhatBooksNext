@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import {
   api,
   FORMAT_LABELS,
@@ -17,6 +17,7 @@ import {
   creatorsText,
   Formats,
   KindText,
+  LoadError,
   Notice,
 } from '../components.tsx';
 import { hrefFor, onLinkClick, updateParams, useParams } from '../url.ts';
@@ -24,6 +25,12 @@ import { AddFolderForm } from './Settings.tsx';
 import { AddStoreBook } from './StoreBooks.tsx';
 
 const PAGE = 100;
+
+interface ItemsPage {
+  total: number;
+  items: ItemSummary[];
+  storeCounts?: Record<string, number>;
+}
 
 const AVAILABILITY_OPTIONS: Record<string, string> = {
   present: 'On this PC',
@@ -45,9 +52,17 @@ export function Library({
   const [items, setItems] = useState<ItemSummary[] | null>(null);
   const [total, setTotal] = useState(0);
   const [storeCounts, setStoreCounts] = useState<Record<string, number>>({});
-  const [limit, setLimit] = useState(PAGE);
   const [folders, setFolders] = useState<Folder[]>([]);
-  const [error, setError] = useState<string | null>(null);
+  // The list couldn't load (with a Retry), and a smaller action that failed (shortlist, more books,
+  // the folder filter): each cleared by the next success.
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [folderError, setFolderError] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [reload, setReload] = useState(0);
+  // Each new filter, search or sort starts a new list. An answer for an older list, first page or
+  // later, is dropped rather than shown or appended.
+  const generation = useRef(0);
   const [search, setSearch] = useState(params.q ?? '');
   // On a phone the filters fold behind one button, so books start near the top (owner review).
   const narrow = useNarrow();
@@ -70,26 +85,64 @@ export function Library({
     }).filter((e): e is [string, string] => Boolean(e[1])),
   ).toString();
 
+  // The first page of a list. "Show more" asks for the next page by offset (the server caps one
+  // answer at 1,000 books, so a growing limit would stop there).
   useEffect(() => {
-    let stale = false;
+    const gen = ++generation.current;
+    setLoadingMore(false);
     api
-      .get<{ total: number; items: ItemSummary[]; storeCounts?: Record<string, number> }>(
-        `/api/items?${query}&limit=${limit}`,
-      )
+      .get<ItemsPage>(`/api/items?${query}&offset=0&limit=${PAGE}`)
       .then((r) => {
-        if (stale) return;
+        if (gen !== generation.current) return;
         setItems(r.items);
         setTotal(r.total);
         setStoreCounts(r.storeCounts ?? {});
+        setLoadError(null);
+        setActionError(null);
       })
-      .catch((e: Error) => setError(e.message));
-    return () => {
-      stale = true;
-    };
-  }, [query, limit]);
+      .catch((e: Error) => {
+        if (gen !== generation.current) return;
+        // The old list doesn't match the new filters, so it isn't left on show.
+        setItems(null);
+        setLoadError(e.message);
+      });
+  }, [query, reload]);
+
+  const showMore = () => {
+    if (!items || loadingMore) return;
+    const gen = generation.current;
+    setLoadingMore(true);
+    api
+      .get<ItemsPage>(`/api/items?${query}&offset=${items.length}&limit=${PAGE}`)
+      .then((r) => {
+        if (gen !== generation.current) return;
+        // Books added or removed meanwhile can shift a page; never list one twice.
+        setItems((list) => {
+          const have = new Set((list ?? []).map((i) => i.id));
+          return [...(list ?? []), ...r.items.filter((i) => !have.has(i.id))];
+        });
+        setTotal(r.total);
+        setStoreCounts(r.storeCounts ?? {});
+        setActionError(null);
+      })
+      .catch((e: Error) => {
+        if (gen === generation.current) setActionError(`Couldn’t load more books. ${e.message}`);
+      })
+      .finally(() => {
+        if (gen === generation.current) setLoadingMore(false);
+      });
+  };
 
   useEffect(() => {
-    void api.get<Folder[]>('/api/folders').then(setFolders);
+    api
+      .get<Folder[]>('/api/folders')
+      .then((f) => {
+        setFolders(f);
+        setFolderError(null);
+      })
+      .catch((e: Error) =>
+        setFolderError(`Couldn’t load your folders, so the Folder filter is missing. ${e.message}`),
+      );
   }, []);
 
   // Debounced search: the URL updates as you type, without filling history.
@@ -100,8 +153,15 @@ export function Library({
   }, [search, params.q]);
 
   const toggleShortlist = async (item: ItemSummary) => {
-    if (item.user.shortlistPosition === null) await api.post('/api/shortlist', { itemId: item.id });
-    else await api.delete(`/api/shortlist/${item.id}`);
+    try {
+      if (item.user.shortlistPosition === null)
+        await api.post('/api/shortlist', { itemId: item.id });
+      else await api.delete(`/api/shortlist/${item.id}`);
+    } catch (e) {
+      setActionError(`Couldn’t change the shortlist for ${item.title}. ${(e as Error).message}`);
+      return;
+    }
+    setActionError(null);
     setItems(
       (list) =>
         list?.map((i) =>
@@ -163,7 +223,9 @@ export function Library({
         </button>
         <p className="muted" aria-live="polite">
           {items === null
-            ? 'Loading…'
+            ? loadError
+              ? ''
+              : 'Loading…'
             : `${total.toLocaleString()} ${total === 1 ? 'item' : 'items'}${filtersActive ? ' match' : ''}`}
         </p>
       </div>
@@ -328,7 +390,17 @@ export function Library({
           .
         </Notice>
       )}
-      {error && <Notice kind="error">{error}</Notice>}
+      {loadError && (
+        <LoadError
+          message={loadError}
+          onRetry={() => {
+            setLoadError(null);
+            setReload((n) => n + 1);
+          }}
+        />
+      )}
+      {folderError && <Notice kind="error">{folderError}</Notice>}
+      {actionError && <Notice kind="error">{actionError}</Notice>}
       {items && items.length === 0 && (
         <Notice>
           {filtersActive
@@ -408,8 +480,8 @@ export function Library({
       )}
       {items && total > items.length && (
         <div className="more">
-          <button type="button" className="secondary" onClick={() => setLimit((l) => l + PAGE)}>
-            Show {Math.min(PAGE, total - items.length)} more
+          <button type="button" className="secondary" onClick={showMore} disabled={loadingMore}>
+            {loadingMore ? 'Loading…' : `Show ${Math.min(PAGE, total - items.length)} more`}
           </button>
           <span className="muted">
             Showing {items.length.toLocaleString()} of {total.toLocaleString()}

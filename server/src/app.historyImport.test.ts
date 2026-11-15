@@ -323,6 +323,24 @@ describe('Goodreads and StoryGraph history imports', () => {
     });
   });
 
+  it('reports a finish date in the future for that row and imports the rest', async () => {
+    const text =
+      'Title,Author,Exclusive Shelf,My Rating,Date Read\nTomorrow’s Tide,Ada Fen,read,4,2999/01/02\nOdd Weather,Ada Fen,read,3,2023/02/28';
+    const p = (await post('/api/import/history/preview', { source: 'goodreads', text })).body;
+    expect(p.problems.join(' ')).toMatch(
+      /Row 2: date “2999\/01\/02” is in the future, kept unknown/,
+    );
+    const r = await post('/api/import/history', { source: 'goodreads', text, keepUnmatched: true });
+    expect(r.status).toBe(200);
+    expect(user('Tomorrow’s Tide')).toMatchObject({
+      progress: 'finished',
+      rating: 8,
+      finished_on: null,
+      finished_precision: 'unknown',
+    });
+    expect(user('Odd Weather')).toMatchObject({ rating: 6, finished_on: '2023-02-28' });
+  });
+
   it('keeps approximate dates and never substitutes the upload date', async () => {
     const text =
       'Title,Author,Exclusive Shelf,Date Read\nYear Only,Ada Fen,read,2020\nMonth Only,Ada Fen,read,2021/06\nNo Date,Ada Fen,read,';

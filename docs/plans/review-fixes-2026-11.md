@@ -34,6 +34,8 @@ answered, but the summary must say which default was used.
 
 ## Stage 1: Bugs the owner can hit
 
+**Done** (2026-11-15). Notes in `docs/milestones/M6.md`.
+
 ### 1.1 The Library stops at 1,000 books
 
 - **Now:** "Show 100 more" raises `limit` by 100 each time (`web/src/pages/Library.tsx`, the

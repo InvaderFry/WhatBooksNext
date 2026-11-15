@@ -102,6 +102,14 @@ function date(name: string, v: unknown): string | null {
 /** A full day, for "exact" precision. */
 const FULL_DAY = /^\d{4}-\d{2}-\d{2}$/;
 
+/**
+ * A reading date that hasn't happened yet (owner decision D1). A month or year is in the future
+ * only when all of it is: "2026-11" is fine on 15 November 2026.
+ */
+export function isFutureDate(value: string, today: string): boolean {
+  return value > today.slice(0, value.length);
+}
+
 /** Validates an incoming patch; unknown fields are refused rather than ignored. */
 export function validatePatch(body: unknown): UserPatch {
   if (!body || typeof body !== 'object' || Array.isArray(body))
@@ -304,6 +312,27 @@ export function applyUserPatch(db: DB, itemId: string, p: UserPatch, today = tod
     !FULL_DAY.test(next.started_on)
   )
     throw new HttpError(400, 'An exact start date needs a day, like 2024-05-17.');
+  // Dates that can't be right (owner decisions D1 to D3), checked the same way: only what this
+  // patch touches, so an older record never blocks an unrelated edit.
+  const touchesStart = p.startedOn !== undefined || p.startedPrecision !== undefined;
+  const touchesFinish = p.finishedOn !== undefined || p.finishedPrecision !== undefined;
+  if (touchesFinish && next.finished_on && next.progress !== 'finished')
+    throw new HttpError(400, 'Mark the book finished first.');
+  if (touchesFinish && next.finished_on && isFutureDate(next.finished_on, today))
+    throw new HttpError(400, 'The finish date is in the future.');
+  if (touchesStart && next.started_on && isFutureDate(next.started_on, today))
+    throw new HttpError(400, 'The start date is in the future.');
+  if (
+    (touchesStart || touchesFinish) &&
+    next.started_precision === 'exact' &&
+    next.finished_precision === 'exact' &&
+    next.started_on &&
+    next.finished_on &&
+    FULL_DAY.test(next.started_on) &&
+    FULL_DAY.test(next.finished_on) &&
+    next.started_on > next.finished_on
+  )
+    throw new HttpError(400, 'The start date is after the finish date.');
   if (p.rating !== undefined) next.rating = p.rating;
   if (p.note !== undefined) next.note = p.note;
   if (p.takeaway !== undefined) next.takeaway = p.takeaway;

@@ -2,8 +2,8 @@ import type { DB } from '../db/database.ts';
 import { titleCompareKey } from '../identify/filename.ts';
 import { samePerson } from '../identify/match.ts';
 import { syncSeries } from '../identify/series.ts';
-import { HttpError, newId, nowIso, parseJson } from '../util.ts';
-import { applyUserPatch, type UserPatch } from './progress.ts';
+import { HttpError, newId, nowIso, parseJson, todayLocal } from '../util.ts';
+import { applyUserPatch, isFutureDate, type UserPatch } from './progress.ts';
 import {
   isbnIndex,
   itemsWithTitle,
@@ -133,9 +133,13 @@ function readRows(text: string, source: HistorySource) {
         `Row ${line}: ${n}/5 becomes ${n * 2}/10, rounded to ${rating}/10 (whole-number ratings).`,
       );
     const dateText = get(source === 'goodreads' ? 'date read' : 'last date read');
-    const finished = historyDate(dateText, source);
+    let finished = historyDate(dateText, source);
     if (dateText && finished.precision === 'unknown')
       problems.push(`Row ${line}: date “${dateText}” not understood, kept unknown.`);
+    if (finished.value && isFutureDate(finished.value, todayLocal())) {
+      problems.push(`Row ${line}: date “${dateText}” is in the future, kept unknown.`);
+      finished = { value: null, precision: 'unknown' };
+    }
     if (Number(get('read count')) > 1)
       problems.push(
         `Row ${line}: rereads are represented by one reading and the last finish date.`,

@@ -1,4 +1,5 @@
 import type { DB } from '../db/database.ts';
+import { nestedFolders } from '../scan/folders.ts';
 
 /**
  * Library health (PLAN.md §15): files that couldn't be read, kept apart from things that are
@@ -30,6 +31,8 @@ export interface Health {
   notYetRead: number;
   notYetHashed: number;
   ignoredByType: Record<string, number>;
+  /** Library folders inside another library folder, added before that was refused (D4). */
+  nestedFolders: { inner: string; outer: string }[];
 }
 
 const SELECT = `SELECT f.id AS fileId, x.item_id AS itemId, f.name, d.display_path AS folderPath,
@@ -96,6 +99,7 @@ export function libraryHealth(db: DB): Health {
       "SELECT COUNT(*) FROM files WHERE availability = 'present' AND excluded = 0 AND full_hash IS NULL",
     ),
     ignoredByType,
+    nestedFolders: nestedFolders(db),
   };
 }
 
