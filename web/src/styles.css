@@ -714,6 +714,49 @@ legend {
   border-bottom: 1px solid var(--border);
   vertical-align: top;
 }
+/* Last scan's short headings ("New", "Missing") break between words only, not mid-word. */
+.last-scan .table th {
+  overflow-wrap: normal;
+}
+/* Settings → Last scan on a phone: one card per folder instead of seven narrow columns. */
+.scan-cards {
+  list-style: none;
+  padding: 0;
+  margin: 0.5rem 0;
+  display: grid;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+}
+.scan-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.5rem 0.75rem;
+}
+.scan-card .folder-path {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.scan-counts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.25rem 1rem;
+  margin: 0.5rem 0 0;
+}
+.scan-counts > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.scan-counts .wide {
+  grid-column: 1 / -1;
+}
+.scan-counts dt {
+  color: var(--muted);
+}
+.scan-counts dd {
+  margin: 0;
+  text-align: right;
+}
 .restore {
   margin-top: 1rem;
 }
