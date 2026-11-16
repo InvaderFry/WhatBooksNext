@@ -6,7 +6,7 @@ export interface EmbeddedMetadata {
   publisher?: string;
   /** As written in the file: often the edition's date, not first publication. */
   date?: string;
-  /** EPUB identifiers (strong evidence), e.g. { scheme: 'isbn', value: '9780000000000' }. */
+  /** EPUB identifiers (strong evidence), e.g. { scheme: 'isbn', value: '9780000000002' }. */
   identifiers?: { scheme: string; value: string }[];
   /** ISBNs printed in opening pages: candidates only, never accepted alone (§10). */
   isbnCandidates?: string[];

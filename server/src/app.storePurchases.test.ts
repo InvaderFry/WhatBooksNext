@@ -48,7 +48,7 @@ beforeEach(async () => {
     'ember.epub': makeEpub({
       title: 'The Ember Orchard',
       creators: ['Nell Varga'],
-      identifiers: ['9780000000017'],
+      identifiers: ['9780000000019'],
       chapters: [900],
     }),
   });
@@ -73,7 +73,7 @@ const BOOKS: InventedRecord[] = [
     id: 'INVENTED0001',
     title: 'Ember Orchard',
     author: 'Nell Varga',
-    isbn: '9780000000017',
+    isbn: '9780000000019',
     readUrl: 'https://read.amazon.com/?asin=INVENTED0001',
   },
   { id: 'INVENTED0002', title: 'Tidewright', author: 'Osric Lane' },
@@ -153,6 +153,16 @@ describe('previewing a store purchases file', () => {
     expect(p.problems.join(' ')).toMatch(/Book 3: link left out\. .*not to Kindle/);
     // The counts no longer match the books that can be read: said, not hidden.
     expect(p.problems[0]).toMatch(/The file says 3 books/);
+  });
+
+  it('reads a book whose ISBN has a wrong check digit without the ISBN, and says so', async () => {
+    const file = JSON.parse(storeFile(BOOKS));
+    file.records[2].isbn = '9780306406158';
+    const p = await preview(JSON.stringify(file));
+    expect(p.rows).toHaveLength(4);
+    expect(p.problems).toContain(
+      'Book 3: ISBN “9780306406158” isn’t a valid ISBN (its check digit is wrong), left out.',
+    );
   });
 });
 

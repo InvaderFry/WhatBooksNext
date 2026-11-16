@@ -29,3 +29,28 @@ export function sourceCoverUrl(source: SourceName, value: unknown): string | und
     return undefined;
   }
 }
+
+/**
+ * Where a picture may be redirected: its source's image hosts and, for Open Library only, the
+ * Internet Archive, which serves Open Library's older covers (archive.org, then a numbered
+ * ia….us.archive.org server; owner decision 2026-11-15). Same rules otherwise: https, no
+ * user name or password, the usual port. Undefined means refuse it.
+ */
+export function coverRedirectUrl(source: SourceName, value: string): string | undefined {
+  const listed = sourceCoverUrl(source, value);
+  if (listed || source !== 'openlibrary') return listed;
+  try {
+    const u = new URL(value);
+    if (
+      u.protocol !== 'https:' ||
+      u.username ||
+      u.password ||
+      (u.port && u.port !== '443') ||
+      !(u.hostname === 'archive.org' || /^ia\d+\.us\.archive\.org$/.test(u.hostname))
+    )
+      return undefined;
+    return u.href;
+  } catch {
+    return undefined;
+  }
+}

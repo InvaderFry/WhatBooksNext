@@ -302,6 +302,8 @@ export interface Health {
   notYetRead: number;
   notYetHashed: number;
   ignoredByType: Record<string, number>;
+  /** Library folders inside another library folder, added before that was refused. */
+  nestedFolders: { inner: string; outer: string }[];
 }
 
 export interface Reminder {
@@ -349,6 +351,8 @@ export interface FolderScan {
   dirsListed: number;
   dirErrors: number;
   linksSkipped: number;
+  /** Missing from scans made before it was counted. */
+  dirsTooDeep?: number;
   filesSeen: number;
   newFiles: number;
   missing: number;

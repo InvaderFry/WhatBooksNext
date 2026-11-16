@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useState } from 'react';
 import { api, daysAgo, formatBytes, formatDate, type Folder, type ScanStatus } from '../api.ts';
-import { LoadError, Notice } from '../components.tsx';
+import { LoadError, Notice, useNarrow } from '../components.tsx';
 import { HistoryImport } from './HistoryImport.tsx';
 import { CalibreImport } from './CalibreImport.tsx';
 import { CsvImport, StorePurchaseImport } from './StoreBooks.tsx';
@@ -401,6 +401,27 @@ export function AddFolderForm({
   );
 }
 
+/**
+ * What a folder's scan couldn't cover, as counts (never folder names): folders that couldn't be
+ * listed, shortcuts and links skipped (§9.3), and folders nested too deeply to scan.
+ */
+function skippedText(f: ScanStatus['folders'][number]): string {
+  const n = (count: number, one: string, many: string) =>
+    `${count.toLocaleString()} ${count === 1 ? one : many}`;
+  return [
+    f.dirErrors > 0 && n(f.dirErrors, 'folder couldn’t be read', 'folders couldn’t be read'),
+    f.linksSkipped > 0 && n(f.linksSkipped, 'shortcut skipped', 'shortcuts skipped'),
+    (f.dirsTooDeep ?? 0) > 0 &&
+      n(
+        f.dirsTooDeep!,
+        'folder too deeply nested, not scanned',
+        'folders too deeply nested, not scanned',
+      ),
+  ]
+    .filter(Boolean)
+    .join(' · ');
+}
+
 function LastScan({ scan }: { scan: ScanStatus }) {
   const statusText: Record<string, string> = {
     completed: 'Complete',
@@ -408,6 +429,14 @@ function LastScan({ scan }: { scan: ScanStatus }) {
     cancelled: 'Cancelled — unlisted folders were left as they were',
     unreachable: 'Not connected — skipped, nothing removed',
   };
+  // Seven columns don't fit a phone: there each folder gets a card with labelled counts.
+  const narrow = useNarrow();
+  const ignored = (f: ScanStatus['folders'][number]) =>
+    Object.entries(f.ignoredByType)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([k, n]) => `${n} .${k}`)
+      .join(', ') || '—';
   return (
     <details className="last-scan">
       <summary>
@@ -437,39 +466,70 @@ function LastScan({ scan }: { scan: ScanStatus }) {
           .
         </p>
       )}
-      <table className="table">
-        <caption className="visually-hidden">Last scan by folder</caption>
-        <thead>
-          <tr>
-            <th scope="col">Folder</th>
-            <th scope="col">Result</th>
-            <th scope="col">Book files</th>
-            <th scope="col">New</th>
-            <th scope="col">Missing</th>
-            <th scope="col">Not re-checked</th>
-            <th scope="col">Other files ignored</th>
-          </tr>
-        </thead>
-        <tbody>
+      {narrow ? (
+        <ul className="scan-cards" aria-label="Last scan by folder">
           {scan.folders.map((f) => (
-            <tr key={f.folderId}>
-              <td>{f.displayPath}</td>
-              <td>{statusText[f.status] ?? f.status}</td>
-              <td>{f.filesSeen.toLocaleString()}</td>
-              <td>{f.newFiles}</td>
-              <td>{f.missing}</td>
-              <td>{f.stale}</td>
-              <td>
-                {Object.entries(f.ignoredByType)
-                  .sort((a, b) => b[1] - a[1])
-                  .slice(0, 5)
-                  .map(([k, n]) => `${n} .${k}`)
-                  .join(', ') || '—'}
-              </td>
-            </tr>
+            <li key={f.folderId} className="scan-card">
+              <div className="folder-path">{f.displayPath}</div>
+              <div>{statusText[f.status] ?? f.status}</div>
+              {skippedText(f) && <div className="small muted">{skippedText(f)}</div>}
+              <dl className="scan-counts">
+                <div>
+                  <dt>Book files</dt>
+                  <dd>{f.filesSeen.toLocaleString()}</dd>
+                </div>
+                <div>
+                  <dt>New</dt>
+                  <dd>{f.newFiles}</dd>
+                </div>
+                <div>
+                  <dt>Missing</dt>
+                  <dd>{f.missing}</dd>
+                </div>
+                <div>
+                  <dt>Not re-checked</dt>
+                  <dd>{f.stale}</dd>
+                </div>
+                <div className="wide">
+                  <dt>Other files ignored</dt>
+                  <dd>{ignored(f)}</dd>
+                </div>
+              </dl>
+            </li>
           ))}
-        </tbody>
-      </table>
+        </ul>
+      ) : (
+        <table className="table">
+          <caption className="visually-hidden">Last scan by folder</caption>
+          <thead>
+            <tr>
+              <th scope="col">Folder</th>
+              <th scope="col">Result</th>
+              <th scope="col">Book files</th>
+              <th scope="col">New</th>
+              <th scope="col">Missing</th>
+              <th scope="col">Not re-checked</th>
+              <th scope="col">Other files ignored</th>
+            </tr>
+          </thead>
+          <tbody>
+            {scan.folders.map((f) => (
+              <tr key={f.folderId}>
+                <td>{f.displayPath}</td>
+                <td>
+                  {statusText[f.status] ?? f.status}
+                  {skippedText(f) && <div className="small muted">{skippedText(f)}</div>}
+                </td>
+                <td>{f.filesSeen.toLocaleString()}</td>
+                <td>{f.newFiles}</td>
+                <td>{f.missing}</td>
+                <td>{f.stale}</td>
+                <td>{ignored(f)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
     </details>
   );
 }

@@ -2,6 +2,7 @@ import type { DB } from '../db/database.ts';
 import { titleCompareKey } from '../identify/filename.ts';
 import { samePerson } from '../identify/match.ts';
 import { syncSeries } from '../identify/series.ts';
+import { validIsbn10, validIsbn13 } from '../scan/formats/text.ts';
 import { HttpError, newId, nowIso, parseJson } from '../util.ts';
 import { applyUserPatch, KINDS } from './progress.ts';
 
@@ -45,10 +46,24 @@ export function kindFrom(text: string | null | undefined): string | null {
   return (KINDS as readonly string[]).includes(t) ? t : null;
 }
 
+/** An ISBN-10 or ISBN-13 with the right check digit, as bare digits; anything else is no ISBN. */
 export const normIsbn = (s: string | null | undefined): string | null => {
   const v = (s ?? '').replace(/[^0-9Xx]/g, '').toUpperCase();
-  return v.length === 10 || v.length === 13 ? v : null;
+  return (v.length === 13 && validIsbn13(v)) || (v.length === 10 && validIsbn10(v)) ? v : null;
 };
+
+/**
+ * Why an imported ISBN was left out, for the importer's problem lines; null when it is fine or
+ * blank. The row itself is never refused for it: it goes on without an ISBN.
+ */
+export function isbnProblem(raw: string | null | undefined): string | null {
+  const t = (raw ?? '').trim();
+  if (!t || normIsbn(t)) return null;
+  const digits = t.replace(/[^0-9Xx]/g, '').length;
+  return digits === 10 || digits === 13
+    ? `ISBN “${t}” isn’t a valid ISBN (its check digit is wrong), left out.`
+    : `ISBN “${t}” isn’t a valid ISBN, left out.`;
+}
 
 // ---- Store links -------------------------------------------------------------------------------
 
@@ -543,6 +558,8 @@ export function rowsFromCsv(text: string): { rows: CsvRow[]; problems: string[] 
       problems.push(`Line ${line}: ${(e as Error).message}`);
       return;
     }
+    const badIsbn = isbnProblem(get('isbn'));
+    if (badIsbn) problems.push(`Line ${line}: ${badIsbn}`);
     if (get('progress') && progressFrom(get('progress')) === null)
       problems.push(`Line ${line}: progress “${get('progress')}” not understood, left out.`);
     if (get('rating') && ratingFrom(get('rating')) === null)

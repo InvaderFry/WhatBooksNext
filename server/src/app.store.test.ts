@@ -53,7 +53,7 @@ beforeEach(async () => {
     'ember.epub': makeEpub({
       title: 'The Ember Orchard',
       creators: ['Nell Varga'],
-      identifiers: ['9780000000017'],
+      identifiers: ['9780000000019'],
       chapters: [900],
     }),
     'tidewright.epub': makeEpub({ title: 'Tidewright', creators: ['Osric Lane'], chapters: [900] }),
@@ -128,7 +128,7 @@ describe('store CSV (§14)', () => {
   const CSV = [
     'title,author,store,kind,progress,isbn,series,series_index,rating,note',
     'Lanterns Over Harrowgate,Pell Inchcape,Kindle,fiction,read,,,,4/5,"A slow, good one"',
-    'Ember Orchard (Kindle edition),,Kindle,,,978-0-00-000001-7,,,,',
+    'Ember Orchard (Kindle edition),,Kindle,,,978-0-00-000001-9,,,,',
     'Tidewright,Osric Lane,Apple Books,,currently-reading,,,,8,',
     '"Quills, Volume Two",Ada Penhallow,Google Play,,,,Quills,2,,',
   ].join('\r\n');
@@ -207,6 +207,22 @@ describe('store CSV (§14)', () => {
       .pluck()
       .get();
     expect(quills).toBe(2);
+  });
+
+  it('imports a line whose ISBN has a wrong check digit without the ISBN, and says so', async () => {
+    const text = 'title,author,store,isbn\nThe Salt Cartographer,Ada Fen,Kindle,978-0-306-40615-8';
+    const preview = (await api.post('/api/import/csv/preview', { text })).body;
+    expect(preview.problems).toContain(
+      'Line 2: ISBN “978-0-306-40615-8” isn’t a valid ISBN (its check digit is wrong), left out.',
+    );
+    expect(preview.rows).toHaveLength(1);
+    await api.post('/api/import/csv', { text, keepNew: true });
+    expect(
+      db
+        .prepare("SELECT identifiers FROM items WHERE title = 'The Salt Cartographer'")
+        .pluck()
+        .get(),
+    ).toBe('{}');
   });
 
   it('keeps intentionally cleared progress, ratings and notes on a repeat store import', async () => {

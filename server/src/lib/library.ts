@@ -520,6 +520,11 @@ export interface LibraryQuery {
   sort?: string;
   dir?: 'asc' | 'desc';
   offset?: number;
+  /**
+   * Continue after this book, wherever it now sorts (used instead of offset by "Show more"), so
+   * books added or removed above it neither repeat nor skip any.
+   */
+  after?: string;
   limit?: number;
 }
 
@@ -591,7 +596,15 @@ export function searchHits(
 export function queryLibrary(
   items: ItemSummary[],
   q: LibraryQuery,
-): { total: number; items: ItemSummary[]; storeCounts: Record<string, number> } {
+): {
+  total: number;
+  items: ItemSummary[];
+  /** More books follow this page. */
+  hasMore: boolean;
+  /** The book to continue after is no longer in this list: start again from the top. */
+  anchorMissing?: true;
+  storeCounts: Record<string, number>;
+} {
   let list = items;
   if (!q.showHidden) list = list.filter((i) => !i.user.hidden);
   // How many books each store holds, over the whole (visible) library: shown in the Store filter.
@@ -633,15 +646,22 @@ export function queryLibrary(
       a.community!.score - b.community!.score ||
       (a.community!.votes ?? -1) - (b.community!.votes ?? -1),
   };
-  const by = cmp[sort];
+  // Own keys only: "__proto__" or "toString" must be an unknown sort, not a built-in.
+  const by = Object.hasOwn(cmp, sort) ? cmp[sort] : undefined;
   if (!by) throw new HttpError(400, `Unknown sort "${sort}".`);
   list = [...list].sort((a, b) => {
     if (sort === 'community' && !a.community !== !b.community) return a.community ? -1 : 1;
     const both = sort !== 'community' || (a.community && b.community);
     return (both ? by(a, b) * dir : 0) || collator.compare(a.title, b.title);
   });
-  const offset = q.offset ?? 0;
   const limit = Math.min(q.limit ?? 100, 1000);
+  let offset = q.offset ?? 0;
+  if (q.after !== undefined) {
+    const at = list.findIndex((i) => i.id === q.after);
+    if (at < 0)
+      return { total: list.length, items: [], hasMore: false, anchorMissing: true, storeCounts };
+    offset = at + 1;
+  }
   let page = list.slice(offset, offset + limit);
   if (q.q) {
     const text = q.q;
@@ -650,7 +670,12 @@ export function queryLibrary(
       return hits.length ? { ...i, searchHits: hits } : i;
     });
   }
-  return { total: list.length, items: page, storeCounts };
+  return {
+    total: list.length,
+    items: page,
+    hasMore: offset + page.length < list.length,
+    storeCounts,
+  };
 }
 
 /** Items only read elsewhere: a history location, no files and no store copy (§7). */

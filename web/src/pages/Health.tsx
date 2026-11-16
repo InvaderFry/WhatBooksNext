@@ -54,6 +54,27 @@ export function Health() {
             )}
           </section>
 
+          {h.nestedFolders.length > 0 && (
+            <section className="section" aria-labelledby="nested-h">
+              <h2 id="nested-h">Folders inside other folders ({h.nestedFolders.length})</h2>
+              <p className="muted small">
+                A library folder inside another one lists its books twice. Remove one of each pair
+                in{' '}
+                <a href={hrefFor({ view: 'settings' })} onClick={onLinkClick({ view: 'settings' })}>
+                  Settings
+                </a>
+                . The app doesn’t change this by itself.
+              </p>
+              <ul className="plain">
+                {h.nestedFolders.map((n) => (
+                  <li key={`${n.inner}|${n.outer}`}>
+                    <code>{n.inner}</code> is inside <code>{n.outer}</code>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+
           {h.notComics.length > 0 && (
             <section className="section" aria-labelledby="notcomic-h">
               <h2 id="notcomic-h">Archives that aren’t comics ({h.notComics.length})</h2>

@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { MAX_SCAN_DEPTH } from '../config.ts';
 import type { DB } from '../db/database.ts';
 import type { FakePlatform } from '../platform/fake.ts';
 import { ATTR_OFFLINE, ATTR_RECALL_ON_DATA_ACCESS } from '../platform/types.ts';
@@ -61,6 +62,17 @@ describe('light pass', () => {
       format: 'epub',
     });
     expect(s.folders[0]!.ignoredByType).toEqual({ mp3: 1, txt: 1 });
+  });
+
+  it('counts folders nested too deeply to scan, by number only', async () => {
+    // One folder past the limit, below a chain of one-letter folders (short, for Windows paths).
+    const deep = Array.from({ length: MAX_SCAN_DEPTH + 1 }, () => 'd').join('/');
+    writeFiles(drive, { 'shallow.epub': 10, [`${deep}/too-deep.epub`]: 10 });
+    await addFolder(db, platform, { path: drive });
+    const s = await scan();
+    expect(s.folders[0]).toMatchObject({ dirsTooDeep: 1, filesSeen: 1 });
+    expect(file('too-deep.epub')).toBeUndefined();
+    expect(JSON.stringify(s.folders[0])).not.toContain('too-deep');
   });
 
   it('treats .zip and .rar as comic archives, as the owner confirmed', async () => {

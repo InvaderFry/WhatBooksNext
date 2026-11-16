@@ -128,6 +128,9 @@ export function validateBackup(db: DB, raw: unknown): Backup {
   const b = raw as Partial<Backup>;
   if (b.format !== BACKUP_FORMAT)
     throw new HttpError(400, "That file isn't a whatBooksNext backup.");
+  // The preview compares edits against it, so it must be a real date written as text.
+  if (typeof b.createdAt !== 'string' || Number.isNaN(Date.parse(b.createdAt)))
+    throw new HttpError(400, "That file isn't a whatBooksNext backup.");
   if (b.formatVersion !== BACKUP_FORMAT_VERSION) {
     throw new HttpError(
       400,

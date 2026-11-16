@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import {
   api,
   FORMAT_LABELS,
@@ -17,6 +17,7 @@ import {
   creatorsText,
   Formats,
   KindText,
+  LoadError,
   Notice,
 } from '../components.tsx';
 import { hrefFor, onLinkClick, updateParams, useParams } from '../url.ts';
@@ -24,6 +25,15 @@ import { AddFolderForm } from './Settings.tsx';
 import { AddStoreBook } from './StoreBooks.tsx';
 
 const PAGE = 100;
+
+interface ItemsPage {
+  total: number;
+  items: ItemSummary[];
+  hasMore?: boolean;
+  /** The book "Show more" continued after has gone from the list. */
+  anchorMissing?: boolean;
+  storeCounts?: Record<string, number>;
+}
 
 const AVAILABILITY_OPTIONS: Record<string, string> = {
   present: 'On this PC',
@@ -45,9 +55,25 @@ export function Library({
   const [items, setItems] = useState<ItemSummary[] | null>(null);
   const [total, setTotal] = useState(0);
   const [storeCounts, setStoreCounts] = useState<Record<string, number>>({});
-  const [limit, setLimit] = useState(PAGE);
   const [folders, setFolders] = useState<Folder[]>([]);
-  const [error, setError] = useState<string | null>(null);
+  // The list couldn't load (with a Retry), and a smaller action that failed (shortlist, more books,
+  // the folder filter): each cleared by the next success.
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [folderError, setFolderError] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
+  const [reload, setReload] = useState(0);
+  // Which list the shown books belong to. Until the current filters' first page arrives, the old
+  // list stays on show but can't be paged: its books aren't the new list's.
+  const [listKey, setListKey] = useState<string | null>(null);
+  // Books were added or removed while paging: some may be missing above; offer a reload.
+  const [listChanged, setListChanged] = useState(false);
+  const [restarted, setRestarted] = useState(false);
+  const restarting = useRef(false);
+  // Each new filter, search or sort starts a new list. An answer for an older list, first page or
+  // later, is dropped rather than shown or appended.
+  const generation = useRef(0);
   const [search, setSearch] = useState(params.q ?? '');
   // On a phone the filters fold behind one button, so books start near the top (owner review).
   const narrow = useNarrow();
@@ -70,26 +96,83 @@ export function Library({
     }).filter((e): e is [string, string] => Boolean(e[1])),
   ).toString();
 
+  const key = `${query}#${reload}`;
+  // The first page of a list. "Show more" then asks for the books after the last one shown (the
+  // server caps one answer at 1,000 books, so a growing limit would stop there; and an offset
+  // would repeat or skip books when one is added or removed above).
   useEffect(() => {
-    let stale = false;
+    const gen = ++generation.current;
+    setLoadingMore(false);
     api
-      .get<{ total: number; items: ItemSummary[]; storeCounts?: Record<string, number> }>(
-        `/api/items?${query}&limit=${limit}`,
-      )
+      .get<ItemsPage>(`/api/items?${query}&offset=0&limit=${PAGE}`)
       .then((r) => {
-        if (stale) return;
+        if (gen !== generation.current) return;
         setItems(r.items);
         setTotal(r.total);
+        setHasMore(r.hasMore ?? r.total > r.items.length);
+        setListKey(`${query}#${reload}`);
+        setListChanged(false);
+        setRestarted(restarting.current);
+        restarting.current = false;
         setStoreCounts(r.storeCounts ?? {});
+        setLoadError(null);
+        setActionError(null);
       })
-      .catch((e: Error) => setError(e.message));
-    return () => {
-      stale = true;
-    };
-  }, [query, limit]);
+      .catch((e: Error) => {
+        if (gen !== generation.current) return;
+        // The old list doesn't match the new filters, so it isn't left on show.
+        setItems(null);
+        setLoadError(e.message);
+      });
+  }, [query, reload]);
+
+  const current = listKey === key;
+  const showMore = () => {
+    if (!items || items.length === 0 || loadingMore || !current) return;
+    const gen = generation.current;
+    const shownTotal = total;
+    setLoadingMore(true);
+    api
+      .get<ItemsPage>(
+        `/api/items?${query}&after=${encodeURIComponent(items.at(-1)!.id)}&limit=${PAGE}`,
+      )
+      .then((r) => {
+        if (gen !== generation.current) return;
+        if (r.anchorMissing) {
+          // The last book shown was removed or now falls outside the filters: start again.
+          restarting.current = true;
+          setReload((n) => n + 1);
+          return;
+        }
+        if (r.total !== shownTotal) setListChanged(true);
+        setHasMore(r.hasMore ?? false);
+        // Never list a book twice, whatever happened meanwhile.
+        setItems((list) => {
+          const have = new Set((list ?? []).map((i) => i.id));
+          return [...(list ?? []), ...r.items.filter((i) => !have.has(i.id))];
+        });
+        setTotal(r.total);
+        setStoreCounts(r.storeCounts ?? {});
+        setActionError(null);
+      })
+      .catch((e: Error) => {
+        if (gen === generation.current) setActionError(`Couldn’t load more books. ${e.message}`);
+      })
+      .finally(() => {
+        if (gen === generation.current) setLoadingMore(false);
+      });
+  };
 
   useEffect(() => {
-    void api.get<Folder[]>('/api/folders').then(setFolders);
+    api
+      .get<Folder[]>('/api/folders')
+      .then((f) => {
+        setFolders(f);
+        setFolderError(null);
+      })
+      .catch((e: Error) =>
+        setFolderError(`Couldn’t load your folders, so the Folder filter is missing. ${e.message}`),
+      );
   }, []);
 
   // Debounced search: the URL updates as you type, without filling history.
@@ -100,8 +183,15 @@ export function Library({
   }, [search, params.q]);
 
   const toggleShortlist = async (item: ItemSummary) => {
-    if (item.user.shortlistPosition === null) await api.post('/api/shortlist', { itemId: item.id });
-    else await api.delete(`/api/shortlist/${item.id}`);
+    try {
+      if (item.user.shortlistPosition === null)
+        await api.post('/api/shortlist', { itemId: item.id });
+      else await api.delete(`/api/shortlist/${item.id}`);
+    } catch (e) {
+      setActionError(`Couldn’t change the shortlist for ${item.title}. ${(e as Error).message}`);
+      return;
+    }
+    setActionError(null);
     setItems(
       (list) =>
         list?.map((i) =>
@@ -163,7 +253,9 @@ export function Library({
         </button>
         <p className="muted" aria-live="polite">
           {items === null
-            ? 'Loading…'
+            ? loadError
+              ? ''
+              : 'Loading…'
             : `${total.toLocaleString()} ${total === 1 ? 'item' : 'items'}${filtersActive ? ' match' : ''}`}
         </p>
       </div>
@@ -328,7 +420,23 @@ export function Library({
           .
         </Notice>
       )}
-      {error && <Notice kind="error">{error}</Notice>}
+      {loadError && (
+        <LoadError
+          message={loadError}
+          onRetry={() => {
+            setLoadError(null);
+            setReload((n) => n + 1);
+          }}
+        />
+      )}
+      {folderError && <Notice kind="error">{folderError}</Notice>}
+      {restarted && (
+        <Notice>
+          A book in this list was changed or removed while you were looking, so the list starts
+          again from the top.
+        </Notice>
+      )}
+      {actionError && <Notice kind="error">{actionError}</Notice>}
       {items && items.length === 0 && (
         <Notice>
           {filtersActive
@@ -406,10 +514,22 @@ export function Library({
           ))}
         </ul>
       )}
-      {items && total > items.length && (
+      {listChanged && (
+        <Notice>
+          Books were added or removed since this list loaded, so it may not show all of them.{' '}
+          <button type="button" className="link-button" onClick={() => setReload((n) => n + 1)}>
+            Reload the list
+          </button>
+        </Notice>
+      )}
+      {items && hasMore && current && (
         <div className="more">
-          <button type="button" className="secondary" onClick={() => setLimit((l) => l + PAGE)}>
-            Show {Math.min(PAGE, total - items.length)} more
+          <button type="button" className="secondary" onClick={showMore} disabled={loadingMore}>
+            {loadingMore
+              ? 'Loading…'
+              : total > items.length
+                ? `Show ${Math.min(PAGE, total - items.length)} more`
+                : 'Show more'}
           </button>
           <span className="muted">
             Showing {items.length.toLocaleString()} of {total.toLocaleString()}

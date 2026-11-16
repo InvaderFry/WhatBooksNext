@@ -531,6 +531,13 @@ export const STORE_FILE_MAX_RECORDS = 50_000;
  */
 export const COVER_MAX_BYTES = 5 * 1024 * 1024;
 
+/**
+ * Redirects followed for one picture, each checked against the source's image hosts. Open
+ * Library's older covers take two (covers.openlibrary.org → archive.org → an ia….us.archive.org
+ * server, checked 2026-11-15); one spare, and no more, so a loop can't keep a request going.
+ */
+export const COVER_MAX_REDIRECTS = 3;
+
 /** A book Open Library had no cover for is asked again after this many days (covers get added). */
 export const COVER_RETRY_DAYS = 30;
 

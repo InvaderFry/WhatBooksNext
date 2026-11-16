@@ -10,8 +10,8 @@ import { syncSeries } from '../identify/series.ts';
 import { availabilityFromAttributes, type Platform } from '../platform/types.ts';
 import { resolveFolderRoot, type FolderRow } from '../scan/folders.ts';
 import type { SourceRecord } from '../sources/types.ts';
-import { HttpError, nowIso, parseJson } from '../util.ts';
-import { applyUserPatch } from './progress.ts';
+import { HttpError, nowIso, parseJson, todayLocal } from '../util.ts';
+import { applyUserPatch, isFutureDate } from './progress.ts';
 import { createStoreItem, isbnIndex, normIsbn } from './store.ts';
 
 /**
@@ -276,14 +276,19 @@ export interface CalibrePreview {
 
 const READ_WORDS = /^(true|1|yes|y|read|finished|done|completed)$/i;
 
-function readValue(b: CalibreBook, opts: CalibreOptions): { read: boolean; date: string | null } {
+function readValue(
+  b: CalibreBook,
+  opts: CalibreOptions,
+): { read: boolean; date: string | null; future: string | null } {
   const v = opts.readColumn ? b.custom[opts.readColumn] : undefined;
   const read = v !== undefined && v !== null && READ_WORDS.test(String(v).trim());
   const d = opts.dateColumn ? b.custom[opts.dateColumn] : undefined;
   // Calibre's "undefined date" is year 101; anything before 1900 isn't a real date.
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(d ?? ''));
   const date = m && Number(m[1]) >= 1900 ? `${m[1]}-${m[2]}-${m[3]}` : null;
-  return { read, date };
+  // A date that hasn't happened yet is kept unknown, and the row says so (owner decision D1).
+  if (date && isFutureDate(date, todayLocal())) return { read, date: null, future: date };
+  return { read, date, future: null };
 }
 
 function ownerChanges(db: DB, itemId: string | null, b: CalibreBook, opts: CalibreOptions) {
@@ -301,10 +306,16 @@ function ownerChanges(db: DB, itemId: string | null, b: CalibreBook, opts: Calib
     } else if (u.rating !== b.rating)
       kept.push(`rating: Calibre has ${b.rating}/10, yours is ${u.rating}/10`);
   }
-  const { read, date } = readValue(b, opts);
+  const { read, date, future } = readValue(b, opts);
   if (read) {
     if (!u || u.progress === 'not_started') {
-      applies.push(date ? `read on ${date}` : 'read (date unknown)');
+      applies.push(
+        date
+          ? `read on ${date}`
+          : future
+            ? `read (date ${future} is in the future, kept unknown)`
+            : 'read (date unknown)',
+      );
       patch.progress = 'finished';
       if (date) [patch.finishedOn, patch.finishedPrecision] = [date, 'exact'];
       else patch.finishedPrecision = 'unknown';

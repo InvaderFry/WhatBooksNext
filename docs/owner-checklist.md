@@ -107,6 +107,23 @@ the letter back at the end.
     whose cover was a grey or blank page. Does it show its real cover now?
 17. In **Which run is it?**, does each choice show a cover and a **View on Metron** link?
 
+### Library folders and long lists (new: review fixes, Stage 1)
+
+18. **Settings → Library folders → Add a folder**: paste the path of a folder _inside_ your books
+    folder (for example `E:\My Books and Comics\Comics`, if you have one). Does the app refuse it
+    and name `E:\My Books and Comics`? Try it once in lower case too
+    (`e:\my books and comics\comics`). Nothing should be added.
+19. Paste `E:\` (the whole drive). Is it refused, naming your books folder?
+20. Open **Needs review** → **Library health** (the link near the top). If a section **Folders inside other folders**
+    appears, tell me which two folders it names; don't remove anything yet.
+21. In **Library**, keep pressing **Show 100 more** until the button goes away. Does the count
+    under the list end at your full number of books (it used to stop at 1,000)?
+22. On a book you're reading, try to set its **Started** date to next year. Is it refused with
+    "The start date is in the future"? Your current dates on other books are left as they are.
+
+23. Open a store book (one without a file) that showed a cover before you updated. Does it
+    still have one? And after the next lookups, do newly added store books get covers as before?
+
 ## You can skip these
 
 - **iCloud or OneDrive downloads:** you have neither on the PC, so there's nothing to test.
@@ -116,6 +133,6 @@ the letter back at the end.
 ## What to send back
 
 - Part 1: your yes/no for each of the 5 situations, plus anything you had to correct.
-- Part 2: worked / didn't work / skipped for checks 1–17, and what happened for any that didn't
+- Part 2: worked / didn't work / skipped for checks 1–23, and what happened for any that didn't
   work.
 - **Settings → Diagnostics → Copy report** (it leaves out folder names unless you tick the box).

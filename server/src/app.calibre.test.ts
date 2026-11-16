@@ -46,7 +46,7 @@ beforeEach(async () => {
     'Other/salt-and-signal.epub': makeEpub({
       title: 'Salt and Signal',
       creators: ['Mabry Quell'],
-      identifiers: ['9780000000024'],
+      identifiers: ['9780000000026'],
       chapters: [900],
       seed: 2,
     }),
@@ -69,7 +69,7 @@ beforeEach(async () => {
       authors: ['Mabry Quell'],
       path: 'Mabry Quell/Salt and Signal (2)',
       formats: [{ format: 'EPUB', name: 'Salt and Signal - Mabry Quell' }],
-      isbn: '978-0-00-000002-4',
+      isbn: '978-0-00-000002-6',
       rating: 0,
       read: false,
     },
@@ -140,6 +140,30 @@ describe('Calibre import (§14)', () => {
       rating: 8,
     });
     expect(item.series).toMatchObject({ name: 'Lanterns of Ost', position: 2 });
+  });
+
+  it('keeps a read date in the future unknown, says so, and imports the book', async () => {
+    fs.rmSync(path.join(library, 'metadata.db'));
+    makeCalibreDb(library, [
+      {
+        title: 'The Quiet Cartographer',
+        authors: ['Juno Tarrant'],
+        path: 'Juno Tarrant/The Quiet Cartographer (1)',
+        formats: [{ format: 'EPUB', name: 'The Quiet Cartographer - Juno Tarrant' }],
+        read: true,
+        readOn: '2999-01-02',
+      },
+    ]);
+    const p = (await api.post('/api/calibre/preview', { path: library, ...opts })).body;
+    expect(p.rows[0].applies).toEqual(['read (date 2999-01-02 is in the future, kept unknown)']);
+    const r = await api.post('/api/calibre/import', { path: library, ...opts });
+    expect(r.status).toBe(200);
+    const q = itemOf('The Quiet Cartographer - Juno Tarrant.epub');
+    expect((await api.get(`/api/items/${q}`)).body.user).toMatchObject({
+      progress: 'finished',
+      finishedOn: null,
+      finishedPrecision: 'unknown',
+    });
   });
 
   it('brings no owner data when none is chosen', async () => {
