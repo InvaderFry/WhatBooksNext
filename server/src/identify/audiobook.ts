@@ -5,13 +5,14 @@
  * split over "CD 1", "CD 2" subfolders. The owner wasn't sure which they have, so both are
  * read from the names alone, cautiously:
  *
- *  - Files whose names differ only by a number or a part word ("Title Part 1", "Title Part 2",
- *    "Title 01") are parts of one book, named by what they share.
+ *  - Files whose names differ by explicit part markers ("Title Part 1", "Title Part 2")
+ *    are parts of one book, named by what they share. A bare trailing number may be a book
+ *    in a series, so it stays in the title for every audio format.
  *  - Files that start with a track number ("01 - Dawn", "1-02 Dusk") are the chapters of the
  *    book their folder is named for. Not for .m4b/.aa/.aax, which hold a whole book each: a
  *    numbered one is a book in a series.
- *  - Files with nothing but a number or a part word ("Track 03", "Chapter 12") belong to the
- *    folder's book as well.
+ *  - Explicit track names ("Track 03", "Chapter 12") and zero-padded short track numbers
+ *    ("01", "02") belong to the folder's book. Numeric titles otherwise stay intact.
  *  - Any other file is a book of its own, named by the file.
  *
  * A "CD 1" style folder takes its book from the folder above it, so discs join up.
@@ -47,11 +48,10 @@ const NAMED_PART = new RegExp(
   `\\b(?:${PART_WORDS})\\.?\\s*\\d{1,4}\\b(?:\\s*(?:of|-)\\s*\\d{1,4}\\b)?`,
   'gi',
 );
-const BARE_NUMBER = /\b\d{1,4}\b(?:\s*of\s*\d{1,4}\b)?/gi;
-const PART_WORD = new RegExp(`\\b(?:${PART_WORDS})\\b\\.?`, 'gi');
 const DISC_DIR = /^(?:cd|disc|disk|part|pt|side)[\s._-]*\d{1,3}$/i;
-/** "01 ", "01 - ", "1-02 ", "01.", "(03)": a track number at the start of a name. */
-const LEADING_NUMBER = /^\W*\d{1,3}(?:\s*[-.]\s*\d{1,3})?(?=\W|_|$)/;
+/** A short leading track number followed by a named chapter, not a numeric book title. */
+const LEADING_NUMBER = /^\s*(?:\(\d{1,3}\)|\d{1,3}(?:[-.]\d{1,3})?)[\s._–—-]+(?=\p{L})/u;
+const PADDED_TRACK = /^0\d{1,2}$/;
 
 function baseName(name: string): string {
   const dot = name.lastIndexOf('.');
@@ -72,12 +72,11 @@ const tidy = (s: string) =>
     .trim();
 
 /**
- * The name with its part marks taken out: what the parts of one book share. In a whole-book
- * format only a named part counts ("Title Part 2.m4b"): "Title 2.m4b" is the second book.
+ * The name with explicit part markers taken out. Bare numbers belong to the title:
+ * "Lantern 22 Part 2.mp3" → "Lantern 22"; "Lantern Saga 3.mp3" stays unchanged.
  */
 export function partStem(name: string): string {
-  let t = baseName(name).replace(/_/g, ' ').replace(NAMED_PART, ' ');
-  if (!WHOLE_BOOK.has(extOf(name))) t = t.replace(BARE_NUMBER, ' ').replace(PART_WORD, ' ');
+  const t = baseName(name).replace(/_/g, ' ').replace(NAMED_PART, ' ');
   return tidy(t.replace(/[([{]\s*[)\]}]/g, ' ').replace(/\s+[-–—]\s+(?=[-–—]|$)/g, ' '));
 }
 
@@ -125,8 +124,10 @@ export function audioBooksInDirectory(
     const stem = partStem(n);
     const k = keyOf(stem);
     const sharing = stems.get(k)!.length;
-    if (k === '' || onDisc) {
-      // Nothing but numbers ("Track 03"), or a file on a disc: the folder's book.
+    const paddedTrack =
+      !WHOLE_BOOK.has(extOf(n)) && PADDED_TRACK.test(baseName(n)) && names.length > 1;
+    if (k === '' || onDisc || paddedTrack) {
+      // An explicit or zero-padded track, or a file on a disc: the folder's book.
       out.set(n, folderBook);
     } else if (sharing > 1) {
       // "Title Part 1" and "Title Part 2": one book, named by what they share.

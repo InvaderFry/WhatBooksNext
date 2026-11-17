@@ -286,9 +286,10 @@ export interface StoreFields {
  * unknown (null); only Audible copies carry one.
  */
 export function listenMinutesFrom(store: Store, v: unknown): number | null {
-  if (v === undefined || v === null || v === '') return null;
+  if (v === undefined) return null;
   if (store !== 'audible')
     throw new HttpError(400, 'Only an Audible audiobook takes a listening length.');
+  if (v === null || v === '') return null;
   const n = Number(v);
   if (!Number.isInteger(n) || n < 1 || n > 60_000)
     throw new HttpError(400, 'The listening length should be a number of minutes, such as 552.');
@@ -325,7 +326,8 @@ export function validateFields(b: Record<string, unknown>): StoreFields {
 /**
  * A place to read an item: a store, readable there or not yet confirmed, with its link if one
  * is given. `linkByOwner`: the owner typed the link (it wins over imports); otherwise it's an
- * imported link and only fills an empty one.
+ * imported link and only fills an empty one. A length omitted (undefined) preserves the
+ * existing value; an explicit null clears it. Imports omit it.
  */
 export function addLocation(
   db: DB,
@@ -334,7 +336,7 @@ export function addLocation(
   readable = false,
   link: StoreLink | null = null,
   linkByOwner = false,
-  listenMinutes: number | null = null,
+  listenMinutes: number | null | undefined = undefined,
 ): string {
   const existing = db
     .prepare("SELECT id FROM locations WHERE item_id = ? AND kind = 'store' AND store = ?")
@@ -348,7 +350,7 @@ export function addLocation(
         existing,
       );
     if (link) setLocationLink(db, existing, link, linkByOwner);
-    if (listenMinutes)
+    if (listenMinutes !== undefined)
       db.prepare('UPDATE locations SET listen_minutes = ?, updated_at = ? WHERE id = ?').run(
         listenMinutes,
         now,
@@ -369,7 +371,7 @@ export function addLocation(
     link?.url ?? null,
     link?.kind ?? null,
     link && linkByOwner ? 1 : 0,
-    listenMinutes,
+    listenMinutes ?? null,
     now,
     now,
   );

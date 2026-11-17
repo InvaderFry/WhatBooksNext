@@ -30,10 +30,12 @@ from guesses.
 - **Light pass.** Inside an audiobook directory, `.mp3 .m4b .m4a .aac .flac .wav .ogg .opus .wma
 .aa .aax` get the format `audio`. Elsewhere they are ignored as before.
 - **Which files make one book** (`identify/audiobook.ts`, pure, from names only):
-  - names that differ only by a number or a part word ("Title Part 1", "Title 02") are one book,
-    named by what they share;
-  - files that start with a track number ("01 - Dawn") are chapters of the book their folder is
-    named for; so are files that are nothing but a number ("Track 03");
+  - names with explicit part markers ("Title Part 1", "Title Part 2") are one book, named by
+    what they share; bare trailing numbers remain part of the title in every format, since
+    "Title 3" and "Title 4" may be separate books (owner decision in the second PR review);
+  - files that start with a clear track number and chapter name ("01 - Dawn") are chapters of
+    the book their folder is named for; so are explicit track names ("Track 03") and short
+    zero-padded track numbers ("01", "02"). Other numeric titles keep their digits;
   - a "CD 1" / "Disc 2" folder takes its book from the folder above, so discs join up;
   - `.m4b`, `.aa` and `.aax` hold a whole book each: numbered ones are books in a series, joined
     only by a named part ("Title Part 2.m4b");
@@ -48,7 +50,8 @@ from guesses.
   is never mistaken for constant bitrate from the first few frames. The album is the book's title, the
   album artist (else artist) its author; a narrator is never guessed. `files.duration_seconds`
   holds the time. Old Audible `.aa` files can't be read: listed, length unknown. Audio is **not
-  fingerprinted in full** (hundreds of gigabytes; copies are recognised by name and size). One
+  fingerprinted in full** (hundreds of gigabytes; copies need the same book key as well as the
+  same filename and size, so a shared publisher clip cannot join different books). One
   cover per book, from its first part.
 - **Listening time.** `listenFromFiles` (`lib/library.ts`): the parts added up, each part once
   however many copies or encodings exist (same relative path and filename stem within the book;
@@ -122,3 +125,24 @@ Waiting on the owner (B2): the look-around report from the Audible library page.
 Real-file grouping, tags, USB scan speed and Windows playback still need owner checks 24–29.
 Passing Windows CI exercises generated files and cannot confirm those checks. Audible import
 still waits on action B2; these fixes do not add a collector.
+
+## Second PR #30 review
+
+All nine findings reproduced in regression checks. Qualifications: the never-finished hash
+count is separate from the actual error badge, and a bare trailing number cannot prove whether
+an MP3 is a chapter or a book in a series. The owner chose separate books for ambiguous names.
+
+| Findings | Change                                                                                                                                                                                                                        |
+| -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1, 7     | Health excludes audio from pending full hashes and includes audio in pending metadata reads. Its list of readable formats comes from the same configuration as the scanner.                                                   |
+| 2, 3     | Numeric titles retain their numbers; explicit part markers preserve numbers in the book title. Ambiguous trailing numbers stay separate. Parser version 7 re-reads names on the next scan.                                    |
+| 4        | Audio copies must share the book's compare key; matching credits/intro clips do not join different books. Legitimate copies of the same book still group.                                                                     |
+| 5        | A stated Audible length supplies the total when local playing time is unknown or incomplete. A complete local length still takes precedence; the displayed basis follows the chosen source.                                   |
+| 6        | Migration 022 adds a partial index on `(folder_id, book_dir, compare_key)` for active audio. A query-plan check verifies that all three keys are used.                                                                        |
+| 8        | Existing Audible entries have Add/Change/Remove length. PATCH accepts a validated length or explicit null; omitted values preserve the previous length, including during imports.                                             |
+| 9        | Removing an audiobook directory returns the deleted file ids. Their cached covers are removed from the app's data folder after the database transaction commits; covers for retained files and the owner's recordings remain. |
+
+Tests use invented titles and generated files, and cover grouping on both the initial scan and
+later scans, complete/incomplete local audio with Audible, atomic validation, clearing versus
+omitting lengths, cover cleanup, and the page's error/retry path. The browser script exercises
+changing, clearing and restoring an Audible length in both themes at desktop and phone sizes.

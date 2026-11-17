@@ -566,14 +566,12 @@ export function loadLibrary(db: DB, reach: FolderReachability, onlyIds?: string[
       stores: [...new Set(stores.map((l) => l.store ?? 'other'))],
       // With nothing to listen to it's something to read (history-only books included).
       media: { read: text || !listen, listen },
-      listenMinutes: local.parts > 0 ? local.minutes : stated,
+      listenMinutes: local.minutes ?? stated,
       listenBasis:
-        local.parts > 0
-          ? local.minutes !== null
-            ? local.parts === 1
-              ? 'from the audio file'
-              : `from ${local.parts} audio files`
-            : null
+        local.minutes !== null
+          ? local.parts === 1
+            ? 'from the audio file'
+            : `from ${local.parts} audio files`
           : stated
             ? 'as Audible states'
             : null,

@@ -136,6 +136,30 @@ try {
       },
     ],
     [
+      'item-audible-length',
+      '/?view=library&q=lamplighter',
+      async (p) => {
+        await p
+          .getByRole('link', { name: /Lamplighter/ })
+          .first()
+          .click();
+        await p.getByRole('button', { name: 'Change length', exact: true }).click();
+        await p.getByLabel('Hours', { exact: true }).fill('8');
+        await p.getByLabel('Minutes', { exact: true }).fill('22');
+        await p.getByRole('button', { name: 'Save length', exact: true }).click();
+        await p.getByText('Length in Audible: 8 h 22 min.', { exact: true }).waitFor();
+        await p.getByRole('button', { name: 'Remove length', exact: true }).click();
+        await p.getByText('Length in Audible: unknown.', { exact: true }).waitFor();
+        await p.getByRole('button', { name: 'Add length', exact: true }).click();
+        await p.getByLabel('Hours', { exact: true }).fill('7');
+        await p.getByLabel('Minutes', { exact: true }).fill('11');
+        await p.getByRole('button', { name: 'Save length', exact: true }).click();
+        await p.getByText('Length in Audible: 7 h 11 min.', { exact: true }).waitFor();
+        await p.getByRole('button', { name: 'Change length', exact: true }).click();
+        await p.getByRole('button', { name: 'Save length', exact: true }).scrollIntoViewIfNeeded();
+      },
+    ],
+    [
       'item-add-audible',
       '/?view=library&q=mapmaker',
       async (p) => {

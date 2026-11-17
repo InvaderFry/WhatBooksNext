@@ -229,3 +229,105 @@ describe('Read / Listen / Either on What next', () => {
     expect(screen.queryByRole('group', { name: 'Read or listen?' })).toBeNull();
   });
 });
+
+describe('correcting an Audible length', () => {
+  function server() {
+    const place = {
+      id: 'audible-copy',
+      kind: 'store',
+      store: 'audible',
+      readable: true,
+      note: null,
+      url: null,
+      urlKind: null,
+      urlHost: null,
+      urlByOwner: false,
+      listenMinutes: 552 as number | null,
+    };
+    let fail = false;
+    const fetch = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === 'PATCH') {
+        if (fail) return json({ error: 'Could not save the length.' }, 500);
+        place.listenMinutes = JSON.parse(init.body as string).listenMinutes as number | null;
+        return json({ ok: true });
+      }
+      return json([place]);
+    });
+    vi.stubGlobal('fetch', fetch);
+    return {
+      fetch,
+      place,
+      fail: (value: boolean) => {
+        fail = value;
+      },
+    };
+  }
+
+  it('prefills the recorded length and saves a correction to the existing copy', async () => {
+    const { fetch } = server();
+    const changed = vi.fn();
+    render(<PlacesSection itemId="book" hasFiles onChanged={changed} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Change length' }));
+    expect((screen.getByLabelText('Hours') as HTMLInputElement).value).toBe('9');
+    expect((screen.getByLabelText('Minutes') as HTMLInputElement).value).toBe('12');
+    fireEvent.change(screen.getByLabelText('Hours'), { target: { value: '10' } });
+    fireEvent.change(screen.getByLabelText('Minutes'), { target: { value: '0' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save length' }));
+    await screen.findByText('Length in Audible: 10 h.');
+    expect(changed).toHaveBeenCalledOnce();
+    expect(fetch).toHaveBeenCalledWith(
+      '/api/locations/audible-copy',
+      expect.objectContaining({
+        method: 'PATCH',
+        body: JSON.stringify({ listenMinutes: 600 }),
+      }),
+    );
+  });
+
+  it.each(['Remove length', 'blank fields'])(
+    'sets the length back to unknown with %s',
+    async (method) => {
+      const { fetch } = server();
+      render(<PlacesSection itemId="book" hasFiles onChanged={() => {}} />);
+      await screen.findByRole('button', { name: 'Change length' });
+      if (method === 'Remove length') {
+        fireEvent.click(screen.getByRole('button', { name: 'Change length' }));
+        fireEvent.click(screen.getByRole('button', { name: method }));
+      } else {
+        fireEvent.click(screen.getByRole('button', { name: 'Change length' }));
+        fireEvent.change(screen.getByLabelText('Hours'), { target: { value: '' } });
+        fireEvent.change(screen.getByLabelText('Minutes'), { target: { value: '' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Save length' }));
+      }
+      await screen.findByText('Length in Audible: unknown.');
+      expect(fetch).toHaveBeenCalledWith(
+        '/api/locations/audible-copy',
+        expect.objectContaining({
+          method: 'PATCH',
+          body: JSON.stringify({ listenMinutes: null }),
+        }),
+      );
+      expect(screen.getByRole('button', { name: 'Add length' })).toBeTruthy();
+      await waitFor(() => expect(screen.queryByLabelText('Hours')).toBeNull());
+      expect((screen.getByRole('checkbox') as HTMLInputElement).checked).toBe(true);
+    },
+  );
+
+  it('keeps the edit after a failed save and allows a successful retry', async () => {
+    const backend = server();
+    backend.fail(true);
+    const changed = vi.fn();
+    render(<PlacesSection itemId="book" hasFiles onChanged={changed} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Change length' }));
+    fireEvent.change(screen.getByLabelText('Hours'), { target: { value: '10' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save length' }));
+    await screen.findByText('Could not save the length.');
+    expect((screen.getByLabelText('Hours') as HTMLInputElement).value).toBe('10');
+    expect(changed).not.toHaveBeenCalled();
+    backend.fail(false);
+    fireEvent.click(screen.getByRole('button', { name: 'Save length' }));
+    await screen.findByText('Length in Audible: 10 h 12 min.');
+    expect(screen.queryByText('Could not save the length.')).toBeNull();
+    expect(changed).toHaveBeenCalledOnce();
+  });
+});

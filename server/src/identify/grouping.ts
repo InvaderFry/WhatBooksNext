@@ -35,6 +35,13 @@ export function knownConflict(a: FileFacts, b: FileFacts): boolean {
 }
 
 export function areCopies(a: FileFacts, b: FileFacts): boolean {
+  // A chapter or publisher clip may be identical in unrelated books. Audio has no full
+  // fingerprint, and even one shared clip must not join both books through their other parts.
+  if (
+    (a.format === 'audio' || b.format === 'audio') &&
+    (a.format !== b.format || !a.compare_key || a.compare_key !== b.compare_key)
+  )
+    return false;
   // Full hashes match: the same file, whatever the names (§11.3 rule 1).
   if (a.id !== b.id && a.size > 0 && a.full_hash && a.full_hash === b.full_hash) return true;
   return (

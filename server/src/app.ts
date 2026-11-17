@@ -349,17 +349,28 @@ export function createApp(ctx: AppContext) {
     route((req) => {
       if (scans.isRunning()) throw new HttpError(409, 'Wait for the scan to finish.');
       const removed = db.transaction(() => {
-        const items = removeAudiobookDir(db, String(req.params.id), String(req.query.dir ?? ''));
+        const { itemIds: items, fileIds } = removeAudiobookDir(
+          db,
+          String(req.params.id),
+          String(req.query.dir ?? ''),
+        );
         // Books that were only audio go, unless the owner recorded anything on them; books
         // that also have something to read keep it and open that again.
         const n = removeOrphanItems(db);
         for (const id of items) refreshPrimary(db, id);
         refreshFactsOfItems(db, items);
         syncSeries(db);
-        return n;
+        return { itemsRemoved: n, fileIds };
       })();
+      // Only delete the app's cached file covers once the database transaction has committed.
+      if (coversDir)
+        for (const id of removed.fileIds) {
+          const file = coverPath(coversDir, id);
+          if (path.dirname(path.resolve(file)) === path.resolve(coversDir))
+            fs.rmSync(file, { force: true });
+        }
       reach.invalidate();
-      return { ok: true, itemsRemoved: removed };
+      return { ok: true, itemsRemoved: removed.itemsRemoved };
     }),
   );
 

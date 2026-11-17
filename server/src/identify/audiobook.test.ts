@@ -18,14 +18,32 @@ describe('which audio files make one audiobook', () => {
     ).toEqual(Array(3).fill('Ann Author - The Glass Orchard|Ann Author - The Glass Orchard'));
   });
 
-  it('joins files that differ only by a part number, named by what they share', () => {
+  it('joins files with explicit part numbers, named by what they share', () => {
     expect(books('', ['The Glass Orchard Part 1.mp3', 'The Glass Orchard Part 2.mp3'])).toEqual([
       '|The Glass Orchard',
       '|The Glass Orchard',
     ]);
     expect(books('x', ['Glass Orchard 01.mp3', 'Glass Orchard 02.mp3'])).toEqual([
-      'x|Glass Orchard',
-      'x|Glass Orchard',
+      'x|Glass Orchard 01',
+      'x|Glass Orchard 02',
+    ]);
+  });
+
+  it('preserves numeric titles and keeps them apart in one folder', () => {
+    expect(books('Books', ['4027.mp3', '13-24-57.mp3'])).toEqual(['Books|4027', 'Books|13-24-57']);
+  });
+
+  it('keeps numbered MP3 books separate even when their series names match', () => {
+    expect(books('Lantern Saga', ['Lantern Saga 3.mp3', 'Lantern Saga 4.mp3'])).toEqual([
+      'Lantern Saga|Lantern Saga 3',
+      'Lantern Saga|Lantern Saga 4',
+    ]);
+  });
+
+  it('preserves numbers in the book title while joining explicitly named parts', () => {
+    expect(books('Books', ['Lantern 22 Part 1.mp3', 'Lantern 22 Part 2.mp3'])).toEqual([
+      'Books|Lantern 22',
+      'Books|Lantern 22',
     ]);
   });
 
@@ -33,6 +51,14 @@ describe('which audio files make one audiobook', () => {
     expect(books('The Glass Orchard', ['Track 01.mp3', 'Track 02.mp3', 'Chapter 3.mp3'])).toEqual(
       Array(3).fill('The Glass Orchard|The Glass Orchard'),
     );
+  });
+
+  it('recognises short zero-padded track names without stripping other numeric titles', () => {
+    expect(books('The Glass Orchard', ['01.mp3', '02.mp3'])).toEqual([
+      'The Glass Orchard|The Glass Orchard',
+      'The Glass Orchard|The Glass Orchard',
+    ]);
+    expect(books('Books', ['4027.mp3'])).toEqual(['Books|4027']);
   });
 
   it('takes a disc folder’s book from the folder above, so discs join up', () => {

@@ -257,9 +257,13 @@ export async function addAudiobookFolder(
 /**
  * Takes a directory off a folder's audiobook list. Its audio files leave the library (they
  * are no longer books to the app); nothing on the drive is touched. Returns the items that
- * lost files, for the caller to tidy.
+ * lost files and the deleted file ids, so the caller can remove their cached covers after commit.
  */
-export function removeAudiobookDir(db: DB, folderId: string, dir: string): string[] {
+export function removeAudiobookDir(
+  db: DB,
+  folderId: string,
+  dir: string,
+): { itemIds: string[]; fileIds: string[] } {
   const f = db.prepare('SELECT * FROM folders WHERE id = ?').get(folderId) as FolderRow | undefined;
   if (!f) throw new HttpError(404, 'No such folder.');
   const dirs = audiobookDirsOf(f);
@@ -278,11 +282,13 @@ export function removeAudiobookDir(db: DB, folderId: string, dir: string): strin
     )
     .all(folderId) as { id: string; rel_dir: string; item_id: string | null }[];
   const items = new Set<string>();
+  const fileIds: string[] = [];
   const del = db.prepare('DELETE FROM files WHERE id = ?');
   for (const a of audio) {
     if (inAudiobookDirs(a.rel_dir, kept)) continue;
     del.run(a.id);
+    fileIds.push(a.id);
     if (a.item_id) items.add(a.item_id);
   }
-  return [...items];
+  return { itemIds: [...items], fileIds };
 }

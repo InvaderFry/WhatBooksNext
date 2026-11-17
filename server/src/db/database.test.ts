@@ -179,3 +179,23 @@ describe('migration 021 (audiobooks)', () => {
     expect(db.prepare('SELECT COUNT(*) FROM store_purchases').pluck().get()).toBe(0);
   });
 });
+
+describe('migration 022 (audiobook grouping index)', () => {
+  it('looks up a book’s parts by folder, book directory and compare key through an index', async () => {
+    const db = openDatabase(':memory:');
+    await migrate(db, { snapshotDir: null });
+    const plan = db
+      .prepare(
+        `EXPLAIN QUERY PLAN SELECT f.*, x.item_id FROM files f
+      LEFT JOIN item_files x ON x.file_id = f.id
+      WHERE f.folder_id = ? AND f.format = 'audio' AND f.book_dir = ? AND f.compare_key = ? AND f.excluded = 0`,
+      )
+      .all('folder', 'The Glass Orchard', 'theglassorchard') as { detail: string }[];
+    expect(
+      plan.some((p) =>
+        /files_audio_book.*folder_id=\?.*book_dir=\?.*compare_key=\?/.test(p.detail),
+      ),
+    ).toBe(true);
+    db.close();
+  });
+});

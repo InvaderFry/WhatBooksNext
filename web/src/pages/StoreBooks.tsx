@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
-import { api, KIND_LABELS, STORE_LABELS } from '../api.ts';
+import { api, formatListen, KIND_LABELS, STORE_LABELS } from '../api.ts';
 import { Notice, storeLinkText } from '../components.tsx';
 import { navigate } from '../url.ts';
 
@@ -328,6 +328,7 @@ interface Place {
   id: string;
   kind: 'store' | 'history';
   store: string | null;
+  listenMinutes: number | null;
   readable: boolean;
   note: string | null;
   url: string | null;
@@ -379,6 +380,43 @@ function LinkEditor({
   );
 }
 
+/** Blank hours and minutes explicitly clear a previously stated length. */
+function ListeningLengthEditor({
+  place,
+  onSave,
+  onCancel,
+}: {
+  place: Place;
+  onSave: (minutes: number | null) => Promise<void>;
+  onCancel: () => void;
+}) {
+  const [hours, setHours] = useState(
+    place.listenMinutes == null ? '' : String(Math.floor(place.listenMinutes / 60)),
+  );
+  const [mins, setMins] = useState(
+    place.listenMinutes == null ? '' : String(place.listenMinutes % 60),
+  );
+  return (
+    <form
+      className="row-actions wrap link-editor"
+      onSubmit={(e) => {
+        e.preventDefault();
+        const minutes = (Number(hours) || 0) * 60 + (Number(mins) || 0);
+        void onSave(minutes > 0 ? minutes : null);
+      }}
+    >
+      <ListeningLength hours={hours} mins={mins} onHours={setHours} onMins={setMins} />
+      <span className="muted small">Leave both empty for an unknown length.</span>
+      <button type="submit" className="small">
+        Save length
+      </button>
+      <button type="button" className="small secondary" onClick={onCancel}>
+        Cancel
+      </button>
+    </form>
+  );
+}
+
 /** Item page → Where you can read it: stores (with "I can read it there now") and removal. */
 export function PlacesSection({
   itemId,
@@ -395,6 +433,7 @@ export function PlacesSection({
   const [mins, setMins] = useState('');
   const listenMinutes = (Number(hours) || 0) * 60 + (Number(mins) || 0);
   const [editing, setEditing] = useState<string | null>(null);
+  const [editingLength, setEditingLength] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const load = useCallback(
     async () => setPlaces(await api.get(`/api/items/${itemId}/locations`)),
@@ -501,6 +540,46 @@ export function PlacesSection({
                     onSave={async (url) => {
                       if (await act(() => api.patch(`/api/locations/${p.id}`, { url })))
                         setEditing(null);
+                    }}
+                  />
+                )}
+              </div>
+            )}
+            {p.store === 'audible' && (
+              <div className="place-link">
+                <span className="muted small">
+                  Length in Audible:{' '}
+                  {p.listenMinutes != null ? formatListen(p.listenMinutes) : 'unknown'}.
+                </span>{' '}
+                <button
+                  type="button"
+                  className="link-button small"
+                  onClick={() => setEditingLength(p.id)}
+                >
+                  {p.listenMinutes != null ? 'Change length' : 'Add length'}
+                </button>{' '}
+                {p.listenMinutes != null && (
+                  <button
+                    type="button"
+                    className="link-button small"
+                    onClick={() =>
+                      void act(() =>
+                        api.patch(`/api/locations/${p.id}`, { listenMinutes: null }),
+                      ).then((saved) => {
+                        if (saved) setEditingLength(null);
+                      })
+                    }
+                  >
+                    Remove length
+                  </button>
+                )}
+                {editingLength === p.id && (
+                  <ListeningLengthEditor
+                    place={p}
+                    onCancel={() => setEditingLength(null)}
+                    onSave={async (listenMinutes) => {
+                      if (await act(() => api.patch(`/api/locations/${p.id}`, { listenMinutes })))
+                        setEditingLength(null);
                     }}
                   />
                 )}

@@ -104,7 +104,8 @@ export function registerStoreRoutes(
       const readable = b.readable === true;
       // A link the owner typed or pasted is theirs: imports never replace it.
       const link = typeof b.url === 'string' && b.url.trim() ? checkStoreLink(s, b.url) : null;
-      const listenMinutes = listenMinutesFrom(s, b.listenMinutes);
+      const listenMinutes =
+        'listenMinutes' in b ? listenMinutesFrom(s, b.listenMinutes) : undefined;
       const pick = b.pick as { token?: unknown; index?: unknown } | undefined;
       return db.transaction(() => {
         if (pick) {
@@ -204,12 +205,16 @@ export function registerStoreRoutes(
       const s = store(req.body?.store);
       const url = req.body?.url;
       const link = typeof url === 'string' && url.trim() ? checkStoreLink(s, url) : null;
-      const minutes = listenMinutesFrom(s, req.body?.listenMinutes);
+      const minutes =
+        req.body && 'listenMinutes' in req.body
+          ? listenMinutesFrom(s, req.body.listenMinutes)
+          : undefined;
       return { id: addLocation(db, id, s, req.body?.readable === true, link, true, minutes) };
     }),
   );
   /**
-   * Changes a store copy: "I can read it there now", and its link. A link set here is the
+   * Changes a store copy: readability, its link, and an Audible length (null clears it).
+   * A link set here is the
    * owner's (Add / Change link); `url: null` removes it, and a removed link stays removed.
    */
   app.patch(
@@ -218,7 +223,8 @@ export function registerStoreRoutes(
       const b = (req.body ?? {}) as Record<string, unknown>;
       const hasReadable = 'readable' in b;
       const hasUrl = 'url' in b;
-      if (!hasReadable && !hasUrl) throw new HttpError(400, 'Nothing to change.');
+      const hasLength = 'listenMinutes' in b;
+      if (!hasReadable && !hasUrl && !hasLength) throw new HttpError(400, 'Nothing to change.');
       if (hasReadable && typeof b.readable !== 'boolean')
         throw new HttpError(400, 'readable must be true or false.');
       if (hasUrl && b.url !== null && typeof b.url !== 'string')
@@ -228,6 +234,9 @@ export function registerStoreRoutes(
         .prepare("SELECT store FROM locations WHERE id = ? AND kind = 'store'")
         .get(id) as { store: Store | null } | undefined;
       if (!loc) throw new HttpError(404, 'No such place.');
+      const minutes = hasLength
+        ? listenMinutesFrom(loc.store ?? 'other', b.listenMinutes)
+        : undefined;
       const link =
         typeof b.url === 'string' && b.url.trim()
           ? checkStoreLink(loc.store ?? 'other', b.url)
@@ -238,6 +247,12 @@ export function registerStoreRoutes(
             'UPDATE locations SET confirmed_readable = ?, updated_at = ? WHERE id = ?',
           ).run(b.readable ? 1 : 0, nowIso(), id);
         if (hasUrl) setLocationLink(db, id, link, true);
+        if (hasLength)
+          db.prepare('UPDATE locations SET listen_minutes = ?, updated_at = ? WHERE id = ?').run(
+            minutes ?? null,
+            nowIso(),
+            id,
+          );
       })();
       return { ok: true };
     }),
