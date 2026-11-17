@@ -5,7 +5,8 @@ import type { EmbeddedMetadata, MetaResult } from './types.ts';
 /**
  * Audiobook files (docs/plans/audiobooks.md): the playing time and the tags, read with
  * music-metadata (pure JavaScript, no install script). Only the file's headers and tags are
- * read, never the whole recording, so a 500 MB book costs about as much as a small one.
+ * read for formats with a stated playing time. MP3s without a duration header require a
+ * frame scan: matching opening bitrates alone cannot prove the rest is constant bitrate.
  *
  * What the tags mean for a book: the album is the book's title (a chapter file's own title is
  * the chapter's), and the album artist, else the artist, is its author. A narrator isn't
@@ -29,7 +30,9 @@ export async function readAudio(
     durationSeconds: null,
   };
   if (UNREADABLE.has(ext)) return { ...empty, jpeg: wantCover ? null : undefined };
-  const m = await parseFile(file, { duration: false, skipCovers: !wantCover });
+  // music-metadata stops at a usable Xing/Info duration; otherwise duration:true counts
+  // MPEG frames to the end instead of reporting a file-size estimate as an exact time.
+  const m = await parseFile(file, { duration: ext === 'mp3', skipCovers: !wantCover });
   const c = m.common;
   const metadata: EmbeddedMetadata = {};
   const title = clean(c.album) ?? (WHOLE_BOOK.has(ext) ? clean(c.title) : undefined);

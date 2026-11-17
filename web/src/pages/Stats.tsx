@@ -282,7 +282,8 @@ export function Stats() {
         <p className="muted small">
           Reading time comes from word and page counts at assumed reading speeds, give or take 20%.
           The time adds up only the books whose length is known; for books you’ve started, only
-          what’s left (roughly, from where you said you are).
+          what’s left (roughly, from where you said you are). Audiobooks count in Waiting, but
+          listening time is left out of the reading estimate.
         </p>
         <table className="table">
           <caption className="visually-hidden">
@@ -291,9 +292,9 @@ export function Stats() {
           <thead>
             <tr>
               <th scope="col">Kind</th>
-              <th scope="col">Estimated time</th>
+              <th scope="col">Estimated reading time</th>
               <th scope="col">Waiting</th>
-              <th scope="col">Length known</th>
+              <th scope="col">Reading time known</th>
             </tr>
           </thead>
           <tbody>

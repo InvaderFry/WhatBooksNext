@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { api, KIND_LABELS, STORE_LABELS } from '../api.ts';
 import { Notice, storeLinkText } from '../components.tsx';
 import { navigate } from '../url.ts';
@@ -46,6 +46,50 @@ function StoreSelect({
 
 const READABLE_HELP =
   'Tick it if you can open it there now (on your iPhone or iPad). Only then does “Ready to read” include it.';
+
+/** Shared by adding a title and adding Audible to an existing book. */
+function ListeningLength({
+  hours,
+  mins,
+  onHours,
+  onMins,
+}: {
+  hours: string;
+  mins: string;
+  onHours: (value: string) => void;
+  onMins: (value: string) => void;
+}) {
+  const id = useId();
+  return (
+    <fieldset className="row-actions wrap">
+      <legend className="small">Length, as Audible shows it (optional)</legend>
+      <div className="field inline">
+        <label htmlFor={`${id}-h`}>Hours</label>
+        <input
+          id={`${id}-h`}
+          type="number"
+          min="0"
+          max="999"
+          inputMode="numeric"
+          value={hours}
+          onChange={(e) => onHours(e.target.value)}
+        />
+      </div>
+      <div className="field inline">
+        <label htmlFor={`${id}-m`}>Minutes</label>
+        <input
+          id={`${id}-m`}
+          type="number"
+          min="0"
+          max="59"
+          inputMode="numeric"
+          value={mins}
+          onChange={(e) => onMins(e.target.value)}
+        />
+      </div>
+    </fieldset>
+  );
+}
 
 /** Library → Add a store book: search the online sources, or type it in. */
 export function AddStoreBook({ onClose }: { onClose: () => void }) {
@@ -108,33 +152,7 @@ export function AddStoreBook({ onClose }: { onClose: () => void }) {
         </label>
       </div>
       {store === 'audible' && (
-        <fieldset className="row-actions wrap">
-          <legend className="small">Length, as Audible shows it (optional)</legend>
-          <div className="field inline">
-            <label htmlFor="listen-h">Hours</label>
-            <input
-              id="listen-h"
-              type="number"
-              min="0"
-              max="999"
-              inputMode="numeric"
-              value={hours}
-              onChange={(e) => setHours(e.target.value)}
-            />
-          </div>
-          <div className="field inline">
-            <label htmlFor="listen-m">Minutes</label>
-            <input
-              id="listen-m"
-              type="number"
-              min="0"
-              max="59"
-              inputMode="numeric"
-              value={mins}
-              onChange={(e) => setMins(e.target.value)}
-            />
-          </div>
-        </fieldset>
+        <ListeningLength hours={hours} mins={mins} onHours={setHours} onMins={setMins} />
       )}
       <p className="muted small">
         {READABLE_HELP} To bring in a whole store library at once, use Settings → Import store
@@ -373,6 +391,9 @@ export function PlacesSection({
 }) {
   const [places, setPlaces] = useState<Place[] | null>(null);
   const [store, setStore] = useState('kindle');
+  const [hours, setHours] = useState('');
+  const [mins, setMins] = useState('');
+  const listenMinutes = (Number(hours) || 0) * 60 + (Number(mins) || 0);
   const [editing, setEditing] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const load = useCallback(
@@ -414,7 +435,7 @@ export function PlacesSection({
                   )
                 }
               />
-              I can read it there now
+              {p.store === 'audible' ? 'I can listen to it there now' : 'I can read it there now'}
             </label>
             <button
               type="button"
@@ -495,13 +516,26 @@ export function PlacesSection({
         className="row-actions wrap"
         onSubmit={(e) => {
           e.preventDefault();
-          void act(() => api.post(`/api/items/${itemId}/locations`, { store }));
+          void act(() =>
+            api.post(`/api/items/${itemId}/locations`, {
+              store,
+              ...(store === 'audible' && listenMinutes > 0 ? { listenMinutes } : {}),
+            }),
+          ).then((saved) => {
+            if (saved) {
+              setHours('');
+              setMins('');
+            }
+          });
         }}
       >
         <div className="field inline">
           <label htmlFor="place-store">Also in</label>
           <StoreSelect id="place-store" value={store} onChange={setStore} />
         </div>
+        {store === 'audible' && (
+          <ListeningLength hours={hours} mins={mins} onHours={setHours} onMins={setMins} />
+        )}
         <button type="submit" className="small secondary">
           Add
         </button>

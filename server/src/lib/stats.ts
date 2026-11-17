@@ -177,7 +177,10 @@ export function computeStats(input: StatsInput): Stats {
       high: 0,
     };
     const started = IN_PROGRESS.includes(i.user.progress);
-    const d = i.duration ? (started ? remaining(i.duration, i.user.progress) : i.duration) : null;
+    // Audio-only items use playing time for recommendations. It isn't reading time, even
+    // after remaining() turns an in-progress recording into a rough estimate.
+    const reading = i.duration?.listening ? null : i.duration;
+    const d = reading ? (started ? remaining(reading, i.user.progress) : reading) : null;
     for (const r of [row, total]) {
       r.items++;
       if (started) r.inProgress++;

@@ -136,6 +136,20 @@ try {
       },
     ],
     [
+      'item-add-audible',
+      '/?view=library&q=mapmaker',
+      async (p) => {
+        await p
+          .getByRole('link', { name: /Mapmaker/ })
+          .first()
+          .click();
+        await p.getByLabel('Also in').selectOption('audible');
+        await p.getByLabel('Hours', { exact: true }).fill('9');
+        await p.getByLabel('Minutes', { exact: true }).fill('12');
+        await p.getByLabel('Also in').scrollIntoViewIfNeeded();
+      },
+    ],
+    [
       'library-add-audible',
       '/?view=library',
       async (p) => {

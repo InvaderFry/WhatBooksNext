@@ -43,13 +43,16 @@ from guesses.
     (`sameAudiobook` in `identify/grouping.ts`). A wrong grouping is fixed with the existing merge
     and split.
 - **Deep pass.** `scan/formats/audio.ts` reads tags and the playing time with `music-metadata`
-  (pure JavaScript, MIT, no install script), headers only. The album is the book's title, the
+  (pure JavaScript, MIT, no install script). Formats with a stated playing time need only
+  headers; MP3s without a usable duration header count frames to the end, so variable bitrate
+  is never mistaken for constant bitrate from the first few frames. The album is the book's title, the
   album artist (else artist) its author; a narrator is never guessed. `files.duration_seconds`
   holds the time. Old Audible `.aa` files can't be read: listed, length unknown. Audio is **not
   fingerprinted in full** (hundreds of gigabytes; copies are recognised by name and size). One
   cover per book, from its first part.
 - **Listening time.** `listenFromFiles` (`lib/library.ts`): the parts added up, each part once
-  however many copies exist, and **unknown while any part's time is unknown**. It is exact, so it
+  however many copies or encodings exist (same relative path and filename stem within the book;
+  disc directories and chapter numbers stay distinct), and **unknown while any part's time is unknown**. It is exact, so it
   is shown without "~" or a range ("9 h 12 min to listen"). `Duration.listening` marks it.
 - **One book, two ways.** An audiobook beside an ebook of the same name joins it by the normal
   same-name rule; the ebook stays the file that opens. In different folders they are two entries
@@ -95,5 +98,27 @@ Waiting on the owner (B2): the look-around report from the Audible library page.
 - Real audiobook folders: are parts grouped into the right books (D2)? The Diagnostics counts
   and a few spot checks answer it.
 - Real tags: does the album give the book's title, or do some files need the folder's name?
-- Scan time on the USB drive with many audio files (only headers are read).
+- Scan time on the USB drive with many audio files, especially MP3s without a duration header
+  (these need a frame scan; a timed-out read leaves the length unknown).
 - **Open** on an audiobook starts its first part in the default player.
+
+## PR #30 review fixes
+
+- Stats keeps audiobook counts in the backlog, but leaves listening time out of estimated
+  reading time, including for books in progress. A book available both ways contributes only
+  its reading estimate. The table explains this and labels its reading-time coverage.
+- Alternate encodings with the same path and filename stem count as one part. File size and
+  extension do not make an extra chapter. The longer known duration is used when encodings
+  differ slightly; a known encoding can supply the length of an unreadable alternative.
+- MP3s without a usable duration header are measured by counting all frames, rather than
+  assuming constant bitrate from the opening frames. Usable Xing/Info headers still stop early.
+  Metadata stage 4 rechecks existing audio on the next scan; other current formats stay cached.
+- The book page’s **Also in → Audible** form accepts optional hours and minutes, just like
+  adding a new title. Leaving both blank keeps the length unknown.
+- Page tests cover the Settings audiobook-folder form (pending, success, error and retry),
+  Read / Listen / Either (default, requests, bookmarks and visibility), and Audible lengths
+  for both new titles and existing books. Server regressions cover totals and MP3 durations.
+
+Real-file grouping, tags, USB scan speed and Windows playback still need owner checks 24–29.
+Passing Windows CI exercises generated files and cannot confirm those checks. Audible import
+still waits on action B2; these fixes do not add a collector.

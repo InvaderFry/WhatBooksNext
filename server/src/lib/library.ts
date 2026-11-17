@@ -137,7 +137,8 @@ export interface Media {
 
 /**
  * The playing time of an item's audio files. A part that exists as several copies counts once
- * (the same place in the book's folder, and the same size). Unknown when any part's time is unknown: a partial total would read as
+ * (the same place and filename stem in the book's folder, including alternate encodings).
+ * Unknown when any part's time is unknown: a partial total would read as
  * the whole book's.
  */
 export function listenFromFiles(
@@ -150,8 +151,11 @@ export function listenFromFiles(
     const dir = p.bookDir ?? '';
     const inBook =
       dir && p.relPath.startsWith(`${dir}/`) ? p.relPath.slice(dir.length + 1) : p.relPath;
-    const k = `${inBook.toLowerCase()}|${p.size}`;
-    if (!seen.has(k) || seen.get(k) === null) seen.set(k, p.seconds);
+    const k = inBook.toLowerCase().replace(/\.[^./]+$/, '');
+    // Encodings can differ slightly in padding. Keep the longer known time, independent of
+    // scan order, instead of adding them; another encoding may also supply a missing time.
+    const previous = seen.get(k) ?? null;
+    seen.set(k, p.seconds === null ? previous : Math.max(previous ?? 0, p.seconds));
   }
   const all = [...seen.values()];
   if (all.length === 0 || all.some((s) => s === null)) return { minutes: null, parts: all.length };

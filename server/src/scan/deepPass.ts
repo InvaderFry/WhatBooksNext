@@ -28,7 +28,7 @@ import { TaskError, type TaskRunner } from './pool.ts';
  * at the current version: a cancelled or interrupted scan resumes where it stopped, and
  * failures are retried (§9.6). Raise a version when its reader improves.
  */
-export const STAGE_VERSIONS = { meta: 3, thumb: 2, full_hash: 1 } as const;
+export const STAGE_VERSIONS = { meta: 4, thumb: 2, full_hash: 1 } as const;
 type Stage = keyof typeof STAGE_VERSIONS;
 
 /**
@@ -37,6 +37,7 @@ type Stage = keyof typeof STAGE_VERSIONS;
  * JBIG2 pictures, which version 1 left blank.
  */
 const RAISED_FOR: Partial<Record<Stage, { from: number; formats: string[] }>> = {
+  meta: { from: 3, formats: ['audio'] },
   thumb: { from: 1, formats: ['pdf'] },
 };
 

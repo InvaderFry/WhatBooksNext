@@ -133,7 +133,9 @@ Do these after updating the app. They are also action B1 in `docs/plans/audioboo
     a folder inside `E:\My Books and Comics`. Is it listed under that folder with a 🎧?
 25. Press **Scan now**. When it finishes, open **Library** and set **Format** to **Audiobook**.
     Pick three audiobooks you know. For each: is it **one** entry (not one per chapter file), is
-    the title right, and does the listening time look right?
+    the title right, and does the listening time look right? If a book has the same filename
+    in two formats (such as MP3 and M4B), check that its time counts once. MP3s without a duration
+    header now need a frame scan: note how long the scan takes on the USB drive.
 26. Is any **music** listed as a book? (There shouldn't be any.)
 27. On **What next**, choose **Listen** under _Read or listen?_ Do only audiobooks show, with
     their listening times?
@@ -141,6 +143,10 @@ Do these after updating the app. They are also action B1 in `docs/plans/audioboo
 29. If you own a title as both an ebook and an audiobook: is it one entry or two? (Two is
     expected when they're in different folders; tell me, and whether **Needs review** offers to
     merge them.)
+
+On **Stats**, audiobook-only entries should count in **Waiting**, but their playing time
+should not add to **Estimated reading time**. On an existing book’s page, **Also in → Audible**
+now has optional **Hours** and **Minutes**. Check one length you know from Audible.
 
 **Audible (5 minutes, action B2).** In Edge or Chrome, sign in at audible.com. In the app, open
 **Settings → Import store purchases**, pick **Audible**, and follow the look-around steps shown

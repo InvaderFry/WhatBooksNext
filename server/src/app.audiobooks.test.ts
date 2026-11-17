@@ -154,6 +154,28 @@ describe('one audiobook from many files', () => {
     expect(await items()).toMatchObject([{ fileCount: 6, audioParts: 3, listenMinutes: 30 }]);
   });
 
+  it('counts alternate encodings of a whole book once', async () => {
+    writeFiles(drive, {
+      'The Salt Road.mp3': makeMp3(60, { album: 'The Salt Road' }),
+      'The Salt Road.m4b': makeM4b(60, { album: 'The Salt Road' }),
+    });
+    await api.post('/api/audiobook-folders', { path: drive });
+    await scan();
+    expect(await items()).toMatchObject([{ fileCount: 2, audioParts: 1, listenMinutes: 1 }]);
+  });
+
+  it('counts alternate encodings once per chapter while keeping discs distinct', async () => {
+    writeFiles(drive, {
+      'The Salt Road/CD 1/Track 01.mp3': makeMp3(60),
+      'The Salt Road/CD 1/Track 01.wav': makeWav(60),
+      'The Salt Road/CD 1/Track 02.mp3': makeMp3(60),
+      'The Salt Road/CD 2/Track 01.mp3': makeMp3(60),
+    });
+    await api.post('/api/audiobook-folders', { path: drive });
+    await scan();
+    expect(await items()).toMatchObject([{ fileCount: 4, audioParts: 3, listenMinutes: 3 }]);
+  });
+
   it('names an untagged book by its folder and still measures it', async () => {
     writeFiles(drive, {
       'Bo Writer - The Salt Road/Track 01.wav': makeWav(60),
@@ -281,6 +303,25 @@ describe('Audible as a store', () => {
     expect(page.availability.storeLinks).toMatchObject([{ store: 'audible', kind: 'read' }]);
     expect(page.availability.readyToRead).toBe(false);
     expect((await items('&store=audible')).map((i) => i.title)).toEqual(['The Salt Road']);
+  });
+
+  it('adds Audible and its length to a book already in another store', async () => {
+    const created = await api.post('/api/store/items', { store: 'kindle', title: 'The Salt Road' });
+    const id = created.body.itemId;
+    const added = await api.post(`/api/items/${id}/locations`, {
+      store: 'audible',
+      listenMinutes: 552,
+    });
+    expect(added.status).toBe(200);
+    expect(await items()).toMatchObject([
+      { id, media: { read: true, listen: true }, listenMinutes: 552 },
+    ]);
+    expect((await api.get(`/api/items/${id}/locations`)).body).toEqual(
+      expect.arrayContaining([expect.objectContaining({ store: 'audible', listenMinutes: 552 })]),
+    );
+    expect(
+      (await api.post(`/api/items/${id}/locations`, { store: 'kobo', listenMinutes: 552 })).status,
+    ).toBe(400);
   });
 
   it('refuses a listening length on a store that isn’t Audible, and a link that isn’t Audible’s', async () => {
