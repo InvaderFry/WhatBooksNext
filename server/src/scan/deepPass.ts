@@ -9,6 +9,7 @@ import {
   LARGE_FILE_BYTES,
 } from '../config.ts';
 import type { DB } from '../db/database.ts';
+import { comparePartPaths } from '../identify/audiobook.ts';
 import type { Platform } from '../platform/types.ts';
 import { nowIso, parseJson } from '../util.ts';
 import { joinRel, resolveFolderRoot, type FolderRow } from './folders.ts';
@@ -68,6 +69,8 @@ interface FileRow {
   stages: string;
   full_hash: string | null;
   has_thumbnail: number;
+  compare_key: string;
+  book_dir: string | null;
 }
 
 interface Target extends FileRow {
@@ -142,7 +145,8 @@ export async function runDeepPass(o: DeepPassOptions): Promise<DeepPassResult> {
     if (!root) continue; // unreachable: nothing to read
     const rows = db
       .prepare(
-        `SELECT id, folder_id, rel_path, format, ext, size, modified_ms, stages, full_hash, has_thumbnail
+        `SELECT id, folder_id, rel_path, format, ext, size, modified_ms, stages, full_hash, has_thumbnail,
+           compare_key, book_dir
          FROM files WHERE folder_id = ? AND availability = 'present' AND stale = 0 AND excluded = 0
          ORDER BY rel_path`,
       )
@@ -153,12 +157,26 @@ export async function runDeepPass(o: DeepPassOptions): Promise<DeepPassResult> {
   if (coversDir) fs.mkdirSync(coversDir, { recursive: true });
   const coverMissing = (f: Target) =>
     coversDir !== null && f.has_thumbnail === 1 && !fs.existsSync(coverPath(coversDir, f.id));
-  const toRead = targets.filter(
-    (f) =>
-      DEEP.has(f.format) &&
-      (needs(f, 'meta') || (coversDir !== null && (needs(f, 'thumb') || coverMissing(f)))),
+  // An audiobook's cover comes from its first part only: forty chapter files carry the same
+  // picture, and one is enough.
+  const firstPart = new Map<string, Target>();
+  for (const f of targets) {
+    if (f.format !== 'audio') continue;
+    const k = `${f.folder_id}|${f.book_dir ?? ''}|${f.compare_key}`;
+    const cur = firstPart.get(k);
+    if (!cur || comparePartPaths(f.rel_path, cur.rel_path) < 0) firstPart.set(k, f);
+  }
+  const coverFrom = new Set([...firstPart.values()].map((f) => f.id));
+  const wantsCover = (f: Target) =>
+    coversDir !== null &&
+    (f.format !== 'audio' || coverFrom.has(f.id)) &&
+    (needs(f, 'thumb') || coverMissing(f));
+  const toRead = targets.filter((f) => DEEP.has(f.format) && (needs(f, 'meta') || wantsCover(f)));
+  // Audio isn't fingerprinted in full: a library of recordings is hundreds of gigabytes, and
+  // copies of a part are already recognised by name and size (§11.3 rule 1).
+  const toHash = targets.filter(
+    (f) => f.format !== 'audio' && (needs(f, 'full_hash') || !f.full_hash),
   );
-  const toHash = targets.filter((f) => needs(f, 'full_hash') || !f.full_hash);
 
   const progress: DeepProgress = {
     phase: 'reading',
@@ -228,7 +246,6 @@ export async function runDeepPass(o: DeepPassOptions): Promise<DeepPassResult> {
     hashedEarly.add(id);
   };
   const hashedEarly = new Set<string>();
-  const wantsCover = (f: Target) => coversDir !== null && (needs(f, 'thumb') || coverMissing(f));
 
   const readOne = async (f: Target) => {
     try {
@@ -259,7 +276,7 @@ export async function runDeepPass(o: DeepPassOptions): Promise<DeepPassResult> {
           platform,
           runner,
           f,
-          { kind: 'thumb', file: f.abs, format: f.format },
+          { kind: 'thumb', file: f.abs, format: f.format, ext: f.ext },
           timeLimit(f),
         );
         if (!out.ok) progress.refused++;
@@ -348,7 +365,7 @@ function writeMeta(db: DB, fileId: string, m: MetaResult, partialHash: string): 
     return;
   }
   db.prepare(
-    `UPDATE files SET metadata = ?, word_count = ?, page_count = ?, language = ?,
+    `UPDATE files SET metadata = ?, word_count = ?, page_count = ?, duration_seconds = ?, language = ?,
        pdf_type = ?, pdf_type_evidence = ?, partial_hash = ?,
        problem = NULL, problem_detail = NULL, problem_at = NULL
      WHERE id = ?`,
@@ -356,6 +373,7 @@ function writeMeta(db: DB, fileId: string, m: MetaResult, partialHash: string): 
     JSON.stringify(m.metadata),
     m.wordCount,
     m.pageCount,
+    m.durationSeconds ?? null,
     normaliseLanguage(m.metadata.language),
     m.pdfType?.type ?? null,
     m.pdfType?.evidence ?? null,

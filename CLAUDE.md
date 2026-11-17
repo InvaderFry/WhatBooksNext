@@ -63,6 +63,16 @@ owner has already made. Don't reopen those decisions. Then read the latest
   dates; shutdown runs once). Stage 3 built (match report test, checked cover redirects incl.
   archive.org for Open Library, ISBN check digits, depth-skip counts). Stage 4 built (first page
   tests). Stage 5 only if asked.
+- **Audiobooks** (`docs/plans/audiobooks.md`, owner decisions 2026-11-17). **Stage 1 built:**
+  audio counts as books only inside the owner's audiobook folders (`folders.audiobook_dirs`,
+  migration 021; `addAudiobookFolder` in `scan/folders.ts`). `identify/audiobook.ts` (pure) says
+  which files make one book; parts share `files.book_dir` and `compare_key`.
+  `scan/formats/audio.ts` reads tags and `duration_seconds` (music-metadata); audio gets no full
+  hash. Listening time is exact and unknown while any part's is (`listenFromFiles`). What next has
+  Read / Listen / Either (`Situation.medium`, `forMedium`). **Stage 2:** Audible is a store
+  (links, a typed length in `locations.listen_minutes`); its collector waits on the owner's
+  look-around report (B2). Build it from that report, never from guesses. Not checked on Windows
+  yet (B1).
 - Automatic refresh: due rules are pure in `lib/refresh.ts`; `identify/refresher.ts` runs batches
   through `lookUpItem` (never a second lookup engine). `lookup_state.accepted_source_id` remembers
   the app's own accepted match: lookups keep it (a rival goes to Needs review as "Check this

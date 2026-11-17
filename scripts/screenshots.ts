@@ -109,6 +109,46 @@ try {
   const shots: [string, string, (p: import('playwright').Page) => Promise<void>][] = [
     ['next', '/', async () => {}],
     ['next-finish-within', '/?time=30&mode=finish_within', async () => {}],
+    // Audiobooks: Listen on What next, an audiobook of several files, one that can also be
+    // read, an Audible title being added, and the audiobook folders in Settings.
+    ['next-listen', '/?medium=listen', async () => {}],
+    [
+      'item-audiobook',
+      '/?view=library&q=weather',
+      async (p) => {
+        await p
+          .getByRole('link', { name: /Weather Clerk/ })
+          .first()
+          .click();
+        await p.getByRole('heading', { name: 'Files' }).waitFor();
+        await p.locator('details.audio-parts summary').click();
+      },
+    ],
+    [
+      'item-read-or-listen',
+      '/?view=library&q=mapmaker',
+      async (p) => {
+        await p
+          .getByRole('link', { name: /Mapmaker/ })
+          .first()
+          .click();
+        await p.getByRole('heading', { name: 'Files' }).waitFor();
+      },
+    ],
+    [
+      'library-add-audible',
+      '/?view=library',
+      async (p) => {
+        await p.getByRole('button', { name: 'Add a store book…' }).click();
+        await p.getByLabel('Where').selectOption('audible');
+        await p.getByRole('button', { name: 'Type it in' }).click();
+      },
+    ],
+    [
+      'settings-audiobooks',
+      '/?view=settings',
+      async (p) => void (await p.getByLabel('Add a folder of audiobooks').scrollIntoViewIfNeeded()),
+    ],
     [
       'series',
       '/?view=series',

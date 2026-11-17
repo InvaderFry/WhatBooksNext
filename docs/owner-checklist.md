@@ -124,6 +124,29 @@ the letter back at the end.
 23. Open a store book (one without a file) that showed a cover before you updated. Does it
     still have one? And after the next lookups, do newly added store books get covers as before?
 
+### Audiobooks (new, 2026-11-17)
+
+Do these after updating the app. They are also action B1 in `docs/plans/audiobooks.md`.
+
+24. **Settings → Library folders → Add a folder of audiobooks**: paste the path of the folder
+    your audiobooks are in (in File Explorer, right-click the folder → **Copy as path**). It can be
+    a folder inside `E:\My Books and Comics`. Is it listed under that folder with a 🎧?
+25. Press **Scan now**. When it finishes, open **Library** and set **Format** to **Audiobook**.
+    Pick three audiobooks you know. For each: is it **one** entry (not one per chapter file), is
+    the title right, and does the listening time look right?
+26. Is any **music** listed as a book? (There shouldn't be any.)
+27. On **What next**, choose **Listen** under _Read or listen?_ Do only audiobooks show, with
+    their listening times?
+28. Open an audiobook's page and press **Open**. Does it start playing in your usual player?
+29. If you own a title as both an ebook and an audiobook: is it one entry or two? (Two is
+    expected when they're in different folders; tell me, and whether **Needs review** offers to
+    merge them.)
+
+**Audible (5 minutes, action B2).** In Edge or Chrome, sign in at audible.com. In the app, open
+**Settings → Import store purchases**, pick **Audible**, and follow the look-around steps shown
+there. Paste the report into chat. It has no titles or account details; I need it to build the
+Audible import.
+
 ## You can skip these
 
 - **iCloud or OneDrive downloads:** you have neither on the PC, so there's nothing to test.
@@ -133,6 +156,6 @@ the letter back at the end.
 ## What to send back
 
 - Part 1: your yes/no for each of the 5 situations, plus anything you had to correct.
-- Part 2: worked / didn't work / skipped for checks 1–23, and what happened for any that didn't
+- Part 2: worked / didn't work / skipped for checks 1–29, and what happened for any that didn't
   work.
 - **Settings → Diagnostics → Copy report** (it leaves out folder names unless you tick the box).

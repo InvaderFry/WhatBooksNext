@@ -1,10 +1,11 @@
 import path from 'node:path';
 import { EXTENSION_FORMATS, MAX_SCAN_DEPTH } from '../config.ts';
 import type { DB } from '../db/database.ts';
+import { audioBooksInDirectory, inAudiobookDirs, isAudioExt } from '../identify/audiobook.ts';
 import { PARSER_VERSION, parseFilename } from '../identify/filename.ts';
 import { availabilityFromAttributes, type Platform } from '../platform/types.ts';
 import { newId, nowIso, parseJson } from '../util.ts';
-import { resolveFolderRoot, type FolderRow } from './folders.ts';
+import { audiobookDirsOf, resolveFolderRoot, type FolderRow } from './folders.ts';
 
 /**
  * The light pass (PLAN.md §9.2): lists every reachable folder and records names, paths, sizes,
@@ -49,6 +50,9 @@ export interface FoundFile {
   createdMs: number | null;
   attributes: number | null;
   availability: 'present' | 'placeholder' | 'unknown';
+  /** An audio file: the book it is a part of (its name is parsed, not the file's). */
+  bookName?: string;
+  bookDir?: string;
 }
 
 interface ExistingFile {
@@ -61,15 +65,46 @@ interface ExistingFile {
   stale: number;
   name: string;
   stages: string;
+  compare_key: string;
+  book_dir: string | null;
 }
 
-export function formatForName(name: string): { ext: string; format: string } | null {
+/**
+ * A file's format from its name. Audio counts only where the owner said audiobooks are
+ * (`audio`), so music in other folders is never listed.
+ */
+export function formatForName(name: string, audio = false): { ext: string; format: string } | null {
   const dot = name.lastIndexOf('.');
   if (dot <= 0) return null;
   const ext = name.slice(dot + 1).toLowerCase();
-  const format = EXTENSION_FORMATS[ext];
+  const format = EXTENSION_FORMATS[ext] ?? (audio && isAudioExt(ext) ? 'audio' : undefined);
   return format ? { ext, format } : null;
 }
+
+/** Says which book each audio file is a part of, directory by directory. */
+export function nameAudiobooks(found: FoundFile[], rootName: string): void {
+  const byDir = new Map<string, FoundFile[]>();
+  for (const f of found) {
+    if (f.format !== 'audio') continue;
+    if (!byDir.has(f.relDir)) byDir.set(f.relDir, []);
+    byDir.get(f.relDir)!.push(f);
+  }
+  for (const [dir, files] of byDir) {
+    const books = audioBooksInDirectory(
+      dir,
+      files.map((f) => f.name),
+      rootName,
+    );
+    for (const f of files) {
+      const b = books.get(f.name)!;
+      f.bookName = b.bookName;
+      f.bookDir = b.bookDir;
+    }
+  }
+}
+
+/** What the filename parser reads: the file's name, or for audio the book's. */
+const parsedNameOf = (f: FoundFile) => (f.bookName ? `${f.bookName}.${f.ext}` : f.name);
 
 function parentDir(rel: string): string | null {
   if (rel === '') return null;
@@ -106,6 +141,7 @@ export async function lightScanFolder(
     return summary;
   }
 
+  const audioDirs = audiobookDirsOf(folder);
   const found: FoundFile[] = [];
   const completeDirs = new Set<string>();
   /** directory -> lowercase names of its child directories, as listed */
@@ -145,7 +181,7 @@ export async function lightScanFolder(
         continue;
       }
       if (e.isLink) continue;
-      const fmt = formatForName(e.name);
+      const fmt = formatForName(e.name, inAudiobookDirs(rel, audioDirs));
       if (!fmt) {
         const dot = e.name.lastIndexOf('.');
         const ext = dot > 0 ? e.name.slice(dot + 1).toLowerCase() : '(none)';
@@ -172,6 +208,7 @@ export async function lightScanFolder(
   }
   if (summary.status !== 'cancelled' && summary.dirErrors > 0) summary.status = 'partial';
 
+  nameAudiobooks(found, path.basename(folder.display_path) || 'Audiobooks');
   const reparsedFileIds = applyFolderListing(db, folder, found, completeDirs, childDirs, summary);
   return { ...summary, reparsedFileIds };
 }
@@ -193,7 +230,7 @@ export function applyFolderListing(
   const childLower = new Map([...childDirs].map(([d, c]) => [d.toLowerCase(), c]));
   const existing = db
     .prepare(
-      'SELECT id, rel_path, rel_dir, size, modified_ms, availability, stale, name, stages FROM files WHERE folder_id = ?',
+      'SELECT id, rel_path, rel_dir, size, modified_ms, availability, stale, name, stages, compare_key, book_dir FROM files WHERE folder_id = ?',
     )
     .all(folder.id) as ExistingFile[];
   // Windows paths are case-insensitive; a rename that only changes case is the same file.
@@ -203,10 +240,10 @@ export function applyFolderListing(
   const insert = db.prepare(
     `INSERT INTO files (id, folder_id, rel_path, rel_dir, name, ext, format, size, created_ms, modified_ms,
        availability, stale, attributes, parsed, compare_key, quality_tag, edition_number, edition_note,
-       stages, first_seen_at, last_seen_at)
+       stages, book_dir, first_seen_at, last_seen_at)
      VALUES (@id, @folder_id, @rel_path, @rel_dir, @name, @ext, @format, @size, @created_ms, @modified_ms,
        @availability, 0, @attributes, @parsed, @compare_key, @quality_tag, @edition_number, @edition_note,
-       @stages, @now, @now)`,
+       @stages, @book_dir, @now, @now)`,
   );
   const update = db.prepare(
     `UPDATE files SET rel_path = @rel_path, rel_dir = @rel_dir, name = @name, size = @size,
@@ -221,6 +258,7 @@ export function applyFolderListing(
        pdf_type_evidence = CASE WHEN @changed THEN NULL ELSE pdf_type_evidence END,
        word_count = CASE WHEN @changed THEN NULL ELSE word_count END,
        page_count = CASE WHEN @changed THEN NULL ELSE page_count END,
+       duration_seconds = CASE WHEN @changed THEN NULL ELSE duration_seconds END,
        problem = CASE WHEN @changed THEN NULL ELSE problem END,
        problem_detail = CASE WHEN @changed THEN NULL ELSE problem_detail END,
        excluded = CASE WHEN @changed THEN 0 ELSE excluded END
@@ -229,7 +267,8 @@ export function applyFolderListing(
   // The filename parser improved since this file was read: read its name again (§9.2 "Refresh").
   const reparse = db.prepare(
     `UPDATE files SET parsed = @parsed, compare_key = @compare_key, quality_tag = @quality_tag,
-       edition_number = @edition_number, edition_note = @edition_note WHERE id = @id`,
+       edition_number = @edition_number, edition_note = @edition_note, book_dir = @book_dir
+     WHERE id = @id`,
   );
   const markMissing = db.prepare(
     "UPDATE files SET availability = 'missing', stale = 0 WHERE id = ?",
@@ -267,8 +306,18 @@ export function applyFolderListing(
           changed: changed ? 1 : 0,
         });
         const oldParse = parseJson<Record<string, number>>(old.stages, {}).parse;
-        if (oldParse !== PARSER_VERSION || old.name !== f.name) {
-          const parsed = parseFilename(f.name);
+        // An audio file's book can change when files arrive beside it, so it is always checked.
+        const parsed =
+          oldParse !== PARSER_VERSION || old.name !== f.name || f.format === 'audio'
+            ? parseFilename(parsedNameOf(f))
+            : null;
+        if (
+          parsed &&
+          (f.format !== 'audio' ||
+            oldParse !== PARSER_VERSION ||
+            old.compare_key !== parsed.compareKey ||
+            (old.book_dir ?? '') !== (f.bookDir ?? ''))
+        ) {
           reparse.run({
             id: old.id,
             parsed: JSON.stringify(parsed),
@@ -276,11 +325,12 @@ export function applyFolderListing(
             quality_tag: parsed.quality ?? null,
             edition_number: parsed.editionNumber ?? null,
             edition_note: parsed.editionNote ?? null,
+            book_dir: f.format === 'audio' ? (f.bookDir ?? '') : null,
           });
           reparsedFileIds.push(old.id);
         }
       } else {
-        const parsed = parseFilename(f.name);
+        const parsed = parseFilename(parsedNameOf(f));
         insert.run({
           id: newId(),
           folder_id: folder.id,
@@ -300,6 +350,7 @@ export function applyFolderListing(
           quality_tag: parsed.quality ?? null,
           edition_number: parsed.editionNumber ?? null,
           edition_note: parsed.editionNote ?? null,
+          book_dir: f.format === 'audio' ? (f.bookDir ?? '') : null,
           now,
         });
         summary.newFiles++;

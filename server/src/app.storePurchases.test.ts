@@ -343,7 +343,16 @@ describe('the collectors in the app', () => {
         checkedOn: '2026-11-11',
         page: 'https://globalcomix.com',
       },
+      // No collector yet: listed for its look-around step only, with no script or bookmark.
+      {
+        service: 'audible',
+        state: 'not_built',
+        checkedOn: null,
+        page: 'https://www.audible.com/library/titles',
+      },
     ]);
+    expect((await api.get('/api/store-collectors/audible/script')).status).toBe(404);
+    expect((await api.get('/api/store-collectors/audible/bookmarklet')).status).toBe(404);
     const s = await api.get('/api/store-collectors/kindle/script');
     expect(s.body.script).toContain('kindle-library/search');
     expect((await api.get('/api/store-collectors/kobo/script')).body.script).toContain(

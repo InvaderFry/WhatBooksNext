@@ -10,6 +10,7 @@ import {
   checkStoreLink,
   createStoreItem,
   importCsv,
+  listenMinutesFrom,
   previewCsv,
   setLocationLink,
   STORES,
@@ -21,6 +22,7 @@ import {
   COLLECTOR_VERSIONS,
   COLLECTORS,
   importPurchases,
+  LOOK_AROUND_ONLY,
   previewPurchases,
   SERVICES,
 } from '../lib/storePurchases.ts';
@@ -102,6 +104,7 @@ export function registerStoreRoutes(
       const readable = b.readable === true;
       // A link the owner typed or pasted is theirs: imports never replace it.
       const link = typeof b.url === 'string' && b.url.trim() ? checkStoreLink(s, b.url) : null;
+      const listenMinutes = listenMinutesFrom(s, b.listenMinutes);
       const pick = b.pick as { token?: unknown; index?: unknown } | undefined;
       return db.transaction(() => {
         if (pick) {
@@ -116,7 +119,7 @@ export function registerStoreRoutes(
             .pluck()
             .get(key, rec.source, rec.sourceId) as string | undefined;
           if (existing) {
-            addLocation(db, existing, s, readable, link, true);
+            addLocation(db, existing, s, readable, link, true, listenMinutes);
             return { itemId: existing, joined: true };
           }
           const itemId = createStoreItem(
@@ -130,6 +133,7 @@ export function registerStoreRoutes(
               store: s,
               readable,
               link,
+              listenMinutes,
             },
             true,
           );
@@ -163,7 +167,8 @@ export function registerStoreRoutes(
       return (
         db
           .prepare(
-            `SELECT id, kind, store, confirmed_readable, note, url, url_kind, url_by_owner
+            `SELECT id, kind, store, confirmed_readable, note, url, url_kind, url_by_owner,
+               listen_minutes
              FROM locations WHERE item_id = ? ORDER BY kind, store`,
           )
           .all(id) as {
@@ -175,6 +180,7 @@ export function registerStoreRoutes(
           url: string | null;
           url_kind: string | null;
           url_by_owner: number;
+          listen_minutes: number | null;
         }[]
       ).map((r) => ({
         id: r.id,
@@ -182,6 +188,7 @@ export function registerStoreRoutes(
         store: r.store,
         readable: r.confirmed_readable === 1,
         note: r.note,
+        listenMinutes: r.listen_minutes,
         url: r.url,
         urlKind: r.url_kind,
         /** Shown next to an "another app" link, so the owner can see where it goes. */
@@ -197,7 +204,8 @@ export function registerStoreRoutes(
       const s = store(req.body?.store);
       const url = req.body?.url;
       const link = typeof url === 'string' && url.trim() ? checkStoreLink(s, url) : null;
-      return { id: addLocation(db, id, s, req.body?.readable === true, link, true) };
+      const minutes = listenMinutesFrom(s, req.body?.listenMinutes);
+      return { id: addLocation(db, id, s, req.body?.readable === true, link, true, minutes) };
     }),
   );
   /**
@@ -330,7 +338,7 @@ export function registerStoreRoutes(
   );
   app.get(
     '/api/store-collectors',
-    route(() => SERVICES.map((s) => ({ service: s, ...COLLECTORS[s] }))),
+    route(() => [...SERVICES.map((s) => ({ service: s, ...COLLECTORS[s] })), ...LOOK_AROUND_ONLY]),
   );
   /**
    * Each store's bookmark button (owner decision 2026-11-12): `javascript:` plus the minified

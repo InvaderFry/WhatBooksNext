@@ -19,6 +19,8 @@ const LINK_HELP: Record<string, string> = {
     'Open the book in Google Play Books (play.google.com/books) or on its Play store page, then copy the address.',
   kobo: 'Open the book on kobo.com (My Books, or its store page), then copy the address.',
   globalcomix: 'Open the comic on globalcomix.com, then copy the address.',
+  audible:
+    'Open the audiobook in your Audible library (audible.com), or on its Audible page, then copy the address.',
   other: 'Any secure (https) link. Its site is shown next to it, so you can see where it goes.',
 };
 
@@ -51,6 +53,10 @@ export function AddStoreBook({ onClose }: { onClose: () => void }) {
   const [store, setStore] = useState('kindle');
   const [readable, setReadable] = useState(false);
   const [url, setUrl] = useState('');
+  // An Audible audiobook's playing time, as Audible shows it ("9 hrs and 12 mins"). Optional.
+  const [hours, setHours] = useState('');
+  const [mins, setMins] = useState('');
+  const listenMinutes = (Number(hours) || 0) * 60 + (Number(mins) || 0);
   const [q, setQ] = useState('');
   const [author, setAuthor] = useState('');
   const [found, setFound] = useState<{
@@ -75,6 +81,7 @@ export function AddStoreBook({ onClose }: { onClose: () => void }) {
         store,
         readable,
         ...(store !== 'apple_books' && url.trim() ? { url: url.trim() } : {}),
+        ...(store === 'audible' && listenMinutes > 0 ? { listenMinutes } : {}),
         ...body,
       });
       navigate({ view: 'item', id: r.itemId });
@@ -97,9 +104,38 @@ export function AddStoreBook({ onClose }: { onClose: () => void }) {
             checked={readable}
             onChange={(e) => setReadable(e.target.checked)}
           />
-          I can read it there now
+          {store === 'audible' ? 'I can listen to it there now' : 'I can read it there now'}
         </label>
       </div>
+      {store === 'audible' && (
+        <fieldset className="row-actions wrap">
+          <legend className="small">Length, as Audible shows it (optional)</legend>
+          <div className="field inline">
+            <label htmlFor="listen-h">Hours</label>
+            <input
+              id="listen-h"
+              type="number"
+              min="0"
+              max="999"
+              inputMode="numeric"
+              value={hours}
+              onChange={(e) => setHours(e.target.value)}
+            />
+          </div>
+          <div className="field inline">
+            <label htmlFor="listen-m">Minutes</label>
+            <input
+              id="listen-m"
+              type="number"
+              min="0"
+              max="59"
+              inputMode="numeric"
+              value={mins}
+              onChange={(e) => setMins(e.target.value)}
+            />
+          </div>
+        </fieldset>
+      )}
       <p className="muted small">
         {READABLE_HELP} To bring in a whole store library at once, use Settings → Import store
         purchases.
@@ -724,6 +760,12 @@ const COLLECTOR_STATE: Record<Collector['state'], string> = {
 /** Where each store's library is, for the look-around script. A starting point: the owner may
  * need a click or two to reach the list of their own books. */
 const LIBRARY_PAGES: Record<string, { url: string; how: string; open: string; then: string }> = {
+  audible: {
+    url: 'https://www.audible.com/library/titles',
+    how: 'your Audible library',
+    open: 'Sign in if asked, and wait for your audiobooks to show.',
+    then: 'Scroll to the very bottom of the list. If the library has more pages, the script stops when the page changes, so one page is enough. Then click',
+  },
   // GlobalComix loads the purchases list as its page opens, before a pasted script can watch: so
   // start on its home page and go to the purchases with the site's own menu.
   globalcomix: {

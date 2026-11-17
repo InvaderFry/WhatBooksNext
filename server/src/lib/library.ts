@@ -117,6 +117,46 @@ export interface ItemSummary {
   firstSeenAt: string;
   /** The stores it's owned in (store names; owner decision 2026-11-12, for the Store filter). */
   stores?: string[];
+  /** The ways the owner has it: something to read, something to listen to, or both. */
+  media: Media;
+  /**
+   * The audiobook's playing time in minutes: its audio files added up (each part once, however
+   * many copies), else what a store copy states. Null while any part's time is unknown.
+   */
+  listenMinutes: number | null;
+  /** Where the playing time comes from, in plain words. */
+  listenBasis: string | null;
+  /** How many audio files make the audiobook (copies counted once). */
+  audioParts: number;
+}
+
+export interface Media {
+  read: boolean;
+  listen: boolean;
+}
+
+/**
+ * The playing time of an item's audio files. A part that exists as several copies counts once
+ * (the same place in the book's folder, and the same size). Unknown when any part's time is unknown: a partial total would read as
+ * the whole book's.
+ */
+export function listenFromFiles(
+  parts: { relPath: string; bookDir: string | null; size: number; seconds: number | null }[],
+): { minutes: number | null; parts: number } {
+  const seen = new Map<string, number | null>();
+  for (const p of parts) {
+    // Where the part sits inside its book's folder ("CD 2/01.mp3"): the same in every copy of
+    // the book, and different for the same-named track on another disc.
+    const dir = p.bookDir ?? '';
+    const inBook =
+      dir && p.relPath.startsWith(`${dir}/`) ? p.relPath.slice(dir.length + 1) : p.relPath;
+    const k = `${inBook.toLowerCase()}|${p.size}`;
+    if (!seen.has(k) || seen.get(k) === null) seen.set(k, p.seconds);
+  }
+  const all = [...seen.values()];
+  if (all.length === 0 || all.some((s) => s === null)) return { minutes: null, parts: all.length };
+  const total = all.reduce<number>((n, s) => n + (s ?? 0), 0);
+  return { minutes: Math.max(1, Math.round(total / 60)), parts: all.length };
 }
 
 export interface AvailabilityView {
@@ -244,6 +284,8 @@ interface FileJoinRow {
   parsed: string;
   page_count: number | null;
   pdf_type: string | null;
+  duration_seconds: number | null;
+  book_dir: string | null;
   id: string;
   folder_id: string;
   rel_path: string;
@@ -267,6 +309,7 @@ const STORE_LABELS: Record<string, string> = {
   globalcomix: 'GlobalComix',
   apple_books: 'Apple Books',
   google_play: 'Google Play Books',
+  audible: 'Audible',
   other: 'another app',
 };
 
@@ -357,11 +400,13 @@ export function loadLibrary(db: DB, reach: FolderReachability, onlyIds?: string[
   );
   const files = new Map<string, FileView[]>();
   const detailFiles = new Map<string, DetailFile[]>();
+  const audio = new Map<string, Parameters<typeof listenFromFiles>[0]>();
   for (const r of db
     .prepare(
       `SELECT x.item_id, x.is_primary, f.id, f.folder_id, f.rel_path, f.name, f.format, f.size,
          f.availability, f.stale, f.quality_tag, f.edition_number, f.edition_note, f.language,
-         f.modified_ms, f.first_seen_at, f.has_thumbnail, f.metadata, f.parsed, f.page_count, f.pdf_type
+         f.modified_ms, f.first_seen_at, f.has_thumbnail, f.metadata, f.parsed, f.page_count, f.pdf_type,
+         f.duration_seconds, f.book_dir
        FROM item_files x JOIN files f ON f.id = x.file_id ORDER BY x.item_id, x.is_primary DESC, f.id`,
     )
     .all() as FileJoinRow[]) {
@@ -389,6 +434,15 @@ export function loadLibrary(db: DB, reach: FolderReachability, onlyIds?: string[
     };
     if (!files.has(r.item_id)) files.set(r.item_id, []);
     files.get(r.item_id)!.push(view);
+    if (r.format === 'audio') {
+      if (!audio.has(r.item_id)) audio.set(r.item_id, []);
+      audio.get(r.item_id)!.push({
+        relPath: r.rel_path,
+        bookDir: r.book_dir,
+        size: r.size,
+        seconds: r.duration_seconds,
+      });
+    }
     if (!detailFiles.has(r.item_id)) detailFiles.set(r.item_id, []);
     const facts = factsFromPrimary({
       name: r.name,
@@ -415,11 +469,12 @@ export function loadLibrary(db: DB, reach: FolderReachability, onlyIds?: string[
     confirmed_readable: number;
     url: string | null;
     url_kind: string | null;
+    listen_minutes: number | null;
   };
   const locations = new Map<string, LocationRow[]>();
   for (const l of db
     .prepare(
-      'SELECT item_id, kind, store, confirmed_readable, url, url_kind FROM locations ORDER BY created_at, id',
+      'SELECT item_id, kind, store, confirmed_readable, url, url_kind, listen_minutes FROM locations ORDER BY created_at, id',
     )
     .all() as LocationRow[]) {
     if (!locations.has(l.item_id)) locations.set(l.item_id, []);
@@ -461,6 +516,11 @@ export function loadLibrary(db: DB, reach: FolderReachability, onlyIds?: string[
     };
     const d = chooseDetails(input);
     details.set(i.id, d);
+    const local = listenFromFiles(audio.get(i.id) ?? []);
+    const audible = stores.filter((s) => s.store === 'audible');
+    const stated = audible.find((s) => s.listen_minutes)?.listen_minutes ?? null;
+    const listen = local.parts > 0 || audible.length > 0;
+    const text = fs.some((f) => f.format !== 'audio') || stores.some((s) => s.store !== 'audible');
     detailInputs.set(i.id, input);
     rankingFacts.set(i.id, {
       title: user.titleOverride ?? i.online_title ?? i.title,
@@ -500,6 +560,20 @@ export function loadLibrary(db: DB, reach: FolderReachability, onlyIds?: string[
       user,
       firstSeenAt: fs.map((f) => f.firstSeenAt).sort()[0] ?? i.created_at,
       stores: [...new Set(stores.map((l) => l.store ?? 'other'))],
+      // With nothing to listen to it's something to read (history-only books included).
+      media: { read: text || !listen, listen },
+      listenMinutes: local.parts > 0 ? local.minutes : stated,
+      listenBasis:
+        local.parts > 0
+          ? local.minutes !== null
+            ? local.parts === 1
+              ? 'from the audio file'
+              : `from ${local.parts} audio files`
+            : null
+          : stated
+            ? 'as Audible states'
+            : null,
+      audioParts: local.parts,
     };
   });
   return { items: out, folders, details, rankingFacts, detailInputs };

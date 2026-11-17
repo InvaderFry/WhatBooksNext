@@ -41,3 +41,4 @@ Installed from npm, not bundled in this repository. Each keeps its own licence f
 | `@napi-rs/canvas`             | Drawing cover thumbnails                  | MIT                                                                                                         |
 | `yauzl`                       | Reading EPUB and CBZ (ZIP) files          | MIT                                                                                                         |
 | `node-unrar-js`               | Reading CBR (RAR) files, in WebAssembly   | MIT (the bundled UnRAR code is under the unRAR licence, which allows extracting but not creating RAR files) |
+| `music-metadata`              | Reading audiobook tags and playing times  | MIT                                                                                                         |

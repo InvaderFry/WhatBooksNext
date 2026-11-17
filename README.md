@@ -53,6 +53,10 @@ labelled demo library of invented books at <http://localhost:4819>.
 - **Moved files keep their history** when the app can be sure: same name and size, or a
   renamed file with the same fingerprint. When it can't be sure, it asks in **Needs review**
   and changes nothing until you answer.
+- **Audiobooks need their own folder.** Audio files count as books only inside a folder you add
+  under Settings → Library folders → **Add a folder of audiobooks**, so music is never listed. A
+  folder of chapter files is one audiobook; its length is the files' playing time. What next then
+  asks **Read or listen?**
 - **`.zip` and `.rar` files count as comics.** One that turns out not to hold page images is
   left out of the library and listed in Library health.
 - **A disconnected drive is skipped, not emptied.** Its books stay in your library, labelled

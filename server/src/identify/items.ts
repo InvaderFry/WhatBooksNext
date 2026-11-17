@@ -1,6 +1,7 @@
 import type { DB } from '../db/database.ts';
 import { newId, nowIso, parseJson } from '../util.ts';
 import type { EmbeddedMetadata } from '../scan/formats/types.ts';
+import { comparePartPaths } from './audiobook.ts';
 import { normalizeForCompare, qualityRank, titleCase, type ParsedName } from './filename.ts';
 
 /** Facts about one file needed to group it and pick a primary (subset of a `files` row). */
@@ -21,6 +22,8 @@ export interface FileFacts {
   compare_key: string;
   rel_path: string;
   parsed: string;
+  /** Audio only: the directory of the book this file is a part of. */
+  book_dir?: string | null;
 }
 
 const COMIC_FORMATS = new Set(['cbz', 'cbr', 'cb7']);
@@ -108,6 +111,10 @@ export function choosePrimary(files: FileFacts[], kind: string | null): FileFact
       Number(qualityRank(a.quality_tag) < 0) - Number(qualityRank(b.quality_tag) < 0) ||
       (comic ? qualityRank(b.quality_tag) - qualityRank(a.quality_tag) : 0) ||
       (fmtRank[a.format] ?? 9) - (fmtRank[b.format] ?? 9) ||
+      // An audiobook's first part stands for it (its tags name the book).
+      (a.format === 'audio' && b.format === 'audio'
+        ? comparePartPaths(a.rel_path, b.rel_path)
+        : 0) ||
       a.rel_path.length - b.rel_path.length ||
       a.id.localeCompare(b.id),
   )[0];

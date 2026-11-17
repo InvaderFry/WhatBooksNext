@@ -4,7 +4,7 @@ import { allMatchInputs, chooseUsed, picturesFile, type MatchRow } from '../iden
 import { SOURCE_LABELS } from '../sources/types.ts';
 import type { EmbeddedMetadata } from '../scan/formats/types.ts';
 import { parseJson, todayLocal } from '../util.ts';
-import { estimateDuration, estimateEffort, unitFor } from './estimate.ts';
+import { estimateDuration, estimateEffort, listenDuration, unitFor } from './estimate.ts';
 import {
   historyOnlyIds,
   loadLibrary,
@@ -187,6 +187,11 @@ export function loadRankData(db: DB, reach: FolderReachability): RankData {
       acquired = { date: i.firstSeenAt.slice(0, 10), basis: 'first_seen' };
     else acquired = { date: null, basis: 'unknown' };
 
+    const unit = unitFor(i.kind, f?.volume_label ?? null, f?.issue_label ?? null);
+    const listen =
+      i.listenMinutes !== null && i.listenBasis
+        ? listenDuration(i.listenMinutes, i.listenBasis, unit)
+        : null;
     const md = parseJson<EmbeddedMetadata | null>(f?.metadata ?? null, null);
     const subjects = [
       ...new Set([
@@ -233,29 +238,35 @@ export function loadRankData(db: DB, reach: FolderReachability): RankData {
               total: f.series_total,
             }
           : null,
-      duration: estimateDuration(
-        {
-          kind: i.kind,
-          // An image-only EPUB's few words aren't a length; its pages may be on another copy.
-          words:
-            f &&
-            picturesFile({
-              format: f.format ?? '',
-              word_count: f.words,
-              page_count: f.pages,
-              size: f.size ?? 0,
-            }) &&
-            f.format === 'epub'
-              ? null
-              : (f?.words ?? null),
-          // A PDF's page count is measured; its words exist only with a text layer.
-          pages: f?.pages ?? f?.any_pages ?? null,
-          pdfType,
-          sourcePages: sourcePages?.pages ?? null,
-          sourceName: sourcePages?.label ?? null,
-        },
-        unitFor(i.kind, f?.volume_label ?? null, f?.issue_label ?? null),
-      ),
+      media: i.media,
+      listen,
+      // Only an audiobook: its playing time is its length, never a guess from a printed
+      // edition's pages.
+      duration: !i.media.read
+        ? listen
+        : estimateDuration(
+            {
+              kind: i.kind,
+              // An image-only EPUB's few words aren't a length; its pages may be on another copy.
+              words:
+                f &&
+                picturesFile({
+                  format: f.format ?? '',
+                  word_count: f.words,
+                  page_count: f.pages,
+                  size: f.size ?? 0,
+                }) &&
+                f.format === 'epub'
+                  ? null
+                  : (f?.words ?? null),
+              // A PDF's page count is measured; its words exist only with a text layer.
+              pages: f?.pages ?? f?.any_pages ?? null,
+              pdfType,
+              sourcePages: sourcePages?.pages ?? null,
+              sourceName: sourcePages?.label ?? null,
+            },
+            unit,
+          ),
       community: selection.chosen,
       firstPublishYear: chosenDetails.firstPublishYear?.value ?? null,
       acquired,

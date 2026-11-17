@@ -32,9 +32,11 @@ import { applyUserPatch } from '../lib/progress.ts';
 import { MODE_IDS, MODES, MOODS, runMode, stillReadingDue, type ModeId } from '../lib/modes.ts';
 import { loadRankData } from '../lib/rankData.ts';
 import {
+  type Medium,
   type Show,
   type Situation,
   buildCard,
+  forMedium,
   ineligibleBecause,
   TIME_PRESETS,
   type TimeMode,
@@ -101,6 +103,9 @@ function situationFrom(req: Request) {
     show: (['books', 'tech', 'comics'].includes(String(req.query.show))
       ? req.query.show
       : 'all') as Show,
+    medium: (['read', 'listen'].includes(String(req.query.medium))
+      ? req.query.medium
+      : 'either') as Medium,
     exclude,
     today: todayLocal(),
     recentDays: RECENT_DAYS,
@@ -129,7 +134,9 @@ export function registerReadingRoutes(app: Express, d: ReadingDeps): void {
     const mood = (['escape', 'learn', 'skim'] as const).find((m) => m === req.query.mood) ?? null;
     const topics = loadTopics(db);
     const topic = topics.find((t) => t === str(req.query.topic)) ?? null;
-    const data = loadRankData(db, await d.reach());
+    const loaded = loadRankData(db, await d.reach());
+    // "Listen" measures every book by its playing time.
+    const data = { ...loaded, items: forMedium(loaded.items, base.medium) };
     const taste = tasteFrom(data.items, loadStrength(db));
     const s: Situation = {
       ...base,
@@ -161,6 +168,7 @@ export function registerReadingRoutes(app: Express, d: ReadingDeps): void {
           mode: base.mode,
           ready: base.readyToRead,
           show: base.show,
+          medium: base.medium,
           mood: s.mood,
           complete: s.completeOnly,
           topic,
@@ -171,6 +179,8 @@ export function registerReadingRoutes(app: Express, d: ReadingDeps): void {
         presets: TIME_PRESETS,
         taste: { on: tasteOn(taste), outcomes: taste.outcomes },
         stillReading: stillReadingDue(data.items, base.today).length,
+        // "Read or listen?" is offered only once the library holds an audiobook.
+        audiobooks: data.items.some((i) => i.media?.listen),
         lookups: { pending: lookups.pending(), running: lookups.isRunning() },
         hardcover: sources.demo ? null : sources.hardcover.configured(),
       };
@@ -606,6 +616,8 @@ export function registerReadingRoutes(app: Express, d: ReadingDeps): void {
         ...summary,
         community: i?.community ?? null,
         duration: i?.duration ?? null,
+        // The audiobook's playing time, when it's also something to read.
+        listen: i?.listen && !i.duration?.listening ? i.listen : null,
         effort: i?.effort ?? 'unknown',
         firstPublishYear: i?.firstPublishYear ?? null,
         acquired: i?.acquired ?? null,

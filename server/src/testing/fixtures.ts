@@ -413,3 +413,109 @@ export function makePdf(o: PdfOptions): Buffer {
 export function textLines(lines = 40, seed = 1): string[] {
   return Array.from({ length: lines }, (_, i) => inventedWords(12, seed * 100 + i));
 }
+
+// ---- Audio (audiobooks). Tiny, silent, made up: only the headers and tags a reader looks at. ---
+
+/** A WAV file of silence: 8 kHz, mono, 8-bit, so its length is exact. No tags. */
+export function makeWav(seconds: number): Buffer {
+  const n = 8000 * seconds;
+  const b = Buffer.alloc(44 + n, 128);
+  b.write('RIFF', 0);
+  b.writeUInt32LE(36 + n, 4);
+  b.write('WAVEfmt ', 8);
+  b.writeUInt32LE(16, 16);
+  b.writeUInt16LE(1, 20);
+  b.writeUInt16LE(1, 22);
+  b.writeUInt32LE(8000, 24);
+  b.writeUInt32LE(8000, 28);
+  b.writeUInt16LE(1, 32);
+  b.writeUInt16LE(8, 34);
+  b.write('data', 36);
+  b.writeUInt32LE(n, 40);
+  return b;
+}
+
+export interface AudioTags {
+  /** The book. */
+  album?: string;
+  /** The author. */
+  artist?: string;
+  /** This file's own title: a chapter's name, or the book's for a one-file book. */
+  title?: string;
+  track?: string;
+  year?: string;
+}
+
+/**
+ * An MP3 with ID3v2.3 tags and empty frames at a constant bit rate (MPEG-1 Layer III, 32 kbps,
+ * 32 kHz, mono: 144 bytes and 0.036 s a frame), so a reader works its length out from the size.
+ */
+export function makeMp3(seconds: number, tags: AudioTags = {}): Buffer {
+  const frame = (id: string, text: string) => {
+    const body = Buffer.concat([Buffer.from([3]), Buffer.from(text, 'utf8')]);
+    const h = Buffer.alloc(10);
+    h.write(id, 0);
+    h.writeUInt32BE(body.length, 4);
+    return Buffer.concat([h, body]);
+  };
+  const ids: [keyof AudioTags, string][] = [
+    ['album', 'TALB'],
+    ['artist', 'TPE1'],
+    ['title', 'TIT2'],
+    ['track', 'TRCK'],
+    ['year', 'TYER'],
+  ];
+  const frames = Buffer.concat(ids.flatMap(([k, id]) => (tags[k] ? [frame(id, tags[k])] : [])));
+  const head = Buffer.alloc(10);
+  head.write('ID3', 0);
+  head[3] = 3;
+  const s = frames.length;
+  head[6] = (s >> 21) & 127;
+  head[7] = (s >> 14) & 127;
+  head[8] = (s >> 7) & 127;
+  head[9] = s & 127;
+  const f = Buffer.alloc(144);
+  f[0] = 0xff;
+  f[1] = 0xfb;
+  f[2] = 0x18;
+  f[3] = 0xc0;
+  const count = Math.round(seconds / 0.036);
+  return Buffer.concat([head, frames, ...Array.from({ length: count }, () => f)]);
+}
+
+/** An .m4b with only what a tag reader needs: the movie header (its length) and iTunes tags. */
+export function makeM4b(seconds: number, tags: AudioTags = {}): Buffer {
+  const atom = (type: string, ...body: Buffer[]) => {
+    const b = Buffer.concat(body);
+    const h = Buffer.alloc(8);
+    h.writeUInt32BE(b.length + 8, 0);
+    h.write(type, 4, 'latin1');
+    return Buffer.concat([h, b]);
+  };
+  const mvhd = Buffer.alloc(100);
+  mvhd.writeUInt32BE(1000, 12);
+  mvhd.writeUInt32BE(seconds * 1000, 16);
+  const data = (t: string) => {
+    const h = Buffer.alloc(8);
+    h.writeUInt32BE(1, 0);
+    return atom('data', h, Buffer.from(t, 'utf8'));
+  };
+  const ids: [keyof AudioTags, string][] = [
+    ['album', '©alb'],
+    ['artist', '©ART'],
+    ['title', '©nam'],
+    ['year', '©day'],
+  ];
+  const ilst = atom(
+    'ilst',
+    ...ids.flatMap(([k, id]) => (tags[k] ? [atom(id, data(tags[k]))] : [])),
+  );
+  const hdlr = Buffer.alloc(25);
+  hdlr.write('mdir', 8);
+  hdlr.write('appl', 12);
+  const meta = atom('meta', Buffer.alloc(4), atom('hdlr', hdlr), ilst);
+  return Buffer.concat([
+    atom('ftyp', Buffer.from('M4B \0\0\0\0M4B mp42isom')),
+    atom('moov', atom('mvhd', mvhd), atom('udta', meta)),
+  ]);
+}

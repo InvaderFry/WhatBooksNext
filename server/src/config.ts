@@ -30,7 +30,7 @@ export const SCAN_REMINDER_DAYS = 30;
 export const MAX_SCAN_DEPTH = 64;
 
 /** Formats read in the deep pass (§9.1). */
-export const DEEP_FORMATS = ['epub', 'pdf', 'cbz', 'cbr'] as const;
+export const DEEP_FORMATS = ['epub', 'pdf', 'cbz', 'cbr', 'audio'] as const;
 
 /** Formats listed and parsed by filename only (§9.1). */
 export const LIGHT_FORMATS = ['mobi', 'azw3', 'cb7'] as const;

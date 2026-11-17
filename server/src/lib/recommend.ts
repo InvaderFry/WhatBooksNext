@@ -1,3 +1,4 @@
+import { formatListen } from '../identify/audiobook.ts';
 import {
   EVENING_MINUTES,
   MOOD_WEIGHT,
@@ -69,7 +70,15 @@ export interface RankItem {
   } | null;
   /** Read through another item (§12.5): a finished collection, or every issue it holds. */
   via?: 'collection' | 'issues' | null;
+  /**
+   * The length that counts: reading time when there's something to read, else the audiobook's
+   * playing time. With "Listen" chosen it is the playing time (`forMedium`).
+   */
   duration: Duration | null;
+  /** The audiobook's playing time, when the item has one and it is known. */
+  listen?: Duration | null;
+  /** The ways the owner has it. Absent: something to read. */
+  media?: { read: boolean; listen: boolean };
   community: CommunityRating | null;
   firstPublishYear: number | null;
   acquired: { date: string | null; basis: 'entered' | 'file_date' | 'first_seen' | 'unknown' };
@@ -96,6 +105,24 @@ export function shows(i: Pick<RankItem, 'kind'>, show: Show | undefined): boolea
   return true;
 }
 
+/** Read, listen, or either (owner decision 2026-11-17). */
+export type Medium = 'either' | 'read' | 'listen';
+
+export function hasMedium(i: Pick<RankItem, 'media'>, medium: Medium | undefined): boolean {
+  if (medium === 'listen') return i.media?.listen === true;
+  if (medium === 'read') return i.media?.read !== false;
+  return true;
+}
+
+/**
+ * The items as "Listen" sees them: every length is the playing time (unknown when there is no
+ * audiobook or its time isn't known). Other choices leave the items as they are.
+ */
+export function forMedium(items: RankItem[], medium: Medium | undefined): RankItem[] {
+  if (medium !== 'listen') return items;
+  return items.map((i) => ({ ...i, duration: i.listen ?? null }));
+}
+
 export interface Situation {
   /** Minutes, or null for "any". */
   budget: number | null;
@@ -106,6 +133,8 @@ export interface Situation {
    * after M3: comics apart from books, and programming books apart from reading for pleasure.
    */
   show?: Show;
+  /** Something to read, something to listen to, or either. */
+  medium?: Medium;
   /** "Not in the mood" for this session (§13.8): ids hidden until the tab closes. */
   exclude: Set<string>;
   /** Today, YYYY-MM-DD (injectable for tests). */
@@ -401,6 +430,10 @@ export interface Card {
   /** Gaps in its series (§13.4): shown as text with an icon, before the owner starts. */
   gaps: CardGap[];
   lengthBasis: string | null;
+  /** "Or listen: 9 h 12 min", when it's also an audiobook and the length shown is for reading. */
+  listen: string | null;
+  /** The ways the owner has it. */
+  media: { read: boolean; listen: boolean };
   fit: Fit;
   reasons: string[];
   limitations: string[];
@@ -572,6 +605,8 @@ export function buildCard(i: RankItem, all: RankItem[], s: Situation): Card {
     series: i.series ? { id: i.series.key, name: i.series.name } : null,
     gaps: gapsForCard(i, all),
     lengthBasis: d?.basis ?? null,
+    listen: i.listen && !d?.listening ? `Or listen: ${formatListen(i.listen.high)}` : null,
+    media: i.media ?? { read: true, listen: false },
     fit,
     reasons: reasons
       .sort((a, b) => b.weight - a.weight)

@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { MAX_JSON_BODY, SCAN_REMINDER_DAYS, SCAN_REMINDER_SNOOZE_DAYS } from './config.ts';
 import { schemaVersion, type DB } from './db/database.ts';
+import { audiobookDiagnostics } from './lib/audiobookDiagnostics.ts';
 import { listSnapshots } from './db/snapshots.ts';
 import { refreshFactsOfItems, refreshPrimary, removeOrphanItems } from './identify/items.ts';
 import { healthProblemCount, libraryHealth } from './lib/health.ts';
@@ -35,9 +36,12 @@ import {
 } from './lib/progress.ts';
 import { availabilityFromAttributes, type Platform } from './platform/types.ts';
 import {
+  addAudiobookFolder,
   addFolder,
+  audiobookDirsOf,
   joinRel,
   reconnectFolder,
+  removeAudiobookDir,
   resolveFolderRoot,
   type FolderRow,
 } from './scan/folders.ts';
@@ -297,6 +301,7 @@ export function createApp(ctx: AppContext) {
         lastLetter: f.last_letter,
         storageKind: f.storage_kind,
         alsoInICloud: f.also_in_icloud === 1,
+        audiobookDirs: audiobookDirsOf(f),
         reachable: r.get(f.id) ?? false,
         lastSeenAt: f.last_seen_at,
         lastCompleteScanAt: f.last_complete_scan_at,
@@ -322,6 +327,39 @@ export function createApp(ctx: AppContext) {
       });
       reach.invalidate();
       return { id: f.id };
+    }),
+  );
+
+  // Where the owner's audiobooks are: audio counts as books only there (never their music).
+  app.post(
+    '/api/audiobook-folders',
+    route(async (req) => {
+      if (scans.isRunning()) throw new HttpError(409, 'Wait for the scan to finish.');
+      const r = await addAudiobookFolder(db, platform, {
+        path: String(req.body?.path ?? ''),
+        dataDir: ctx.dataDir ?? undefined,
+      });
+      reach.invalidate();
+      return r;
+    }),
+  );
+
+  app.delete(
+    '/api/folders/:id/audiobooks',
+    route((req) => {
+      if (scans.isRunning()) throw new HttpError(409, 'Wait for the scan to finish.');
+      const removed = db.transaction(() => {
+        const items = removeAudiobookDir(db, String(req.params.id), String(req.query.dir ?? ''));
+        // Books that were only audio go, unless the owner recorded anything on them; books
+        // that also have something to read keep it and open that again.
+        const n = removeOrphanItems(db);
+        for (const id of items) refreshPrimary(db, id);
+        refreshFactsOfItems(db, items);
+        syncSeries(db);
+        return n;
+      })();
+      reach.invalidate();
+      return { ok: true, itemsRemoved: removed };
     }),
   );
 
@@ -495,6 +533,7 @@ export function createApp(ctx: AppContext) {
           // What the deep pass read (§10). Text from files is untrusted: the page shows it as text.
           wordCount: f.word_count,
           pageCount: f.page_count,
+          durationSeconds: f.duration_seconds ?? null,
           pdfType: f.pdf_type,
           pdfTypeEvidence: f.pdf_type_evidence,
           pdfTypeOverride: f.pdf_type_override ?? null,
@@ -878,6 +917,7 @@ export function createApp(ctx: AppContext) {
           : 'Not available on this platform: files count as present.',
         folders: folderChecks,
         ratings: ratingDiagnostics(db, loadRankData(db, r).items),
+        audiobooks: audiobookDiagnostics(db),
         deepScan: {
           // Counts only; Library health lists the files.
           filesRead: db

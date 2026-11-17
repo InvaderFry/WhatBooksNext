@@ -4,6 +4,7 @@ import {
   ApiError,
   DNF_LABELS,
   FORMAT_LABELS,
+  formatListen,
   formatBytes,
   formatDate,
   KIND_LABELS,
@@ -358,8 +359,9 @@ export function ItemPage({
 
       <section aria-labelledby="files-h">
         <h2 id="files-h">Files</h2>
+        <AudioParts files={item.files} />
         <ul className="file-list">
-          {item.files.map((f) => (
+          {listedFiles(item.files).map((f) => (
             <FileRow
               key={f.id}
               file={f}
@@ -723,6 +725,48 @@ function ReadActions({
   );
 }
 
+/** An audiobook of many files is one line here, not forty: more than this many are folded. */
+const AUDIO_PARTS_LISTED = 3;
+
+const audioOf = (files: FileDetail[]) => files.filter((f) => f.format === 'audio');
+
+/** The files listed one by one: everything, except a long audiobook's parts after its first. */
+function listedFiles(files: FileDetail[]): FileDetail[] {
+  const audio = audioOf(files);
+  if (audio.length <= AUDIO_PARTS_LISTED) return files;
+  const first = audio.find((f) => f.isPrimary) ?? audio[0];
+  return files.filter((f) => f.format !== 'audio' || f === first);
+}
+
+/** A long audiobook's parts, folded: how many, how long, and their names in listening order. */
+function AudioParts({ files }: { files: FileDetail[] }) {
+  const audio = audioOf(files).sort((a, b) =>
+    a.relPath.localeCompare(b.relPath, 'en', { numeric: true, sensitivity: 'base' }),
+  );
+  if (audio.length <= AUDIO_PARTS_LISTED) return null;
+  const unknown = audio.filter((f) => f.durationSeconds == null).length;
+  return (
+    <details className="audio-parts">
+      <summary>
+        🎧 Audiobook in {audio.length.toLocaleString()} files
+        {unknown > 0 &&
+          ` (${unknown.toLocaleString()} with no playing time read yet, so the total isn’t known)`}
+      </summary>
+      <ol className="small">
+        {audio.map((f) => (
+          <li key={f.id}>
+            {f.relPath.split('/').slice(-2).join(' › ')}
+            {f.durationSeconds != null && (
+              <span className="muted"> · {formatListen(f.durationSeconds / 60)}</span>
+            )}
+            {f.availability === 'missing' && <span className="warn"> · missing</span>}
+          </li>
+        ))}
+      </ol>
+    </details>
+  );
+}
+
 function FileRow({
   file,
   onChanged,
@@ -762,6 +806,7 @@ function FileRow({
     file.language && `Language: ${file.language}`,
     file.wordCount !== null && `${file.wordCount.toLocaleString()} words`,
     file.pageCount !== null && `${file.pageCount.toLocaleString()} pages`,
+    file.durationSeconds != null && formatListen(file.durationSeconds / 60),
   ].filter(Boolean);
 
   const usable = file.folderReachable && file.availability !== 'missing';

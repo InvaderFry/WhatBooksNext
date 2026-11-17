@@ -1,6 +1,13 @@
 import { IdentificationEvidence } from './IdentificationEvidence.tsx';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { api, EFFORT_LABELS, formatRange, type Candidate, type ItemOnline } from '../api.ts';
+import {
+  api,
+  EFFORT_LABELS,
+  formatListen,
+  formatRange,
+  type Candidate,
+  type ItemOnline,
+} from '../api.ts';
 import { Notice } from '../components.tsx';
 import { BookImage, BookPagePreviews } from './BookImages.tsx';
 import { CandidateRow } from './Review.tsx';
@@ -140,6 +147,14 @@ export function OnlineCard({ itemId, onChanged }: { itemId: string; onChanged: (
             ? `${formatRange(data.duration)} (${data.duration.basis}${data.duration.measured ? '' : '; rough'})`
             : 'Unknown'}
         </dd>
+        {data.listen && (
+          <>
+            <dt>To listen</dt>
+            <dd>
+              {formatListen(data.listen.high)} ({data.listen.basis})
+            </dd>
+          </>
+        )}
         <dt>Effort</dt>
         <dd>
           {EFFORT_LABELS[data.effort]}

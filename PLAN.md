@@ -147,6 +147,7 @@ depends on it. This project is its own thing; the habits worth keeping are writt
 | **Windows first** | Windows is supported and tested. Mac and Linux should mostly work through fallbacks but are untested in v1; proper support is on the roadmap. |
 | **Public repo, "look, don't reuse"** | The repo is public. Licence: **PolyForm Strict License 1.0.0**, copyright "InvaderFry" — people may read the code and run it for themselves, not change or redistribute it. `LICENSE` added in M1. The owner's library stays out of git (§5). |
 | **Folders first; Calibre is an import** | Scanning folders is how books get in. A Calibre library is read on request (§14), never synced automatically and never written to. |
+| **Audiobooks count** (2026-11-17) | Local audiobooks in folders the owner marks, and Audible as a store. The same title to read and to listen to is one book. What next asks Read / Listen / Either. Details in [the audiobooks plan](docs/plans/audiobooks.md). |
 | **Restore replaces** | Restoring a backup replaces all app data, after a snapshot and a preview. No merging into existing data in v1 (§16). |
 
 Owner answers that shape the product (from the plan reviews):
@@ -376,6 +377,10 @@ A sketch — refine as you build, but keep these distinctions.
   is mostly images in page order. If it isn't (a bundle of other files, software, audio), it's
   dropped from the library and listed in Library health as "archive that isn't a comic". It's
   never extracted (§6.1).
+- **Audiobooks** (added 2026-11-17, [the audiobooks plan](docs/plans/audiobooks.md)): audio files
+  (`.mp3`, `.m4b`, `.m4a`, `.flac`, `.wav`, `.aa`, `.aax` and the like) are deep-scanned for tags
+  and playing time, but **only inside folders the owner marks as audiobook folders**. Audio
+  anywhere else is music and is ignored.
 - Anything else is ignored; the scan summary reports counts by type.
 
 ### 9.2 Two passes
@@ -1349,6 +1354,7 @@ plainly at the start of your message, with what to do and roughly how long it ta
 | **Store purchases: Kobo** | Done 2026-11-11 (script run and imported). |
 | **Store purchases: GlobalComix** | Done 2026-11-11 (version 2, imported). To update any store later: run its script again from Settings → Import store purchases. |
 | **Store purchases: bookmark buttons (when convenient)** | In Settings → Import store purchases, pick each store and drag its **whatBooksNext: …** button to your bookmarks bar (Ctrl+Shift+B shows the bar). From then on, click the bookmark on the store's page instead of pasting into the console. Drag them again after an update. |
+| **Audiobooks (now)** | From [the audiobooks plan](docs/plans/audiobooks.md): **B1** add your audiobook folder in Settings, scan, and check a few audiobooks (owner checklist 24–29). **B2** run the look-around script on your Audible library (Settings → Import store purchases → Audible) and paste the report into chat, so the Audible import can be built. |
 | **Now (after stage 4)** | The second quality session (§17.2), on the new ratings and details. Also, on the Windows PC: Settings → Online lookups → **Keeping ratings up to date** shows due books and a last batch after the app has been open 10–15 minutes; Diagnostics → Automatic refresh shows requests within the daily share. No new accounts or keys. |
 
 ### Still to confirm (not blocking)

@@ -29,6 +29,7 @@ export function AvailabilityLabels({ a }: { a: Availability }) {
 
 /** "Read in Kindle", or "Read in another app (example.com)" so the owner sees where it goes. */
 export function storeLinkText(l: Pick<StoreLinkView, 'store' | 'host'>): string {
+  if (l.store === 'audible') return 'Listen in Audible';
   return l.store === 'other'
     ? `Read in another app (${l.host})`
     : `Read in ${STORE_LABELS[l.store] ?? l.store}`;
@@ -61,7 +62,9 @@ export function StoreLinks({
           rel="noopener noreferrer"
           title={
             l.kind === 'read'
-              ? `Opens it in ${STORE_LABELS[l.store] ?? 'the store'}’s web reader`
+              ? l.store === 'audible'
+                ? 'Opens it in Audible’s web player'
+                : `Opens it in ${STORE_LABELS[l.store] ?? 'the store'}’s web reader`
               : `Opens its page at ${l.host}`
           }
         >

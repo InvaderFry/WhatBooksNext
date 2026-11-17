@@ -47,6 +47,19 @@ export function areCopies(a: FileFacts, b: FileFacts): boolean {
   );
 }
 
+/** Parts of one audiobook: audio files of the same book in the same book folder. */
+export function sameAudiobook(a: FileFacts, b: FileFacts): boolean {
+  return (
+    a.id !== b.id &&
+    a.format === 'audio' &&
+    b.format === 'audio' &&
+    a.folder_id === b.folder_id &&
+    a.book_dir != null &&
+    a.book_dir === b.book_dir &&
+    a.compare_key === b.compare_key
+  );
+}
+
 export function sameFormatGroup(a: FileFacts, b: FileFacts): boolean {
   return (
     a.id !== b.id &&
@@ -103,6 +116,12 @@ export function groupUnassignedFiles(db: DB): GroupingResult {
      WHERE f.folder_id = ? AND f.rel_dir = ? AND f.compare_key = ? AND f.excluded = 0`,
   );
 
+  const audioParts = db.prepare(
+    `SELECT f.*, x.item_id FROM files f LEFT JOIN item_files x ON x.file_id = f.id
+     WHERE f.folder_id = ? AND f.format = 'audio' AND f.book_dir = ? AND f.compare_key = ?
+       AND f.excluded = 0`,
+  );
+
   const uf = new UnionFind();
   /** file id -> existing items it links to */
   const links = new Map<string, Set<string>>();
@@ -127,6 +146,14 @@ export function groupUnassignedFiles(db: DB): GroupingResult {
       if (other.item_id) link(f.id, other.item_id);
       else uf.union(f.id, other.id);
     }
+    if (f.format === 'audio' && f.book_dir != null)
+      for (const other of audioParts.all(f.folder_id, f.book_dir, f.compare_key) as (FileFacts & {
+        item_id: string | null;
+      })[]) {
+        if (!sameAudiobook(f, other)) continue;
+        if (other.item_id) link(f.id, other.item_id);
+        else uf.union(f.id, other.id);
+      }
   }
 
   const components = new Map<string, FileFacts[]>();
