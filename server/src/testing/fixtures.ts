@@ -448,7 +448,8 @@ export interface AudioTags {
 
 /**
  * An MP3 with ID3v2.3 tags and empty frames at a constant bit rate (MPEG-1 Layer III, 32 kbps,
- * 32 kHz, mono: 144 bytes and 0.036 s a frame), so a reader works its length out from the size.
+ * 32 kHz, mono: 144 bytes and 0.036 s a frame), with an Info duration header.
+ * Integration tests need a stated duration; small headerless/VBR samples live in audio.test.ts.
  */
 export function makeMp3(seconds: number, tags: AudioTags = {}): Buffer {
   const frame = (id: string, text: string) => {
@@ -480,7 +481,19 @@ export function makeMp3(seconds: number, tags: AudioTags = {}): Buffer {
   f[2] = 0x18;
   f[3] = 0xc0;
   const count = Math.round(seconds / 0.036);
-  return Buffer.concat([head, frames, ...Array.from({ length: count }, () => f)]);
+  const first = Buffer.from(f);
+  // Four-byte MPEG header + 17 bytes of mono side information. Store the frame count and
+  // audio byte count so measuring a long test recording doesn't scan every empty frame.
+  first.write('Info', 21);
+  first.writeUInt32BE(3, 25);
+  first.writeUInt32BE(count, 29);
+  first.writeUInt32BE(count * f.length, 33);
+  return Buffer.concat([
+    head,
+    frames,
+    first,
+    ...Array.from({ length: Math.max(0, count - 1) }, () => f),
+  ]);
 }
 
 /** An .m4b with only what a tag reader needs: the movie header (its length) and iTunes tags. */
