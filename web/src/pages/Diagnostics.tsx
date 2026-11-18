@@ -56,6 +56,17 @@ interface Diag {
   lookups: { pending: number; running: boolean };
   refresh: RefreshStatus;
   /** The last store purchases import per store: counts only, never titles. */
+  audiobooks?: {
+    folders: number;
+    files: number;
+    byType: Record<string, number>;
+    books: number;
+    oneFileBooks: number;
+    manyFileBooks: number;
+    largestBook: number;
+    noPlayingTime: number;
+    notReadYet: number;
+  };
   storeImports?: {
     service: string;
     importedAt: string;
@@ -359,6 +370,16 @@ export function Diagnostics() {
               ))}
             </ul>
             <RefreshDiagnostics r={diag.refresh} />
+            {diag.audiobooks && diag.audiobooks.folders > 0 && (
+              <div className="card">
+                <h3>Audiobooks</h3>
+                <ul className="plain-list small">
+                  {audiobookLines(diag.audiobooks).map((l) => (
+                    <li key={l}>{l}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
             <div className="card">
               <h3>Store purchase imports</h3>
               {diag.storeImports?.length ? (
@@ -451,12 +472,25 @@ function toReport(d: Diag): string {
         `${s.label}: ${s.configured ? s.state : 'no key'}; requests this run ${s.requests}${s.lastError ? `; last error: ${s.lastError}` : ''}`,
     ),
     ...refreshLines(d.refresh),
+    ...(d.audiobooks && d.audiobooks.folders > 0 ? audiobookLines(d.audiobooks) : []),
     ...(d.storeImports ?? []).map(storeImportLine),
   ];
   return lines.join('\n');
 }
 
 /** One store's last import, title-free: when, collector version, completeness and counts. */
+/** How the audiobook folders were read: counts and file types only, never a name. */
+function audiobookLines(a: NonNullable<Diag['audiobooks']>): string[] {
+  const types = Object.entries(a.byType)
+    .map(([ext, n]) => `${n.toLocaleString()} ${ext}`)
+    .join(', ');
+  return [
+    `Audiobook folders: ${a.folders}; audio files: ${a.files.toLocaleString()}${types ? ` (${types})` : ''}`,
+    `Read as ${a.books.toLocaleString()} audiobooks: ${a.oneFileBooks.toLocaleString()} of one file, ${a.manyFileBooks.toLocaleString()} of several (the largest has ${a.largestBook.toLocaleString()} files)`,
+    `Playing time not known: ${a.noPlayingTime.toLocaleString()} files; not read yet: ${a.notReadYet.toLocaleString()} files`,
+  ];
+}
+
 function storeImportLine(s: NonNullable<Diag['storeImports']>[number]): string {
   const c = s.counts;
   return `Store import ${STORE_LABELS[s.service] ?? s.service}: ${s.importedAt}; collector ${s.adapterVersion}; ${s.completion} (${s.reason}); found ${c.seen ?? '?'}, included ${c.included ?? '?'}, uncertain ${c.uncertain ?? '?'}, added ${c.added ?? 0}`;

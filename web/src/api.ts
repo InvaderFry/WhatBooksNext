@@ -82,6 +82,7 @@ export const STORE_LABELS: Record<string, string> = {
   google_play: 'Google Play Books',
   kobo: 'Kobo',
   globalcomix: 'GlobalComix',
+  audible: 'Audible',
   other: 'Another app',
 };
 
@@ -129,6 +130,13 @@ export interface ItemSummary {
   /** Only in search results: where the search found the book, when its title doesn't say. */
   searchHits?: { field: 'author' | 'series' | 'file title'; text: string }[];
   formats: string[];
+  /** The ways the owner has it: to read, to listen to, or both. */
+  media?: { read: boolean; listen: boolean };
+  /** The audiobook's playing time in minutes; null when it isn't known. */
+  listenMinutes?: number | null;
+  listenBasis?: string | null;
+  /** How many audio files make the audiobook. */
+  audioParts?: number;
   fileCount: number;
   folderIds: string[];
   availability: Availability;
@@ -167,6 +175,8 @@ export interface FileDetail {
   firstSeenAt: string;
   wordCount: number | null;
   pageCount: number | null;
+  /** An audio file's playing time in seconds; null when it isn't known. */
+  durationSeconds?: number | null;
   pdfType: PdfType | 'uncertain' | null;
   pdfTypeEvidence: string | null;
   pdfTypeOverride: PdfType | null;
@@ -336,6 +346,8 @@ export interface Folder {
   lastLetter: string | null;
   storageKind: 'local' | 'external' | 'cloud';
   alsoInICloud: boolean;
+  /** Directories below the folder that hold audiobooks ('' is the whole folder). */
+  audiobookDirs?: string[];
   reachable: boolean;
   lastSeenAt: string | null;
   lastCompleteScanAt: string | null;
@@ -426,7 +438,17 @@ export const FORMAT_LABELS: Record<string, string> = {
   mobi: 'MOBI',
   azw3: 'AZW3',
   cb7: 'CB7',
+  audio: 'Audiobook',
 };
+
+/** "9 h 12 min", "45 min": an audiobook's playing time. */
+export function formatListen(minutes: number): string {
+  const m = Math.max(1, Math.round(minutes));
+  const h = Math.floor(m / 60);
+  const rest = m % 60;
+  if (h === 0) return `${rest} min`;
+  return rest === 0 ? `${h} h` : `${h} h ${rest} min`;
+}
 
 export function formatBytes(n: number): string {
   if (n < 1024) return `${n} B`;
@@ -494,6 +516,8 @@ export interface Card {
   series: { id: string; name: string } | null;
   gaps: CardGap[];
   lengthBasis: string | null;
+  /** "Or listen: 9 h 12 min": it's also an audiobook, and the length shown is for reading. */
+  listen?: string | null;
   fit: 'fits' | 'might_fit' | 'too_long' | 'unknown' | 'any';
   reasons: string[];
   limitations: string[];
@@ -641,6 +665,7 @@ export interface ReadNext {
     mode: 'read_for' | 'finish_within';
     ready: boolean;
     show: 'all' | 'books' | 'tech' | 'comics';
+    medium?: 'either' | 'read' | 'listen';
     mood: Mood | null;
     complete: boolean;
     topic: string | null;
@@ -650,6 +675,8 @@ export interface ReadNext {
   topics: string[];
   taste: { on: boolean; outcomes: number };
   stillReading: number;
+  /** The library holds an audiobook, so "Read or listen?" is offered. */
+  audiobooks?: boolean;
   presets: TimePreset[];
   lookups: { pending: number; running: boolean };
   hardcover: boolean | null;
@@ -790,6 +817,8 @@ export interface ItemOnline {
     match: 'confirmed' | 'accepted' | 'provisional';
   } | null;
   duration: Duration | null;
+  /** The audiobook's playing time, when the book can also be read. */
+  listen?: Duration | null;
   effort: 'light' | 'medium' | 'heavy' | 'unknown';
   firstPublishYear: number | null;
   acquired: {
@@ -855,7 +884,8 @@ export const EFFORT_LABELS: Record<string, string> = {
 };
 
 /** "~15–25 min", "~4–5 h" — the same rounding as the server's cards. */
-export function formatRange(d: { low: number; high: number }): string {
+export function formatRange(d: { low: number; high: number; listening?: boolean }): string {
+  if (d.listening) return `${formatListen(d.high)} to listen`;
   const step = (n: number) => Math.max(5, Math.round(n / 5) * 5);
   if (d.high < 60) {
     const a = step(d.low);

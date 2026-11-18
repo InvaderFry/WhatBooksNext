@@ -1,3 +1,4 @@
+import { readAudio } from './audio.ts';
 import { comicPagePreviews, comicThumbnail, readComic } from './comic.ts';
 import { epubPagePreviews, epubThumbnail, readEpub } from './epub.ts';
 import { fullHash, partialHash } from './hash.ts';
@@ -16,7 +17,7 @@ import type { MetaResult } from './types.ts';
 
 export type Task =
   | { kind: 'read'; file: string; format: string; ext: string; wantCover: boolean }
-  | { kind: 'thumb'; file: string; format: string }
+  | { kind: 'thumb'; file: string; format: string; ext?: string }
   | { kind: 'full_hash'; file: string }
   | { kind: 'previews'; file: string; format: string };
 
@@ -47,6 +48,10 @@ export async function runTask(t: Task): Promise<TaskResult> {
         const { jpeg, ...meta } = await readPdf(t.file, t.wantCover);
         return { kind: 'read', meta, partialHash: ph, jpeg };
       }
+      if (t.format === 'audio') {
+        const { jpeg, ...meta } = await readAudio(t.file, t.ext, t.wantCover);
+        return { kind: 'read', meta, partialHash: ph, jpeg };
+      }
       const {
         jpeg,
         fullHash: fh,
@@ -56,12 +61,14 @@ export async function runTask(t: Task): Promise<TaskResult> {
     }
     case 'thumb': {
       let jpeg: Buffer | null;
-      if (t.format === 'epub') jpeg = await epubThumbnail(t.file);
+      if (t.format === 'audio') jpeg = (await readAudio(t.file, t.ext ?? '', true)).jpeg ?? null;
+      else if (t.format === 'epub') jpeg = await epubThumbnail(t.file);
       else if (t.format === 'pdf') jpeg = await pdfThumbnail(t.file);
       else jpeg = await comicThumbnail(t.file, t.format);
       return { kind: 'thumb', jpeg };
     }
     case 'previews': {
+      if (t.format === 'audio') return { kind: 'previews', pages: [] };
       const pages =
         t.format === 'epub'
           ? await epubPagePreviews(t.file)

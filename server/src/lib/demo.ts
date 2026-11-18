@@ -4,13 +4,14 @@ import { nowIso } from '../util.ts';
 import type { DB } from '../db/database.ts';
 import { FakePlatform } from '../platform/fake.ts';
 import { ATTR_OFFLINE, ATTR_RECALL_ON_DATA_ACCESS } from '../platform/types.ts';
-import { addFolder } from '../scan/folders.ts';
+import { addAudiobookFolder, addFolder } from '../scan/folders.ts';
 import { ScanManager } from '../scan/scanManager.ts';
 import {
   makeCbr,
   makeCbz,
   makeEpub,
   makeImage,
+  makeM4b,
   makePdf,
   makeZip,
   textLines,
@@ -203,6 +204,18 @@ function driveFiles(): Record<string, Buffer> {
       ]),
     ),
     'Music/not-a-book.mp3': fillerFor('not-a-book.mp3', 4000),
+    // Audiobooks (the drive's Audiobooks and Novels folders are marked as holding them; Music
+    // isn't, so the file above stays out). One in four parts, and one beside its ebook.
+    ...Object.fromEntries(
+      [1, 2, 3, 4].map((n) => [
+        `Audiobooks/The Weather Clerk/The Weather Clerk Part ${n}.m4b`,
+        makeM4b(7200 + n * 300, { album: 'The Weather Clerk', artist: 'Isolde Farrant' }),
+      ]),
+    ),
+    'Novels/mapmakersdaughter.m4b': makeM4b(31_500, {
+      album: 'The Mapmaker’s Daughter',
+      artist: 'Hollis Quarrender',
+    }),
   };
 }
 
@@ -284,6 +297,8 @@ export async function buildDemoLibrary(
   await addFolder(db, p, { path: cloud });
   await addFolder(db, p, { path: second });
   db.prepare('UPDATE folders SET also_in_icloud = 1 WHERE id = ?').run(driveFolder.id);
+  for (const dir of ['Audiobooks', 'Novels'])
+    await addAudiobookFolder(db, p, { path: path.join(drive, dir) });
 
   const scans = new ScanManager(db, p, { coversDir });
   try {
@@ -414,6 +429,17 @@ export async function buildDemoLibrary(
     kind: 'nonfiction',
     store: 'apple_books',
     readable: true,
+  });
+
+  // An Audible audiobook with the length Audible shows. The link's ID is invented too.
+  createStoreItem(db, {
+    title: 'The Lamplighter’s Almanac',
+    author: 'Corwin Ashgrove',
+    kind: 'fiction',
+    store: 'audible',
+    readable: true,
+    link: { url: 'https://www.audible.com/pd/INVENTED-DEMO-2', kind: 'page' },
+    listenMinutes: 431,
   });
 
   shortlistAdd(db, byFile('thelanternkeepers_3rdedition.epub'));

@@ -35,6 +35,13 @@ export function knownConflict(a: FileFacts, b: FileFacts): boolean {
 }
 
 export function areCopies(a: FileFacts, b: FileFacts): boolean {
+  // A chapter or publisher clip may be identical in unrelated books. Audio has no full
+  // fingerprint, and even one shared clip must not join both books through their other parts.
+  if (
+    (a.format === 'audio' || b.format === 'audio') &&
+    (a.format !== b.format || !a.compare_key || a.compare_key !== b.compare_key)
+  )
+    return false;
   // Full hashes match: the same file, whatever the names (§11.3 rule 1).
   if (a.id !== b.id && a.size > 0 && a.full_hash && a.full_hash === b.full_hash) return true;
   return (
@@ -44,6 +51,19 @@ export function areCopies(a: FileFacts, b: FileFacts): boolean {
     a.name.toLowerCase() === b.name.toLowerCase() &&
     (a.folder_id !== b.folder_id || a.rel_dir !== b.rel_dir) &&
     !hashesDisagree(a, b)
+  );
+}
+
+/** Parts of one audiobook: audio files of the same book in the same book folder. */
+export function sameAudiobook(a: FileFacts, b: FileFacts): boolean {
+  return (
+    a.id !== b.id &&
+    a.format === 'audio' &&
+    b.format === 'audio' &&
+    a.folder_id === b.folder_id &&
+    a.book_dir != null &&
+    a.book_dir === b.book_dir &&
+    a.compare_key === b.compare_key
   );
 }
 
@@ -103,6 +123,12 @@ export function groupUnassignedFiles(db: DB): GroupingResult {
      WHERE f.folder_id = ? AND f.rel_dir = ? AND f.compare_key = ? AND f.excluded = 0`,
   );
 
+  const audioParts = db.prepare(
+    `SELECT f.*, x.item_id FROM files f LEFT JOIN item_files x ON x.file_id = f.id
+     WHERE f.folder_id = ? AND f.format = 'audio' AND f.book_dir = ? AND f.compare_key = ?
+       AND f.excluded = 0`,
+  );
+
   const uf = new UnionFind();
   /** file id -> existing items it links to */
   const links = new Map<string, Set<string>>();
@@ -127,6 +153,14 @@ export function groupUnassignedFiles(db: DB): GroupingResult {
       if (other.item_id) link(f.id, other.item_id);
       else uf.union(f.id, other.id);
     }
+    if (f.format === 'audio' && f.book_dir != null)
+      for (const other of audioParts.all(f.folder_id, f.book_dir, f.compare_key) as (FileFacts & {
+        item_id: string | null;
+      })[]) {
+        if (!sameAudiobook(f, other)) continue;
+        if (other.item_id) link(f.id, other.item_id);
+        else uf.union(f.id, other.id);
+      }
   }
 
   const components = new Map<string, FileFacts[]>();

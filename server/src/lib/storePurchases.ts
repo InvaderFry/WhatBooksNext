@@ -89,6 +89,20 @@ export const COLLECTORS: Record<
   },
 };
 
+/**
+ * Stores whose collector isn't built yet: listed so the owner can run the look-around script on
+ * their library page (a collector is built from that report, never from guesses). Audible:
+ * docs/plans/audiobooks.md, owner action B2. Its files aren't accepted until its adapter exists.
+ */
+export const LOOK_AROUND_ONLY = [
+  {
+    service: 'audible',
+    state: 'not_built' as const,
+    checkedOn: null,
+    page: 'https://www.audible.com/library/titles',
+  },
+];
+
 const ACQUISITIONS = ['purchase', 'free_claim', 'uncertain'] as const;
 type Acquisition = (typeof ACQUISITIONS)[number];
 const COMPLETION = ['complete', 'partial', 'failed'] as const;

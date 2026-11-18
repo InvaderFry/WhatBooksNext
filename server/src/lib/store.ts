@@ -21,6 +21,7 @@ export const STORES = [
   'globalcomix',
   'apple_books',
   'google_play',
+  'audible',
   'other',
 ] as const;
 export type Store = (typeof STORES)[number];
@@ -29,6 +30,8 @@ export type Store = (typeof STORES)[number];
 export function storeFrom(text: string | null | undefined): Store {
   const t = (text ?? '').toLowerCase().replace(/[^a-z]/g, '');
   if (!t) return 'other';
+  // Before Amazon: "Amazon Audible" is Audible.
+  if (/audible/.test(t)) return 'audible';
   if (/kindle|amazon/.test(t)) return 'kindle';
   if (/kobo/.test(t)) return 'kobo';
   if (/globalcomix/.test(t)) return 'globalcomix';
@@ -97,6 +100,8 @@ const AMAZON_SUFFIXES = [
   'sg',
 ];
 
+const AUDIBLE_SUFFIXES = ['com', 'co.uk', 'de', 'fr', 'ca', 'com.au', 'in', 'it', 'es', 'co.jp'];
+
 /**
  * The hosts each store's links may go to, in one place (Store links). https only. Apple Books
  * has no web reader and takes no link; "another app" takes any https site the owner types,
@@ -110,6 +115,8 @@ export const STORE_LINK_HOSTS: Record<Exclude<Store, 'other' | 'apple_books'>, s
   // owner's look-around report, 2026-11-11).
   kobo: ['www.kobo.com', 'kobo.com', 'readnow.kobo.com'],
   globalcomix: ['globalcomix.com', 'www.globalcomix.com'],
+  // Audible's own sites, by country.
+  audible: AUDIBLE_SUFFIXES.flatMap((x) => [`www.audible.${x}`, `audible.${x}`]),
 };
 
 /** What the owner sees when a link is refused because it goes somewhere else. */
@@ -118,6 +125,7 @@ const STORE_SITES: Record<Store, string> = {
   google_play: 'play.google.com',
   kobo: 'kobo.com',
   globalcomix: 'globalcomix.com',
+  audible: 'Audible’s own sites (audible.com, audible.co.uk and the like)',
   apple_books: '',
   other: '',
 };
@@ -128,6 +136,7 @@ const STORE_NAMES: Record<Store, string> = {
   globalcomix: 'GlobalComix',
   apple_books: 'Apple Books',
   google_play: 'Google Play Books',
+  audible: 'Audible',
   other: 'another app',
 };
 
@@ -190,6 +199,8 @@ function linkKind(store: Store, u: URL): LinkKind {
   if (store === 'kindle') return host.startsWith('read.amazon.') ? 'read' : 'page';
   if (store === 'google_play') return u.pathname.startsWith('/books/reader') ? 'read' : 'page';
   if (host === 'readnow.kobo.com') return 'read';
+  // Audible's web player plays the book; any other Audible page is a page.
+  if (store === 'audible') return /^\/webplayer(\/|$)/i.test(u.pathname) ? 'read' : 'page';
   return /\/(web-?reader|reader|read)(\/|$)/i.test(u.pathname) ? 'read' : 'page';
 }
 
@@ -266,6 +277,23 @@ export interface StoreFields {
   readable?: boolean;
   /** A link to read it in that store, already checked by `checkStoreLink`. */
   link?: StoreLink | null;
+  /** An Audible audiobook's playing time in minutes, as the owner typed it. */
+  listenMinutes?: number | null;
+}
+
+/**
+ * A playing time the owner typed for an Audible audiobook, in whole minutes. Nothing typed is
+ * unknown (null); only Audible copies carry one.
+ */
+export function listenMinutesFrom(store: Store, v: unknown): number | null {
+  if (v === undefined) return null;
+  if (store !== 'audible')
+    throw new HttpError(400, 'Only an Audible audiobook takes a listening length.');
+  if (v === null || v === '') return null;
+  const n = Number(v);
+  if (!Number.isInteger(n) || n < 1 || n > 60_000)
+    throw new HttpError(400, 'The listening length should be a number of minutes, such as 552.');
+  return n;
 }
 
 export function validateFields(b: Record<string, unknown>): StoreFields {
@@ -291,13 +319,15 @@ export function validateFields(b: Record<string, unknown>): StoreFields {
     store,
     readable: b.readable === true,
     link: url ? checkStoreLink(store, url) : null,
+    listenMinutes: listenMinutesFrom(store, b.listenMinutes),
   };
 }
 
 /**
  * A place to read an item: a store, readable there or not yet confirmed, with its link if one
  * is given. `linkByOwner`: the owner typed the link (it wins over imports); otherwise it's an
- * imported link and only fills an empty one.
+ * imported link and only fills an empty one. A length omitted (undefined) preserves the
+ * existing value; an explicit null clears it. Imports omit it.
  */
 export function addLocation(
   db: DB,
@@ -306,6 +336,7 @@ export function addLocation(
   readable = false,
   link: StoreLink | null = null,
   linkByOwner = false,
+  listenMinutes: number | null | undefined = undefined,
 ): string {
   const existing = db
     .prepare("SELECT id FROM locations WHERE item_id = ? AND kind = 'store' AND store = ?")
@@ -319,13 +350,19 @@ export function addLocation(
         existing,
       );
     if (link) setLocationLink(db, existing, link, linkByOwner);
+    if (listenMinutes !== undefined)
+      db.prepare('UPDATE locations SET listen_minutes = ?, updated_at = ? WHERE id = ?').run(
+        listenMinutes,
+        now,
+        existing,
+      );
     return existing;
   }
   const id = newId();
   db.prepare(
     `INSERT INTO locations (id, item_id, kind, store, confirmed_readable, url, url_kind,
-       url_by_owner, created_at, updated_at)
-     VALUES (?, ?, 'store', ?, ?, ?, ?, ?, ?, ?)`,
+       url_by_owner, listen_minutes, created_at, updated_at)
+     VALUES (?, ?, 'store', ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     id,
     itemId,
@@ -334,6 +371,7 @@ export function addLocation(
     link?.url ?? null,
     link?.kind ?? null,
     link && linkByOwner ? 1 : 0,
+    listenMinutes ?? null,
     now,
     now,
   );
@@ -362,7 +400,7 @@ export function createStoreItem(db: DB, f: StoreFields, linkByOwner = false): st
   );
   // The kind the owner typed is theirs: it wins over any later guess.
   if (f.kind) applyUserPatch(db, id, { kindOverride: f.kind });
-  addLocation(db, id, f.store, f.readable, f.link ?? null, linkByOwner);
+  addLocation(db, id, f.store, f.readable, f.link ?? null, linkByOwner, f.listenMinutes ?? null);
   return id;
 }
 

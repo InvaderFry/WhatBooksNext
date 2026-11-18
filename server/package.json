@@ -6,6 +6,7 @@
     "@napi-rs/canvas": "^1.1.0",
     "better-sqlite3": "^13.0.3",
     "express": "^5.3.0",
+    "music-metadata": "^12.5.0",
     "node-unrar-js": "^2.0.2",
     "pdfjs-dist": "^6.5.438",
     "yauzl": "^3.4.0"

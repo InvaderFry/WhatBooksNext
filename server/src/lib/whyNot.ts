@@ -6,6 +6,7 @@ import {
   ineligibleBecause,
   onePerSeries,
   onePerWork,
+  hasMedium,
   shows,
   topicsOf,
   type RankItem,
@@ -121,6 +122,13 @@ export function whyNot(all: RankItem[], s: Situation, mode: ModeId, id: string):
     say(
       `“What kind?” is set to ${SHOW_TEXT[sit.show ?? 'all']}, and this is ${KIND_TEXT[i.kind ?? ''] ?? 'of unknown kind'}.`,
       { kind: 'choice', key: 'show', value: '', label: 'Show all kinds' },
+    );
+  if (!hasMedium(i, sit.medium))
+    say(
+      sit.medium === 'listen'
+        ? '“Read or listen?” is set to Listen, and you don’t have this as an audiobook.'
+        : '“Read or listen?” is set to Read, and you only have this as an audiobook.',
+      { kind: 'choice', key: 'medium', value: '', label: 'Show both' },
     );
   if (sit.readyToRead && !i.availability.readyToRead)
     say(

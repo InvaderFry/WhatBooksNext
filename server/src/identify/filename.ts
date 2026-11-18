@@ -15,8 +15,10 @@ import { splitWords, wordRank } from './wordsplit.ts';
  *   trailing-tag rule for titles and grouping (end of name only: "road_to_low_orbit" is a title).
  *   5 — a stray single letter from the word splitter joins the word before it
  *   ("rickandmorty" was "Rick and Mort Y").
+ *   7 — audiobook grouping preserves numeric titles and bare series numbers; only clear
+ *   track/part markers imply chapters. Re-read names on upgrade while keeping owner corrections.
  */
-export const PARSER_VERSION = 6;
+export const PARSER_VERSION = 7;
 
 export interface Part<T> {
   value: T;

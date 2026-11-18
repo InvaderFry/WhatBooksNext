@@ -2,7 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { DB } from '../db/database.ts';
 import type { Platform } from '../platform/types.ts';
-import { HttpError, newId, nowIso } from '../util.ts';
+import { inAudiobookDirs } from '../identify/audiobook.ts';
+import { HttpError, newId, nowIso, parseJson } from '../util.ts';
 
 export interface FolderRow {
   id: string;
@@ -19,6 +20,8 @@ export interface FolderRow {
   /** When the folder's first scan completed: books first seen after it are new arrivals. */
   first_complete_scan_at: string | null;
   reminder_snoozed_until?: string | null;
+  /** JSON list of directories below the folder that hold audiobooks ('' is the whole folder). */
+  audiobook_dirs?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -203,4 +206,89 @@ export async function reconnectFolder(
     folderId,
   );
   return db.prepare('SELECT * FROM folders WHERE id = ?').get(folderId) as FolderRow;
+}
+
+/** The folder's audiobook directories (a JSON list; '' is the whole folder). */
+export function audiobookDirsOf(folder: { audiobook_dirs?: string | null }): string[] {
+  const v = parseJson<unknown>(folder.audiobook_dirs ?? '[]', []);
+  return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [];
+}
+
+/**
+ * "My audiobooks are here" (docs/plans/audiobooks.md): audio files count as books only inside
+ * folders the owner names, so music is never listed. The path may be a library folder, a
+ * folder inside one (it is then remembered on that library folder, since one library folder
+ * can't sit inside another), or somewhere new, which becomes a library folder of its own.
+ */
+export async function addAudiobookFolder(
+  db: DB,
+  platform: Platform,
+  input: { path: string; dataDir?: string },
+): Promise<{ folderId: string; dir: string; newFolder: boolean }> {
+  const raw = (input.path ?? '').trim().replace(/^"(.*)"$/, '$1');
+  if (!raw) throw new HttpError(400, 'Enter a folder path.');
+  if (!path.isAbsolute(raw)) throw new HttpError(400, 'Enter a full path, such as E:\\Audiobooks.');
+  const abs = path.resolve(raw);
+  if (!isDirectory(abs))
+    throw new HttpError(400, "That folder can't be found. Is the drive connected?");
+  const folders = db.prepare('SELECT * FROM folders').all() as FolderRow[];
+  for (const f of folders) {
+    const rel = pathRelation(abs, f.display_path);
+    if (rel !== 'same' && rel !== 'inside') continue;
+    const dir = rel === 'same' ? '' : path.relative(f.display_path, abs).split(path.sep).join('/');
+    const dirs = audiobookDirsOf(f);
+    if (inAudiobookDirs(dir, dirs))
+      throw new HttpError(409, 'That folder is already listed as holding audiobooks.');
+    // A wider folder takes in the narrower ones already listed below it.
+    const kept = dirs.filter((d) => !inAudiobookDirs(d, [dir]));
+    db.prepare('UPDATE folders SET audiobook_dirs = ?, updated_at = ? WHERE id = ?').run(
+      JSON.stringify([...kept, dir]),
+      nowIso(),
+      f.id,
+    );
+    return { folderId: f.id, dir, newFolder: false };
+  }
+  // Somewhere new (checkFolderPath refuses a folder that holds a library folder).
+  const row = await addFolder(db, platform, input);
+  db.prepare('UPDATE folders SET audiobook_dirs = \'[""]\' WHERE id = ?').run(row.id);
+  return { folderId: row.id, dir: '', newFolder: true };
+}
+
+/**
+ * Takes a directory off a folder's audiobook list. Its audio files leave the library (they
+ * are no longer books to the app); nothing on the drive is touched. Returns the items that
+ * lost files and the deleted file ids, so the caller can remove their cached covers after commit.
+ */
+export function removeAudiobookDir(
+  db: DB,
+  folderId: string,
+  dir: string,
+): { itemIds: string[]; fileIds: string[] } {
+  const f = db.prepare('SELECT * FROM folders WHERE id = ?').get(folderId) as FolderRow | undefined;
+  if (!f) throw new HttpError(404, 'No such folder.');
+  const dirs = audiobookDirsOf(f);
+  if (!dirs.includes(dir))
+    throw new HttpError(404, 'That folder isn’t listed as holding audiobooks.');
+  const kept = dirs.filter((d) => d !== dir);
+  db.prepare('UPDATE folders SET audiobook_dirs = ?, updated_at = ? WHERE id = ?').run(
+    JSON.stringify(kept),
+    nowIso(),
+    folderId,
+  );
+  const audio = db
+    .prepare(
+      `SELECT f.id, f.rel_dir, x.item_id FROM files f LEFT JOIN item_files x ON x.file_id = f.id
+       WHERE f.folder_id = ? AND f.format = 'audio'`,
+    )
+    .all(folderId) as { id: string; rel_dir: string; item_id: string | null }[];
+  const items = new Set<string>();
+  const fileIds: string[] = [];
+  const del = db.prepare('DELETE FROM files WHERE id = ?');
+  for (const a of audio) {
+    if (inAudiobookDirs(a.rel_dir, kept)) continue;
+    del.run(a.id);
+    fileIds.push(a.id);
+    if (a.item_id) items.add(a.item_id);
+  }
+  return { itemIds: [...items], fileIds };
 }

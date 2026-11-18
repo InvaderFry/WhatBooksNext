@@ -2,7 +2,6 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AppState, ItemSummary } from '../api.ts';
-import { updateParams } from '../url.ts';
 import { Library } from './Library.tsx';
 
 /**
@@ -99,6 +98,12 @@ const rows = () => document.querySelectorAll('.item-row').length;
 const showMore = () => screen.queryByRole('button', { name: /^Show (\d+ )?more$/ });
 const titles = () => [...document.querySelectorAll('.item-title')].map((a) => a.textContent!);
 
+/** Use the search field so its debounced value and the URL stay in sync on slower runners. */
+async function searchFor(q: string) {
+  fireEvent.change(screen.getByRole('searchbox'), { target: { value: q } });
+  await waitFor(() => expect(new URLSearchParams(window.location.search).get('q')).toBe(q));
+}
+
 beforeEach(() => {
   failItems = false;
   failShortlist = false;
@@ -126,7 +131,7 @@ describe('the Library page', () => {
     }
     expect(rows()).toBe(1150);
     expect(showMore()).toBeNull();
-    act(() => updateParams({ q: 'harbor' }));
+    await searchFor('harbor');
     await waitFor(() => expect(screen.getByText('575 items match')).toBeTruthy());
     expect(rows()).toBe(100);
     expect(document.querySelector('.item-title')!.textContent).toBe('Harbor 0002');
@@ -138,19 +143,20 @@ describe('the Library page', () => {
     let release!: () => void;
     holdMore = new Promise<void>((r) => (release = r));
     fireEvent.click(showMore()!);
-    act(() => updateParams({ q: 'harbor' }));
+    await searchFor('harbor');
     await waitFor(() => expect(screen.getByText('575 items match')).toBeTruthy());
     await act(async () => {
       release();
       await holdMore;
     });
-    await new Promise((r) => setTimeout(r, 20));
-    expect(rows()).toBe(100);
-    expect(
-      [...document.querySelectorAll('.item-title')].every((a) =>
-        a.textContent!.startsWith('Harbor'),
-      ),
-    ).toBe(true);
+    await waitFor(() => {
+      expect(rows()).toBe(100);
+      expect(titles()).toEqual(
+        LIBRARY.filter((b) => b.title.startsWith('Harbor'))
+          .slice(0, 100)
+          .map((b) => b.title),
+      );
+    });
   });
 
   it('keeps paging when a book is added above the loaded ones, and offers to reload', async () => {
@@ -192,10 +198,9 @@ describe('the Library page', () => {
     let releaseMore!: () => void;
     holdFirst = { q: 'harbor', until: new Promise<void>((r) => (releaseFirst = r)) };
     holdMore = new Promise<void>((r) => (releaseMore = r));
-    act(() => updateParams({ q: 'harbor' }));
+    await searchFor('harbor');
     // The old list is still showing; paging it now would mix the two lists.
     if (showMore()) fireEvent.click(showMore()!);
-    await new Promise((r) => setTimeout(r, 20));
     // The new first page answers first, then the stray "more" answer.
     await act(async () => {
       releaseFirst();
@@ -206,10 +211,11 @@ describe('the Library page', () => {
       releaseMore();
       await holdMore;
     });
-    await new Promise((r) => setTimeout(r, 20));
     const harbor = LIBRARY.filter((b) => b.title.startsWith('Harbor'));
-    expect(titles()).toEqual(harbor.slice(0, rows()).map((b) => b.title));
-    expect(rows()).toBe(100);
+    await waitFor(() => {
+      expect(titles()).toEqual(harbor.slice(0, 100).map((b) => b.title));
+      expect(rows()).toBe(100);
+    });
   });
 
   it('clears an error once a later load works', async () => {
@@ -217,7 +223,7 @@ describe('the Library page', () => {
     render(<Library state={STATE} onScanStarted={() => {}} />);
     await waitFor(() => expect(screen.getByRole('alert').textContent).toMatch(/Test failure/));
     failItems = false;
-    act(() => updateParams({ q: 'ledger' }));
+    await searchFor('ledger');
     await waitFor(() => expect(rows()).toBe(100));
     expect(screen.queryByRole('alert')).toBeNull();
   });

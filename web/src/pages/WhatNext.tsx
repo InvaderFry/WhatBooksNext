@@ -50,7 +50,17 @@ function addNotInMood(id: string) {
 const MODE_KEY = 'wbn:surprise-last';
 
 /** The What next choices in the address bar: what a saved view stores and restores. */
-const CHOICE_KEYS = ['m', 'time', 'mode', 'show', 'ready', 'complete', 'mood', 'topic'] as const;
+const CHOICE_KEYS = [
+  'm',
+  'time',
+  'mode',
+  'show',
+  'medium',
+  'ready',
+  'complete',
+  'mood',
+  'topic',
+] as const;
 
 /** The choices as they'd be saved: blanks and the page's defaults left out. */
 function choicesOf(p: Params): Record<string, string> {
@@ -59,6 +69,7 @@ function choicesOf(p: Params): Record<string, string> {
     time: 'any',
     mode: 'read_for',
     show: 'all',
+    medium: 'either',
     mood: 'escape',
   };
   const out: Record<string, string> = {};
@@ -89,6 +100,7 @@ export function WhatNext({ params, onChanged }: { params: Params; onChanged: () 
   const mood = (['escape', 'learn', 'skim'] as const).find((x) => x === params.mood) ?? 'escape';
   const topic = params.topic ?? '';
   const show = (['books', 'tech', 'comics'] as const).find((x) => x === params.show) ?? 'all';
+  const medium = (['read', 'listen'] as const).find((x) => x === params.medium) ?? 'either';
   const [data, setData] = useState<ReadNext | null>(null);
   const [extra, setExtra] = useState<Card[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -119,13 +131,14 @@ export function WhatNext({ params, onChanged }: { params: Params; onChanged: () 
         mood: view === 'mood' ? mood : '',
         topic,
         show: show === 'all' ? '' : show,
+        medium: medium === 'either' ? '' : medium,
         exclude: hidden.join(','),
         previous: view === 'surprise' ? previous.join(',') : '',
         offset: String(offset),
       }).toString()}`,
     // `roll` asks for a new surprise pick without anything else changing.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [view, time, mode, ready, complete, mood, topic, show, hidden, roll],
+    [view, time, mode, ready, complete, mood, topic, show, medium, hidden, roll],
   );
 
   const load = useCallback(async () => {
@@ -173,7 +186,7 @@ export function WhatNext({ params, onChanged }: { params: Params; onChanged: () 
     oneSitting && time === 'any'
       ? '2 hours'
       : (data?.presets.find((p) => p.id === time)?.label ?? 'Any length');
-  const situation = { view, time, mode, ready, show, complete, mood, topic };
+  const situation = { view, time, mode, ready, show, medium, complete, mood, topic };
   const KIND_TEXT = { books: 'Books', tech: 'Tech', comics: 'Comics and manga', all: 'All kinds' };
   const summary = [
     info?.label ?? 'Read next',
@@ -185,6 +198,7 @@ export function WhatNext({ params, onChanged }: { params: Params; onChanged: () 
           ? '2 h'
           : budgetLabel),
     view !== 'still_relevant' && KIND_TEXT[show],
+    medium === 'listen' ? 'To listen to' : medium === 'read' && 'To read',
     ready && 'Ready to read',
     complete && view !== 'continue' && view !== 'still_relevant' && 'Complete stories',
     topic,
@@ -327,6 +341,29 @@ export function WhatNext({ params, onChanged }: { params: Params; onChanged: () 
             ))}
           </fieldset>
         )}
+        {(data?.audiobooks || medium !== 'either') && (
+          <fieldset className="segmented">
+            <legend>Read or listen?</legend>
+            {(
+              [
+                ['read', 'Read'],
+                ['listen', 'Listen'],
+                ['either', 'Either'],
+              ] as const
+            ).map(([id, label]) => (
+              <label key={id} className={medium === id ? 'on' : ''}>
+                <input
+                  type="radio"
+                  name="medium"
+                  value={id}
+                  checked={medium === id}
+                  onChange={() => updateParams({ medium: id === 'either' ? '' : id })}
+                />
+                {label}
+              </label>
+            ))}
+          </fieldset>
+        )}
         {usesTime && !oneSitting && (
           <fieldset className="segmented" disabled={time === 'any'}>
             <legend>Do you want to…</legend>
@@ -338,7 +375,7 @@ export function WhatNext({ params, onChanged }: { params: Params; onChanged: () 
                 checked={mode === 'read_for'}
                 onChange={() => updateParams({ mode: '' })}
               />
-              Read for that long
+              {medium === 'listen' ? 'Listen for that long' : 'Read for that long'}
             </label>
             <label className={mode === 'finish_within' ? 'on' : ''}>
               <input
@@ -597,6 +634,7 @@ function PickCard({
         <p className="scope">
           <strong>{card.scope}</strong>
           {card.lengthBasis && <span className="muted small"> ({card.lengthBasis})</span>}
+          {card.listen && <span className="muted small"> · {card.listen}</span>}
         </p>
         {card.reasons.length > 0 && (
           <ul className="reasons" aria-label="Why this pick">

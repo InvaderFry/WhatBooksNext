@@ -11,6 +11,7 @@ import {
   ineligibleBecause,
   onePerSeries,
   onePerWork,
+  hasMedium,
   shows,
   topicsOf,
   type Card,
@@ -158,6 +159,7 @@ export function pool(
       (reference || !i.isReference) &&
       !s.exclude.has(i.id) &&
       shows(i, s.show) &&
+      hasMedium(i, s.medium) &&
       (!s.readyToRead || i.availability.readyToRead) &&
       (!s.topic || topicsOf(i, [s.topic]).length > 0),
   );

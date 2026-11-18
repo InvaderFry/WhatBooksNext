@@ -102,6 +102,7 @@ export function Settings({
           ))}
         </ul>
         <AddFolderForm onAdded={load} />
+        <AddAudiobookFolderForm onAdded={load} />
         {scan && scan.status !== 'running' && <LastScan scan={scan} />}
       </section>
 
@@ -290,6 +291,38 @@ function FolderRow({
           />
           Also in iCloud — I keep copies of these books in iCloud to read on my iPhone/iPad
         </label>
+        {(f.audiobookDirs ?? []).length > 0 && (
+          <ul className="plain-list small" aria-label={`Audiobook folders in ${f.displayPath}`}>
+            {(f.audiobookDirs ?? []).map((dir) => (
+              <li key={dir}>
+                🎧 Audiobooks: {dir === '' ? 'this whole folder' : dir.replaceAll('/', '\\')}{' '}
+                <button
+                  type="button"
+                  className="link-button"
+                  disabled={running}
+                  onClick={async () => {
+                    if (
+                      !window.confirm(
+                        'Stop treating the audio files here as audiobooks?\n\nYour files are not touched. Audiobooks you have recorded progress, ratings or notes on stay in the library.',
+                      )
+                    )
+                      return;
+                    try {
+                      await api.delete(
+                        `/api/folders/${f.id}/audiobooks?dir=${encodeURIComponent(dir)}`,
+                      );
+                      await onChanged();
+                    } catch (err) {
+                      setError((err as Error).message);
+                    }
+                  }}
+                >
+                  Stop
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
         {error && <Notice kind="error">{error}</Notice>}
         {reconnecting && (
           <form
@@ -397,6 +430,59 @@ export function AddFolderForm({
         {busy ? 'Adding…' : autoScan ? 'Add and scan' : 'Add folder'}
       </button>
       {error && <Notice kind="error">{error}</Notice>}
+    </form>
+  );
+}
+
+/**
+ * "My audiobooks are here": audio files count as books only inside a folder named here, so
+ * music anywhere else is never listed. The folder may be inside a library folder or somewhere new.
+ */
+export function AddAudiobookFolderForm({ onAdded }: { onAdded: () => void | Promise<void> }) {
+  const [path, setPath] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  return (
+    <form
+      className="inline-form add-folder"
+      onSubmit={async (e) => {
+        e.preventDefault();
+        setBusy(true);
+        setError(null);
+        setDone(null);
+        try {
+          await api.post('/api/audiobook-folders', { path });
+          setPath('');
+          setDone('Added. Press Scan now to list the audiobooks in it.');
+          await onAdded();
+        } catch (err) {
+          setError((err as Error).message);
+        } finally {
+          setBusy(false);
+        }
+      }}
+    >
+      <div className="field grow">
+        <label htmlFor="new-audio-folder">Add a folder of audiobooks</label>
+        <input
+          id="new-audio-folder"
+          value={path}
+          onChange={(e) => setPath(e.target.value)}
+          placeholder="Paste a folder path, e.g. E:\Audiobooks"
+          aria-describedby="new-audio-folder-help"
+          required
+        />
+        <span id="new-audio-folder-help" className="hint">
+          Audio files (MP3, M4B and the like) count as books only inside a folder you add here, so
+          your music is never listed. It can be a folder inside one above. Keep music out of it.
+        </span>
+      </div>
+      <button type="submit" disabled={busy}>
+        {busy ? 'Adding…' : 'Add audiobook folder'}
+      </button>
+      {error && <Notice kind="error">{error}</Notice>}
+      {done && <Notice kind="success">{done}</Notice>}
     </form>
   );
 }

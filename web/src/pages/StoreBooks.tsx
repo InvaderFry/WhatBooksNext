@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { api, KIND_LABELS, STORE_LABELS } from '../api.ts';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
+import { api, formatListen, KIND_LABELS, STORE_LABELS } from '../api.ts';
 import { Notice, storeLinkText } from '../components.tsx';
 import { navigate } from '../url.ts';
 
@@ -19,6 +19,8 @@ const LINK_HELP: Record<string, string> = {
     'Open the book in Google Play Books (play.google.com/books) or on its Play store page, then copy the address.',
   kobo: 'Open the book on kobo.com (My Books, or its store page), then copy the address.',
   globalcomix: 'Open the comic on globalcomix.com, then copy the address.',
+  audible:
+    'Open the audiobook in your Audible library (audible.com), or on its Audible page, then copy the address.',
   other: 'Any secure (https) link. Its site is shown next to it, so you can see where it goes.',
 };
 
@@ -45,12 +47,60 @@ function StoreSelect({
 const READABLE_HELP =
   'Tick it if you can open it there now (on your iPhone or iPad). Only then does “Ready to read” include it.';
 
+/** Shared by adding a title and adding Audible to an existing book. */
+function ListeningLength({
+  hours,
+  mins,
+  onHours,
+  onMins,
+}: {
+  hours: string;
+  mins: string;
+  onHours: (value: string) => void;
+  onMins: (value: string) => void;
+}) {
+  const id = useId();
+  return (
+    <fieldset className="row-actions wrap">
+      <legend className="small">Length, as Audible shows it (optional)</legend>
+      <div className="field inline">
+        <label htmlFor={`${id}-h`}>Hours</label>
+        <input
+          id={`${id}-h`}
+          type="number"
+          min="0"
+          max="999"
+          inputMode="numeric"
+          value={hours}
+          onChange={(e) => onHours(e.target.value)}
+        />
+      </div>
+      <div className="field inline">
+        <label htmlFor={`${id}-m`}>Minutes</label>
+        <input
+          id={`${id}-m`}
+          type="number"
+          min="0"
+          max="59"
+          inputMode="numeric"
+          value={mins}
+          onChange={(e) => onMins(e.target.value)}
+        />
+      </div>
+    </fieldset>
+  );
+}
+
 /** Library → Add a store book: search the online sources, or type it in. */
 export function AddStoreBook({ onClose }: { onClose: () => void }) {
   const [mode, setMode] = useState<'search' | 'type'>('search');
   const [store, setStore] = useState('kindle');
   const [readable, setReadable] = useState(false);
   const [url, setUrl] = useState('');
+  // An Audible audiobook's playing time, as Audible shows it ("9 hrs and 12 mins"). Optional.
+  const [hours, setHours] = useState('');
+  const [mins, setMins] = useState('');
+  const listenMinutes = (Number(hours) || 0) * 60 + (Number(mins) || 0);
   const [q, setQ] = useState('');
   const [author, setAuthor] = useState('');
   const [found, setFound] = useState<{
@@ -75,6 +125,7 @@ export function AddStoreBook({ onClose }: { onClose: () => void }) {
         store,
         readable,
         ...(store !== 'apple_books' && url.trim() ? { url: url.trim() } : {}),
+        ...(store === 'audible' && listenMinutes > 0 ? { listenMinutes } : {}),
         ...body,
       });
       navigate({ view: 'item', id: r.itemId });
@@ -97,9 +148,12 @@ export function AddStoreBook({ onClose }: { onClose: () => void }) {
             checked={readable}
             onChange={(e) => setReadable(e.target.checked)}
           />
-          I can read it there now
+          {store === 'audible' ? 'I can listen to it there now' : 'I can read it there now'}
         </label>
       </div>
+      {store === 'audible' && (
+        <ListeningLength hours={hours} mins={mins} onHours={setHours} onMins={setMins} />
+      )}
       <p className="muted small">
         {READABLE_HELP} To bring in a whole store library at once, use Settings → Import store
         purchases.
@@ -274,6 +328,7 @@ interface Place {
   id: string;
   kind: 'store' | 'history';
   store: string | null;
+  listenMinutes: number | null;
   readable: boolean;
   note: string | null;
   url: string | null;
@@ -325,6 +380,43 @@ function LinkEditor({
   );
 }
 
+/** Blank hours and minutes explicitly clear a previously stated length. */
+function ListeningLengthEditor({
+  place,
+  onSave,
+  onCancel,
+}: {
+  place: Place;
+  onSave: (minutes: number | null) => Promise<void>;
+  onCancel: () => void;
+}) {
+  const [hours, setHours] = useState(
+    place.listenMinutes == null ? '' : String(Math.floor(place.listenMinutes / 60)),
+  );
+  const [mins, setMins] = useState(
+    place.listenMinutes == null ? '' : String(place.listenMinutes % 60),
+  );
+  return (
+    <form
+      className="row-actions wrap link-editor"
+      onSubmit={(e) => {
+        e.preventDefault();
+        const minutes = (Number(hours) || 0) * 60 + (Number(mins) || 0);
+        void onSave(minutes > 0 ? minutes : null);
+      }}
+    >
+      <ListeningLength hours={hours} mins={mins} onHours={setHours} onMins={setMins} />
+      <span className="muted small">Leave both empty for an unknown length.</span>
+      <button type="submit" className="small">
+        Save length
+      </button>
+      <button type="button" className="small secondary" onClick={onCancel}>
+        Cancel
+      </button>
+    </form>
+  );
+}
+
 /** Item page → Where you can read it: stores (with "I can read it there now") and removal. */
 export function PlacesSection({
   itemId,
@@ -337,7 +429,11 @@ export function PlacesSection({
 }) {
   const [places, setPlaces] = useState<Place[] | null>(null);
   const [store, setStore] = useState('kindle');
+  const [hours, setHours] = useState('');
+  const [mins, setMins] = useState('');
+  const listenMinutes = (Number(hours) || 0) * 60 + (Number(mins) || 0);
   const [editing, setEditing] = useState<string | null>(null);
+  const [editingLength, setEditingLength] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const load = useCallback(
     async () => setPlaces(await api.get(`/api/items/${itemId}/locations`)),
@@ -378,7 +474,7 @@ export function PlacesSection({
                   )
                 }
               />
-              I can read it there now
+              {p.store === 'audible' ? 'I can listen to it there now' : 'I can read it there now'}
             </label>
             <button
               type="button"
@@ -449,6 +545,46 @@ export function PlacesSection({
                 )}
               </div>
             )}
+            {p.store === 'audible' && (
+              <div className="place-link">
+                <span className="muted small">
+                  Length in Audible:{' '}
+                  {p.listenMinutes != null ? formatListen(p.listenMinutes) : 'unknown'}.
+                </span>{' '}
+                <button
+                  type="button"
+                  className="link-button small"
+                  onClick={() => setEditingLength(p.id)}
+                >
+                  {p.listenMinutes != null ? 'Change length' : 'Add length'}
+                </button>{' '}
+                {p.listenMinutes != null && (
+                  <button
+                    type="button"
+                    className="link-button small"
+                    onClick={() =>
+                      void act(() =>
+                        api.patch(`/api/locations/${p.id}`, { listenMinutes: null }),
+                      ).then((saved) => {
+                        if (saved) setEditingLength(null);
+                      })
+                    }
+                  >
+                    Remove length
+                  </button>
+                )}
+                {editingLength === p.id && (
+                  <ListeningLengthEditor
+                    place={p}
+                    onCancel={() => setEditingLength(null)}
+                    onSave={async (listenMinutes) => {
+                      if (await act(() => api.patch(`/api/locations/${p.id}`, { listenMinutes })))
+                        setEditingLength(null);
+                    }}
+                  />
+                )}
+              </div>
+            )}
             {p.store === 'apple_books' && (
               <span className="muted small">No web reader: read it in the Books app.</span>
             )}
@@ -459,13 +595,26 @@ export function PlacesSection({
         className="row-actions wrap"
         onSubmit={(e) => {
           e.preventDefault();
-          void act(() => api.post(`/api/items/${itemId}/locations`, { store }));
+          void act(() =>
+            api.post(`/api/items/${itemId}/locations`, {
+              store,
+              ...(store === 'audible' && listenMinutes > 0 ? { listenMinutes } : {}),
+            }),
+          ).then((saved) => {
+            if (saved) {
+              setHours('');
+              setMins('');
+            }
+          });
         }}
       >
         <div className="field inline">
           <label htmlFor="place-store">Also in</label>
           <StoreSelect id="place-store" value={store} onChange={setStore} />
         </div>
+        {store === 'audible' && (
+          <ListeningLength hours={hours} mins={mins} onHours={setHours} onMins={setMins} />
+        )}
         <button type="submit" className="small secondary">
           Add
         </button>
@@ -724,6 +873,12 @@ const COLLECTOR_STATE: Record<Collector['state'], string> = {
 /** Where each store's library is, for the look-around script. A starting point: the owner may
  * need a click or two to reach the list of their own books. */
 const LIBRARY_PAGES: Record<string, { url: string; how: string; open: string; then: string }> = {
+  audible: {
+    url: 'https://www.audible.com/library/titles',
+    how: 'your Audible library',
+    open: 'Sign in if asked, and wait for your audiobooks to show.',
+    then: 'Scroll to the very bottom of the list. If the library has more pages, the script stops when the page changes, so one page is enough. Then click',
+  },
   // GlobalComix loads the purchases list as its page opens, before a pasted script can watch: so
   // start on its home page and go to the purchases with the site's own menu.
   globalcomix: {

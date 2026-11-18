@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { item, rated } from '../testing/rank.ts';
+import { listenDuration } from './estimate.ts';
 import { computeStats } from './stats.ts';
 
 const TODAY = '2026-11-10';
@@ -15,6 +16,24 @@ const minutes = (low: number, high: number, measured = true) => ({
 });
 
 describe('Stats (§15)', () => {
+  it('counts audio in the backlog without adding listening hours to reading time', () => {
+    const audio = listenDuration(600, 'from the recording');
+    const s = stats([
+      item({ duration: audio, media: { read: false, listen: true } }),
+      item({ duration: audio, user: { progress: 'halfway' } }),
+      item({ duration: null, media: { read: false, listen: true } }),
+      item({ duration: minutes(80, 120), listen: audio, media: { read: true, listen: true } }),
+      item({ duration: minutes(40, 60), user: { progress: 'halfway' } }),
+    ]);
+    expect(s.backlog.total).toMatchObject({
+      items: 5,
+      inProgress: 2,
+      withLength: 2,
+      low: 100,
+      high: 150,
+    });
+  });
+
   it('scenario 6: a book marked Already read with no date counts in no year', () => {
     const s = stats([
       item({ user: { progress: 'finished', finishedPrecision: 'unknown' } }),

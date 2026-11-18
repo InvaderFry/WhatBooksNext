@@ -130,3 +130,72 @@ describe('migration 011 (first complete scan)', () => {
     expect(first('g')).toBeNull();
   });
 });
+
+describe('migration 021 (audiobooks)', () => {
+  it('keeps every store copy and purchase when Audible joins the stores', async () => {
+    const db = openDatabase(':memory:');
+    const all = loadMigrations();
+    await migrate(db, { snapshotDir: null, migrations: all.filter((m) => m.version <= 20) });
+    const now = '2026-11-01T10:00:00.000Z';
+    db.prepare(
+      "INSERT INTO items (id, title, created_at, updated_at) VALUES ('i', 'An Invented Book', ?, ?)",
+    ).run(now, now);
+    db.prepare(
+      `INSERT INTO locations (id, item_id, kind, store, confirmed_readable, note, created_at,
+         updated_at, url, url_kind, url_by_owner)
+       VALUES ('l', 'i', 'store', 'kindle', 1, 'a note', ?, ?, 'https://read.amazon.com/?asin=X', 'read', 1)`,
+    ).run(now, now);
+    db.prepare(
+      `INSERT INTO store_purchases (id, item_id, service, store_record_id, id_kind, unit,
+         acquisition, first_seen_at, last_seen_at, adapter_version)
+       VALUES ('p', 'i', 'kindle', 'X', 'asin', 'book', 'purchase', ?, ?, '1')`,
+    ).run(now, now);
+    await migrate(db, { snapshotDir: null, migrations: all });
+    expect(db.prepare('SELECT * FROM locations').all()).toEqual([
+      {
+        id: 'l',
+        item_id: 'i',
+        kind: 'store',
+        store: 'kindle',
+        confirmed_readable: 1,
+        note: 'a note',
+        created_at: now,
+        updated_at: now,
+        url: 'https://read.amazon.com/?asin=X',
+        url_kind: 'read',
+        url_by_owner: 1,
+        listen_minutes: null,
+      },
+    ]);
+    expect(db.prepare('SELECT id, service, account_scope FROM store_purchases').all()).toEqual([
+      { id: 'p', service: 'kindle', account_scope: 'default' },
+    ]);
+    // Audible is a store now, and a purchase's book still can't be removed from under it.
+    db.prepare(
+      "INSERT INTO locations (id, item_id, kind, store, created_at, updated_at) VALUES ('m', 'i', 'store', 'audible', ?, ?)",
+    ).run(now, now);
+    db.prepare("DELETE FROM items WHERE id = 'i'").run();
+    expect(db.prepare('SELECT COUNT(*) FROM locations').pluck().get()).toBe(0);
+    expect(db.prepare('SELECT COUNT(*) FROM store_purchases').pluck().get()).toBe(0);
+  });
+});
+
+describe('migration 022 (audiobook grouping index)', () => {
+  it('looks up a book’s parts by folder, book directory and compare key through an index', async () => {
+    const db = openDatabase(':memory:');
+    await migrate(db, { snapshotDir: null });
+    const plan = db
+      .prepare(
+        `EXPLAIN QUERY PLAN SELECT f.*, x.item_id FROM files f
+      LEFT JOIN item_files x ON x.file_id = f.id
+      WHERE f.folder_id = ? AND f.format = 'audio' AND f.book_dir = ? AND f.compare_key = ? AND f.excluded = 0`,
+      )
+      .all('folder', 'The Glass Orchard', 'theglassorchard') as { detail: string }[];
+    expect(
+      plan.some((p) =>
+        /files_audio_book.*folder_id=\?.*book_dir=\?.*compare_key=\?/.test(p.detail),
+      ),
+    ).toBe(true);
+    db.close();
+  });
+});

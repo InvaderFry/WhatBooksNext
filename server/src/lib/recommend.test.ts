@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { rating } from '../testing/ratings.ts';
-import { rated } from '../testing/rank.ts';
-import { estimateDuration, formatRange } from './estimate.ts';
+import { measured, rated } from '../testing/rank.ts';
+import { estimateDuration, formatRange, listenDuration, remaining } from './estimate.ts';
 import { communityRating, ratingStats, shrink } from './ratings.ts';
 import {
   buildCard,
   diversify,
   fitOf,
+  forMedium,
+  hasMedium,
   onePerSeries,
   type RankItem,
   type Situation,
@@ -404,5 +406,41 @@ describe('Read next', () => {
     const b = item({ title: 'Other' });
     const r = readNext([a, b], situation({ exclude: new Set([a.id]) }), page);
     expect(r.cards.map((c) => c.title)).toEqual(['Other']);
+  });
+});
+
+describe('read, listen or either', () => {
+  const both = item({ id: 'both', media: { read: true, listen: true } });
+  const heard = item({ id: 'heard', media: { read: false, listen: true } });
+  const plain = item({ id: 'plain' });
+
+  it('keeps everything for Either, audiobooks for Listen, and things to read for Read', () => {
+    const ids = (m: 'either' | 'read' | 'listen') =>
+      [both, heard, plain].filter((i) => hasMedium(i, m)).map((i) => i.id);
+    expect(ids('either')).toEqual(['both', 'heard', 'plain']);
+    expect(ids('listen')).toEqual(['both', 'heard']);
+    expect(ids('read')).toEqual(['both', 'plain']);
+  });
+
+  it('measures every book by its playing time for Listen, unknown when there is none', () => {
+    const listen = listenDuration(552, 'from 12 audio files');
+    const [a, b] = forMedium(
+      [
+        { ...both, duration: measured(300), listen },
+        { ...plain, duration: measured(300) },
+      ],
+      'listen',
+    );
+    expect(a!.duration).toEqual(listen);
+    expect(b!.duration).toBeNull();
+  });
+
+  it('writes a playing time exactly, and what is left of one as rough', () => {
+    const d = listenDuration(552, 'from 12 audio files');
+    expect(formatRange(d)).toBe('9 h 12 min to listen');
+    expect(d.measured).toBe(true);
+    const left = remaining(d, 'halfway')!;
+    expect(left.listening).toBe(false);
+    expect(left.basis).toBe('from 12 audio files, less what you’ve heard (rough)');
   });
 });

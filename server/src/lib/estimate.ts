@@ -1,3 +1,4 @@
+import { formatListen } from '../identify/audiobook.ts';
 import {
   COMIC_SECONDS_PER_PAGE,
   PICTURE_MIN_PAGES,
@@ -41,6 +42,18 @@ export interface Duration {
   /** A count from the file itself; only these can be a confident fit (§12.3). */
   measured: boolean;
   unit: 'book' | 'volume' | 'issue';
+  /** A playing time, not a reading estimate: exact, so it has no range and no "~". */
+  listening?: boolean;
+}
+
+/** An audiobook's playing time as a length (docs/plans/audiobooks.md). Measured, no spread. */
+export function listenDuration(
+  minutes: number,
+  basis: string,
+  unit: Duration['unit'] = 'book',
+): Duration {
+  const m = Math.max(1, Math.round(minutes));
+  return { low: m, high: m, basis, measured: true, unit, listening: true };
 }
 
 const fmt = (n: number) => n.toLocaleString('en-US');
@@ -108,8 +121,9 @@ export function estimateDuration(i: LengthInput, unit: Duration['unit'] = 'book'
   };
 }
 
-/** "~15–25 min", "~4–5 h", "~12–18 h". */
-export function formatRange(d: Pick<Duration, 'low' | 'high'>): string {
+/** "~15–25 min", "~4–5 h", "~12–18 h"; a playing time is "9 h 12 min to listen". */
+export function formatRange(d: Pick<Duration, 'low' | 'high' | 'listening'>): string {
+  if (d.listening) return `${formatListen(d.high)} to listen`;
   const h = (m: number) => m / 60;
   if (d.high < 60) {
     const a = roundTo(d.low, 5);
@@ -147,7 +161,9 @@ export function remaining(d: Duration, progress: string): Duration | null {
     low: Math.max(1, Math.round(d.low * (1 - share))),
     high: Math.max(1, Math.round(d.high * (1 - share))),
     measured: false,
-    basis: `${d.basis}, less what you’ve read (rough)`,
+    // What's left of a recording is a rough share of it, so it reads as an estimate again.
+    listening: false,
+    basis: `${d.basis}, less what you’ve ${d.listening ? 'heard' : 'read'} (rough)`,
   };
 }
 

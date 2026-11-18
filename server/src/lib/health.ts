@@ -1,4 +1,5 @@
 import type { DB } from '../db/database.ts';
+import { DEEP_FORMATS } from '../config.ts';
 import { nestedFolders } from '../scan/folders.ts';
 
 /**
@@ -66,7 +67,11 @@ export function libraryHealth(db: DB): Health {
          FROM item_files x JOIN files f ON f.id = x.file_id GROUP BY x.item_id) WHERE dirs > 1`,
     )
     .get() as { items: number; files: number };
-  const count = (sql: string) => db.prepare(sql).pluck().get() as number;
+  const count = (sql: string, params: readonly string[] = []) =>
+    db
+      .prepare(sql)
+      .pluck()
+      .get(...params) as number;
   const ignoredByType: Record<string, number> = {};
   const last = db
     .prepare(
@@ -93,10 +98,11 @@ export function libraryHealth(db: DB): Health {
     filesInCopies: copies.files,
     notYetRead: count(
       `SELECT COUNT(*) FROM files WHERE availability = 'present' AND excluded = 0 AND problem IS NULL
-       AND format IN ('epub', 'pdf', 'cbz', 'cbr') AND json_extract(stages, '$.meta') IS NULL`,
+       AND format IN (${DEEP_FORMATS.map(() => '?').join(',')}) AND json_extract(stages, '$.meta') IS NULL`,
+      DEEP_FORMATS,
     ),
     notYetHashed: count(
-      "SELECT COUNT(*) FROM files WHERE availability = 'present' AND excluded = 0 AND full_hash IS NULL",
+      "SELECT COUNT(*) FROM files WHERE availability = 'present' AND excluded = 0 AND format != 'audio' AND full_hash IS NULL",
     ),
     ignoredByType,
     nestedFolders: nestedFolders(db),

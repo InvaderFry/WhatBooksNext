@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState } from 'react';
 import {
   api,
   FORMAT_LABELS,
+  formatListen,
   KIND_LABELS,
   PROGRESS_LABELS,
   STORE_LABELS,
@@ -474,6 +475,9 @@ export function Library({
                   <span>
                     <Formats formats={item.formats} />
                   </span>
+                  {item.listenMinutes != null && (
+                    <span>{formatListen(item.listenMinutes)} to listen</span>
+                  )}
                   {item.fileCount > item.formats.length && <span>{item.fileCount} files</span>}
                   <span className={`progress progress-${item.user.progress}`}>
                     {PROGRESS_LABELS[item.user.progress]}

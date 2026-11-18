@@ -58,6 +58,8 @@ export interface MetaResult {
   openingPages?: OpeningPage[];
   wordCount: number | null;
   pageCount: number | null;
+  /** An audio file's playing time in seconds; null when the file doesn't say. */
+  durationSeconds?: number | null;
   pdfType?: PdfTypeResult;
   /** A .zip/.rar that turned out not to be a comic (§9.1): dropped from the library. */
   notComic?: string;
