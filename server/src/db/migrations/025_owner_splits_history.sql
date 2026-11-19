@@ -4,13 +4,18 @@
 -- 1. Splits still in the undo list, rebuilt from the files the original book had just before
 --    the split (operations.before), by where each file is now. Items merged away since then are
 --    followed through id_aliases (kept flat: every alias points at a live item), so a split-off
---    book later merged into a third book still counts. Replaces 024's rows.
+--    book later merged into a third book still counts. Replaces 024's rows for those splits.
 -- 2. Splits made in Needs review before 023: an accepted group conflict (its only action that
 --    is accepted is "split") left its files in different books.
 --
--- A side that comes out empty (the owner merged the two back together) records nothing.
+-- A side that comes out empty (the owner merged the two back together) records nothing: such a
+-- row couldn't keep anything apart.
 
-DELETE FROM owner_splits WHERE id LIKE 'from-undo-%';
+-- Only rows whose split is still in the undo list are rebuilt; a row whose undo record is gone
+-- (pruned after 20, or cleared by a restore) is kept as 024 made it.
+DELETE FROM owner_splits
+ WHERE id LIKE 'from-undo-%'
+   AND operation_id IN (SELECT id FROM operations WHERE kind = 'split' AND undone_at IS NULL);
 
 INSERT INTO owner_splits (id, operation_id, kept_file_ids, moved_file_ids, created_at)
 SELECT 'from-undo-' || o.id,

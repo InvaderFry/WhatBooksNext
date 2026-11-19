@@ -335,6 +335,28 @@ describe('one audiobook from many files', () => {
     expect(await items()).toHaveLength(2);
   });
 
+  it('keeps a protection 024 saved once its undo record is gone', async () => {
+    writeFiles(drive, under('The Glass Orchard', chapters('The Glass Orchard', 2, 60)));
+    await api.post('/api/audiobook-folders', { path: drive });
+    await scan();
+    const [book] = await items();
+    const files = (await api.get(`/api/items/${book!.id}`)).body.files as { id: string }[];
+    await api
+      .post('/api/split')
+      .send({ itemId: book!.id, fileIds: [files[1]!.id], ownerData: 'stay' });
+    db.prepare('DELETE FROM owner_splits').run();
+    db.exec(loadMigrations().find((m) => m.version === 24)!.sql);
+    // The undo list moved on (or a restore cleared it) before 025 ran.
+    db.prepare('DELETE FROM operations').run();
+    db.exec(loadMigrations().find((m) => m.version === 25)!.sql);
+    expect(db.prepare('SELECT moved_file_ids FROM owner_splits').pluck().all()).toEqual([
+      JSON.stringify([files[1]!.id]),
+    ]);
+    db.prepare(`UPDATE files SET stages = json_set(stages, '$.parse', 7)`).run();
+    await scan();
+    expect(await items()).toHaveLength(2);
+  });
+
   it('keeps an old split whose split-off book was later merged into another', async () => {
     writeFiles(drive, {
       ...under('The Glass Orchard', chapters('The Glass Orchard', 2, 60)),

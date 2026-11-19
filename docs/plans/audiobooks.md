@@ -224,6 +224,9 @@ each split's saved "before" files, following retired item ids through `id_aliase
 book later merged into a third book still counts), and adds Needs review splits made before 023
 (accepted group conflicts, whose files now sit in different books). Empty sides record nothing.
 
+Fifth review (reproduced, fixed): 025 rebuilds a 024 row only while its split is still in the
+undo list; rows whose undo record is gone (pruned, or cleared by a restore) are kept as they were.
+
 Every pattern in the table above now groups into one book per book (invented copies in
 `audiobook.test.ts`, plus a full scan of nested disc folders in `app.audiobooks.test.ts`). Still
 open: the same book in two differently named folders stays two entries until matched; a book whose
