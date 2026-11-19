@@ -206,6 +206,15 @@ Review of PR #31 (both reproduced, both fixed):
   only needs a chapter mark of some kind. Leading-number chapters beside an unrelated numbered
   file still join the folder's book.
 
+Second review of PR #31 (all three reproduced, all fixed):
+
+- Regrouping never joins items whose files have a known language or edition conflict.
+- A merge suggestion stores one file from each book, so it isn't marked obsolete at once.
+- The owner's splits are kept in `owner_splits` (migration 023, backed up), not only in the
+  20-entry undo history: regrouping never joins files split apart. Undoing the split removes it.
+- `PARSER_VERSION` is now really 8 (the earlier commit's bump hadn't applied; audio names are
+  re-read on every scan anyway, so grouping wasn't affected).
+
 Every pattern in the table above now groups into one book per book (invented copies in
 `audiobook.test.ts`, plus a full scan of nested disc folders in `app.audiobooks.test.ts`). Still
 open: the same book in two differently named folders stays two entries until matched; a book whose

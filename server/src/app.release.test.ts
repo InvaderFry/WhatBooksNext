@@ -144,6 +144,17 @@ describe('restore regression across every table (§16)', () => {
       ),
     ).toEqual([]);
 
+    // Owner splits (023): split one file off a book that has several.
+    const several = one(
+      db,
+      'SELECT item_id FROM item_files GROUP BY item_id HAVING COUNT(*) > 1 LIMIT 1',
+    );
+    const leaving = one(db, `SELECT file_id FROM item_files WHERE item_id = '${several}' LIMIT 1`);
+    expect(
+      (await api.post('/api/split', { itemId: several, fileIds: [leaving], ownerData: 'stay' }))
+        .status,
+    ).toBe(200);
+
     // Automatic refresh's columns (stage 4): a rival and a retry, as a refresh leaves them.
     db.prepare(
       `UPDATE lookup_state SET rival_source_id = 'invented-rival', failure_count = 2, manually_selected = 1,

@@ -262,7 +262,7 @@ describe('one audiobook from many files', () => {
     expect(review).toEqual([{ item_ids: '["old-item-0","old-item-1"]', tier: 2 }]);
   });
 
-  it('leaves alone parts the owner split apart', async () => {
+  it('leaves parts the owner split apart, even once the split leaves the undo list', async () => {
     writeFiles(drive, under('The Glass Orchard', chapters('The Glass Orchard', 2, 60)));
     await api.post('/api/audiobook-folders', { path: drive });
     await scan();
@@ -272,9 +272,64 @@ describe('one audiobook from many files', () => {
       .post('/api/split')
       .send({ itemId: book!.id, fileIds: [files[1]!.id], ownerData: 'stay' });
     expect(split.status).toBe(200);
+    // Long after: the undo list has moved on (it keeps 20), and a new rule re-reads the names.
+    db.prepare('DELETE FROM operations').run();
     db.prepare(`UPDATE files SET stages = json_set(stages, '$.parse', 7)`).run();
     await scan();
     expect(await items()).toHaveLength(2);
+  });
+
+  it('joins the parts again once the owner undoes the split', async () => {
+    writeFiles(drive, under('The Glass Orchard', chapters('The Glass Orchard', 2, 60)));
+    await api.post('/api/audiobook-folders', { path: drive });
+    await scan();
+    const [book] = await items();
+    const files = (await api.get(`/api/items/${book!.id}`)).body.files as { id: string }[];
+    const { operationId } = (
+      await api
+        .post('/api/split')
+        .send({ itemId: book!.id, fileIds: [files[1]!.id], ownerData: 'stay' })
+    ).body as { operationId: string };
+    expect((await api.post(`/api/operations/${operationId}/undo`)).status).toBe(200);
+    expect(db.prepare('SELECT COUNT(*) FROM owner_splits').pluck().get()).toBe(0);
+    expect(await items()).toHaveLength(1);
+  });
+
+  it('never joins past books in different languages', async () => {
+    writeFiles(drive, {
+      'Glass Orchard/Glass Orchard 01.mp3': makeMp3(60),
+      'Glass Orchard/Glass Orchard 02.mp3': makeMp3(60),
+    });
+    await api.post('/api/audiobook-folders', { path: drive });
+    await scan();
+    asScannedByOldRules();
+    db.prepare(`UPDATE files SET language = 'en' WHERE name LIKE '%01.mp3'`).run();
+    db.prepare(`UPDATE files SET language = 'fr' WHERE name LIKE '%02.mp3'`).run();
+    await scan();
+    expect(await items()).toHaveLength(2);
+  });
+
+  it('keeps a suggestion open when one past book has more parts than the other', async () => {
+    writeFiles(drive, {
+      'Glass Orchard/Glass Orchard 01.mp3': makeMp3(60),
+      'Glass Orchard/Glass Orchard 02.mp3': makeMp3(60),
+      'Glass Orchard/Glass Orchard 03.mp3': makeMp3(60),
+    });
+    await api.post('/api/audiobook-folders', { path: drive });
+    await scan();
+    asScannedByOldRules();
+    // Parts 1 and 2 were one past book, part 3 another; both hold the owner's data.
+    db.prepare(
+      `UPDATE item_files SET item_id = 'old-item-0', is_primary = 0 WHERE item_id = 'old-item-1'`,
+    ).run();
+    db.prepare(`DELETE FROM items WHERE id = 'old-item-1'`).run();
+    await api.patch('/api/items/old-item-0').send({ rating: 4 });
+    await api.patch('/api/items/old-item-2').send({ rating: 5 });
+    await scan();
+    expect(await items()).toHaveLength(2);
+    expect(
+      db.prepare(`SELECT status, file_ids FROM review_items WHERE kind = 'cross_folder'`).all(),
+    ).toMatchObject([{ status: 'open' }]);
   });
 
   it('keeps the playing time unknown when one part can’t be read', async () => {

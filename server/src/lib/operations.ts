@@ -556,6 +556,17 @@ export function splitItem(
     db.prepare('UPDATE items SET updated_at = ? WHERE id = ?').run(nowIso(), itemId);
     const summary = `Split ${moving.length === 1 ? moving[0]!.name : `${moving.length} files`} off “${title}”`;
     const operationId = record(db, 'split', summary, before, [itemId, newItemId]);
+    // Remembered beyond the undo list: automatic regrouping never joins these again.
+    db.prepare(
+      `INSERT INTO owner_splits (id, operation_id, kept_file_ids, moved_file_ids, created_at)
+       VALUES (?, ?, ?, ?, ?)`,
+    ).run(
+      newId(),
+      operationId,
+      JSON.stringify(files.filter((f) => !fileIds.includes(f.id)).map((f) => f.id)),
+      JSON.stringify(moving.map((f) => f.id)),
+      nowIso(),
+    );
     settle(db, [itemId, newItemId]);
     db.prepare('UPDATE operations SET stamps = ? WHERE id = ?').run(
       JSON.stringify(Object.fromEntries([itemId, newItemId].map((id) => [id, stampOf(db, id)]))),
@@ -665,6 +676,7 @@ export function undoOperation(db: DB, id: string): void {
     const after = parseJson<string[]>(op.item_ids, []);
     restore(db, snap, after);
     db.prepare('UPDATE operations SET undone_at = ? WHERE id = ?').run(nowIso(), id);
+    db.prepare('DELETE FROM owner_splits WHERE operation_id = ?').run(id);
     markObsoleteReviews(db);
     syncSeries(db);
   })();

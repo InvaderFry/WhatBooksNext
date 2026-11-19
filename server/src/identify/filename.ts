@@ -17,8 +17,11 @@ import { splitWords, wordRank } from './wordsplit.ts';
  *   ("rickandmorty" was "Rick and Mort Y").
  *   7 — audiobook grouping preserves numeric titles and bare series numbers; only clear
  *   track/part markers imply chapters. Re-read names on upgrade while keeping owner corrections.
+ *   8 — audiobook folders first (owner decision 2026-11-19): numbered chapter files make the
+ *   folder's book, "Title Disc 3" and "Audiobook" folders pass to the folder above, and Audible
+ *   download names lose their codec and account suffix.
  */
-export const PARSER_VERSION = 7;
+export const PARSER_VERSION = 8;
 
 export interface Part<T> {
   value: T;
