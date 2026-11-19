@@ -1,7 +1,7 @@
 {
   "name": "whatbooksnext",
   "private": true,
-  "version": "0.7.3",
+  "version": "0.7.4",
   "description": "Choose what to read next from the ebooks and comics you already own.",
   "license": "SEE LICENSE IN LICENSE",
   "type": "module",

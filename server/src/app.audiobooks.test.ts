@@ -304,6 +304,63 @@ describe('one audiobook from many files', () => {
     expect(await items()).toHaveLength(2);
   });
 
+  /** As a version before 023 left things (splits only in history), then upgraded. */
+  function upgradeFromBeforeOwnerSplits() {
+    db.prepare('DELETE FROM owner_splits').run();
+    for (const v of [24, 25]) db.exec(loadMigrations().find((m) => m.version === v)!.sql);
+  }
+
+  it('keeps Needs review splits made before owner_splits existed, once upgraded', async () => {
+    writeFiles(drive, under('The Glass Orchard', chapters('The Glass Orchard', 2, 60)));
+    await api.post('/api/audiobook-folders', { path: drive });
+    await scan();
+    const [book] = await items();
+    const files = (await api.get(`/api/items/${book!.id}`)).body.files as { id: string }[];
+    addReview(db, {
+      kind: 'group_conflict',
+      tier: 1,
+      key: 'group_conflict:invented',
+      itemIds: [book!.id],
+      fileIds: files.map((f) => f.id),
+      detail: { why: 'Different languages (en and fr).' },
+    });
+    const review = db.prepare('SELECT id FROM review_items').pluck().get() as string;
+    actOnReview(db, review, 'split', files[1]!.id);
+    upgradeFromBeforeOwnerSplits();
+    expect(db.prepare('SELECT moved_file_ids FROM owner_splits').pluck().all()).toEqual([
+      JSON.stringify([files[1]!.id]),
+    ]);
+    db.prepare(`UPDATE files SET stages = json_set(stages, '$.parse', 7)`).run();
+    await scan();
+    expect(await items()).toHaveLength(2);
+  });
+
+  it('keeps an old split whose split-off book was later merged into another', async () => {
+    writeFiles(drive, {
+      ...under('The Glass Orchard', chapters('The Glass Orchard', 2, 60)),
+      ...under('The Salt Road', chapters('The Salt Road', 2, 60)),
+    });
+    await api.post('/api/audiobook-folders', { path: drive });
+    await scan();
+    const book = (await items()).find((i) => i.title === 'The Glass Orchard')!;
+    const salt = (await items()).find((i) => i.title === 'The Salt Road')!;
+    const files = (await api.get(`/api/items/${book.id}`)).body.files as { id: string }[];
+    const { newItemId } = (
+      await api
+        .post('/api/split')
+        .send({ itemId: book.id, fileIds: [files[1]!.id], ownerData: 'stay' })
+    ).body as { newItemId: string };
+    const merged = await api.post('/api/merge').send({ keepId: salt.id, otherId: newItemId });
+    expect(merged.status).toBe(200);
+    upgradeFromBeforeOwnerSplits();
+    expect(db.prepare('SELECT moved_file_ids FROM owner_splits').pluck().all()).toEqual([
+      JSON.stringify([files[1]!.id]),
+    ]);
+    db.prepare(`UPDATE files SET stages = json_set(stages, '$.parse', 7)`).run();
+    await scan();
+    expect(await items()).toHaveLength(2);
+  });
+
   it('keeps splits made before owner_splits existed, once upgraded', async () => {
     writeFiles(drive, under('The Glass Orchard', chapters('The Glass Orchard', 2, 60)));
     await api.post('/api/audiobook-folders', { path: drive });
@@ -313,9 +370,7 @@ describe('one audiobook from many files', () => {
     await api
       .post('/api/split')
       .send({ itemId: book!.id, fileIds: [files[1]!.id], ownerData: 'stay' });
-    // As an older version left it: the split only in the undo list.
-    db.prepare('DELETE FROM owner_splits').run();
-    db.exec(loadMigrations().find((m) => m.version === 24)!.sql);
+    upgradeFromBeforeOwnerSplits();
     expect(db.prepare('SELECT moved_file_ids FROM owner_splits').pluck().all()).toEqual([
       JSON.stringify([files[1]!.id]),
     ]);

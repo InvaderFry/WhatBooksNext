@@ -219,6 +219,11 @@ Third review (both reproduced, both fixed): migration 024 copies splits still in
 into `owner_splits`, so an upgraded library keeps them; a split from Needs review (a group
 conflict) is recorded too (`rememberOwnerSplit` in `lib/operations.ts`, used by both).
 
+Fourth review (both reproduced, both fixed): migration 025 rebuilds the undo-list backfill from
+each split's saved "before" files, following retired item ids through `id_aliases` (a split-off
+book later merged into a third book still counts), and adds Needs review splits made before 023
+(accepted group conflicts, whose files now sit in different books). Empty sides record nothing.
+
 Every pattern in the table above now groups into one book per book (invented copies in
 `audiobook.test.ts`, plus a full scan of nested disc folders in `app.audiobooks.test.ts`). Still
 open: the same book in two differently named folders stays two entries until matched; a book whose
