@@ -23,20 +23,19 @@ describe('which audio files make one audiobook', () => {
       '|The Glass Orchard',
       '|The Glass Orchard',
     ]);
-    expect(books('x', ['Glass Orchard 01.mp3', 'Glass Orchard 02.mp3'])).toEqual([
-      'x|Glass Orchard 01',
-      'x|Glass Orchard 02',
-    ]);
+    expect(books('x', ['Glass Orchard 01.mp3', 'Glass Orchard 02.mp3'])).toEqual(['x|x', 'x|x']);
   });
 
-  it('preserves numeric titles and keeps them apart in one folder', () => {
-    expect(books('Books', ['4027.mp3', '13-24-57.mp3'])).toEqual(['Books|4027', 'Books|13-24-57']);
+  it('keeps numeric titles apart in the library folder itself, and a lone one intact', () => {
+    expect(books('', ['4027.mp3', 'Lantern Saga 3.mp3'])).toEqual(['|4027', '|Lantern Saga 3']);
+    expect(books('Books', ['4027.mp3'])).toEqual(['Books|4027']);
   });
 
-  it('keeps numbered MP3 books separate even when their series names match', () => {
+  it('reads numbered MP3s sharing a name in one folder as that folder’s chapters', () => {
+    // Owner decision 2026-11-19: folder first. Separate books keep their own folders.
     expect(books('Lantern Saga', ['Lantern Saga 3.mp3', 'Lantern Saga 4.mp3'])).toEqual([
-      'Lantern Saga|Lantern Saga 3',
-      'Lantern Saga|Lantern Saga 4',
+      'Lantern Saga|Lantern Saga',
+      'Lantern Saga|Lantern Saga',
     ]);
   });
 
@@ -108,6 +107,87 @@ describe('which audio files make one audiobook', () => {
 
   it('keeps a single numbered file as its own book', () => {
     expect(books('x', ['01 The Glass Orchard.mp3'])).toEqual(['x|01 The Glass Orchard']);
+  });
+});
+
+describe('the layouts seen on the owner’s drive (invented names)', () => {
+  const one = (dir: string, names: string[]) => [...new Set(books(dir, names))];
+
+  it('joins chapters named after a series and book', () => {
+    expect(
+      one('Saga/1 - The Glass Orchard', [
+        'SAGA - Book 1 - The Glass Orchard - 00 - Prologue.mp3',
+        'SAGA - Book 1 - The Glass Orchard - 01 - Wren.mp3',
+      ]),
+    ).toEqual(['Saga/1 - The Glass Orchard|The Glass Orchard']);
+  });
+
+  it('joins "1 of 4", "(01 of 08)", "[01] --" and "Chapter 01" chapters', () => {
+    for (const names of [
+      ['Ann Author - The Salt Road - 1 of 4.mp3', 'Ann Author - The Salt Road - 2 of 4.mp3'],
+      ['The Salt Road - Ann Author (01 of 08).mp3', 'The Salt Road - Ann Author (02 of 08).mp3'],
+      ['The Salt Road (Ann Author) [01] -- Intro.MP3', 'The Salt Road (Ann Author) [02] -- On.MP3'],
+      ['Chapter 01 - The Gate.mp3', 'Chapter 02 - The Well.mp3'],
+    ])
+      expect(one('The Salt Road', names)).toEqual(['The Salt Road|The Salt Road']);
+  });
+
+  it('joins chapters numbered in unusual ways', () => {
+    for (const names of [
+      ['0.00.1 Credits.mp3', '1.01.1 A Party.mp3'],
+      ['01 0301.mp3', '02 0302.mp3'],
+      ['01(4) The Salt Road.mp3', '02(4) The Salt Road.mp3'],
+      ['B02-01-12 - The Salt Road.mp3', 'B02-02-12 - The Salt Road.mp3'],
+      ['001_ 01_(1 51) The Salt Road (Unabridged) Part 1_Ann.mp3', '002_ 02_(1 51) Part 1_Ann.mp3'],
+      ['SALT521P01.mp3', 'SALT521P02.mp3', 'Credits.mp3'],
+    ])
+      expect(one('The Salt Road', names)).toEqual(['The Salt Road|The Salt Road']);
+  });
+
+  it('drops a leading list number and "unabridged" from the folder’s name', () => {
+    expect(
+      one('Spy Books/03 - Ann Author - The Salt Road_unabridged', [
+        '01(4) The Salt Road.mp3',
+        '02(4) The Salt Road.mp3',
+      ]),
+    ).toEqual(['Spy Books/03 - Ann Author - The Salt Road_unabridged|Ann Author - The Salt Road']);
+  });
+
+  it('joins "Title Disc N" folders, and a title folder inside each disc', () => {
+    expect([
+      ...one('Ann Author/The Salt Road Disc 1', ['Track 1.mp3', 'Track 2.mp3']),
+      ...one('Ann Author/The Salt Road Disc 2', ['Track 1.mp3']),
+    ]).toEqual(['Ann Author|The Salt Road', 'Ann Author|The Salt Road']);
+    expect([
+      ...one('Saga/Ember/Ember Disc 1/Ember', ['1 - Opening.mp3', '2 - Disk 1 Track 2.mp3']),
+      ...one('Saga/Ember/Ember Disc 10/Ember', ['1 - Disk10 Track1.mp3']),
+    ]).toEqual(['Saga/Ember|Ember', 'Saga/Ember|Ember']);
+  });
+
+  it('passes a generic "Audiobook" folder to the folder above', () => {
+    expect(
+      one('Ann Author - The Salt Road/Audiobook', [
+        'The Salt Road - Disc 1.mp3',
+        'The Salt Road - Disc 2.mp3',
+      ]),
+    ).toEqual(['Ann Author - The Salt Road|The Salt Road']);
+  });
+
+  it('reads Audible download names without codec or account, joining their parts', () => {
+    expect(
+      books('Audible', [
+        'TheSaltRoadUnabridged_mp332_someone.name.aa',
+        'GlassOrchardUnabridgedPart1_mp332_someone.aa',
+        'GlassOrchardUnabridgedPart2_mp332_someone.aa',
+      ]),
+    ).toEqual(['Audible|The Salt Road', 'Audible|Glass Orchard', 'Audible|Glass Orchard']);
+  });
+
+  it('still keeps differently named whole-book files apart', () => {
+    expect(books('Audible', ['The Salt Road.m4b', 'Glass Orchard.m4b'])).toEqual([
+      'Audible|The Salt Road',
+      'Audible|Glass Orchard',
+    ]);
   });
 });
 

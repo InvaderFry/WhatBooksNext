@@ -188,6 +188,20 @@ describe('one audiobook from many files', () => {
     expect(book!.title).toMatch(/Salt Road/);
   });
 
+  it('joins "Title Disc N" folders, each with a title folder inside, into one book', async () => {
+    writeFiles(drive, {
+      'Saga/Ember/Ember Disc 1/Ember/1 - Opening.wav': makeWav(60),
+      'Saga/Ember/Ember Disc 1/Ember/2 - Disk 1 Track 2.wav': makeWav(60),
+      'Saga/Ember/Ember Disc 2/Ember/1 - Chapter 12.wav': makeWav(60),
+      'Saga/Ember/Ember Disc 10/Ember/1 - Disk10 Track1.wav': makeWav(60),
+    });
+    await api.post('/api/audiobook-folders', { path: drive });
+    await scan();
+    const all = await items();
+    expect(all).toHaveLength(1);
+    expect(all[0]).toMatchObject({ title: 'Ember', audioParts: 4, listenMinutes: 4 });
+  });
+
   it('keeps the playing time unknown when one part can’t be read', async () => {
     writeFiles(drive, {
       'The Salt Road/01 Start.mp3': makeMp3(600, { album: 'The Salt Road' }),

@@ -204,6 +204,9 @@ export function createApp(ctx: AppContext) {
     '/api/state',
     route(() => ({
       demo: Boolean(ctx.demo),
+      // The start script compares these with the files on disk, to spot an old copy still running.
+      version: appVersion().version,
+      commit: appVersion().commit,
       platform: platform.name,
       folders: db.prepare('SELECT COUNT(*) FROM folders').pluck().get(),
       items: db.prepare('SELECT COUNT(*) FROM items').pluck().get(),

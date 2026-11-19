@@ -173,7 +173,31 @@ Running invented copies of each pattern through `audioBooksInDirectory` (Stage 1
 | `Title Disc 1/Title/1 - Track.mp3` (book folder inside the disc folder)           | one book per disc ✗                   |
 | The same book twice in two folders with different names                           | two entries until matched (by design) |
 
-Only about a third of the patterns group correctly. A folder-first rule (a folder of audio files
-whose names differ only by numbers, tracks, chapters, discs or parts is one book named after the
-folder) would fix most, but it changes the owner's 2026-11-17 rule on bare trailing numbers, so it
-needs the owner's say before it's built.
+Only about a third of the patterns grouped correctly.
+
+### Folder first (owner decision 2026-11-19, built; parser version 8)
+
+The owner chose the folder-first rule, replacing the 2026-11-17 rule that kept "Title 3" and
+"Title 4" apart. In `identify/audiobook.ts`:
+
+- A folder holding two or more numbered audio files that start with a number, or share at least
+  `AUDIO_CHAPTER_SHARED_LETTERS` (4) opening letters, is one book named after the folder;
+  unnumbered files beside them ("Credits") join it. Separate books keep their own folders, and
+  whole-book files (.m4b/.aa/.aax) stay apart unless a named part joins them. In the library
+  folder itself only files starting with a number are chapters (its name rarely names a book).
+- Files whose only difference is a named part ("Title Part 1/2"), with nothing else beside them,
+  keep their shared name rather than the folder's.
+- "Title Disc 3" folders, a title folder inside a disc folder ("Ember Disc 1/Ember") and generic
+  folders ("Audiobook", "MP3") give way to the folder above; a titled disc folder names the book.
+- Folder names lose a leading list number ("02 - Author - Title") and "unabridged"/"audiobook"
+  (`tidyBookName`). "Book 01 - Title" keeps its number for the parser's series number.
+- Audible download names lose the codec and account suffix and get their spaces back
+  (`cleanAudibleName`: "TitleUnabridgedPart1_mp332_account" → "Title", Part 1 and 2 joined).
+  Run-together lower-case words stay joined ("Whatthe"); the online lookup and tags cover it.
+
+Every pattern in the table above now groups into one book per book (invented copies in
+`audiobook.test.ts`, plus a full scan of nested disc folders in `app.audiobooks.test.ts`). Still
+open: the same book in two differently named folders stays two entries until matched; a book whose
+discs sit in folders with different names ("Title" and "Other Title Disc 3") can split; titles from
+"Author - Title" vs "Title - Author" folder names can't be told apart by name (album tags win when
+present). Needs checking on the owner's drive (B1).

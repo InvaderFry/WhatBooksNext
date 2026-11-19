@@ -154,8 +154,8 @@ On **Stats**, audiobook-only entries should count in **Waiting**, but their play
 should not add to **Estimated reading time**. On an existing book’s page, **Also in → Audible**
 now has optional **Hours** and **Minutes**. Check one length you know from Audible. The Audible
 entry also has **Change length** and **Remove length**; removing it should show “unknown” unless
-a complete local recording supplies a playing time. Numbered MP3 book titles should keep their
-numbers; ambiguous trailing numbers are now kept as separate books.
+a complete local recording supplies a playing time. Since 2026-11-19 a folder of numbered audio files is one book named after its folder, and "Disc"
+folders join up; separate books need their own folders (as yours already are).
 
 **Audible (5 minutes, action B2).** In Edge or Chrome, sign in at audible.com. In the app, open
 **Settings → Import store purchases**, pick **Audible**, and follow the look-around steps shown
