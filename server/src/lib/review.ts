@@ -13,7 +13,7 @@ import { matchFactsFor } from '../identify/lookups.ts';
 import type { EmbeddedMetadata } from '../scan/formats/types.ts';
 import { HttpError, nowIso, parseJson } from '../util.ts';
 import { syncSeries } from '../identify/series.ts';
-import { record, snapshot, titleOf } from './operations.ts';
+import { record, rememberOwnerSplit, snapshot, titleOf } from './operations.ts';
 import { notSeenRows, SERVICE_LABELS } from './storePurchases.ts';
 
 /**
@@ -347,8 +347,16 @@ export function actOnReview(
     if (!itemId) throw new HttpError(409, 'The file has changed since; scan again.');
     if (filesOfItem(db, itemId).length < 2) throw new HttpError(409, 'It is already on its own.');
     // The split-off file becomes its own item; the history stays where it is.
-    const file = filesOfItem(db, itemId).find((f) => f.id === fileId)!;
+    const all = filesOfItem(db, itemId);
+    const file = all.find((f) => f.id === fileId)!;
     db.prepare('DELETE FROM item_files WHERE file_id = ?').run(fileId);
+    // The owner's decision outlasts the next rescan's regrouping.
+    rememberOwnerSplit(
+      db,
+      all.filter((f) => f.id !== fileId).map((f) => f.id),
+      [fileId],
+      null,
+    );
     refreshPrimary(db, itemId);
     touched.push(itemId, createItemForFiles(db, [file]));
   }

@@ -3,6 +3,9 @@ import path from 'node:path';
 import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createApp } from './app.ts';
+import { loadMigrations } from './db/database.ts';
+import { addReview } from './identify/reconcile.ts';
+import { actOnReview } from './lib/review.ts';
 import type { DB } from './db/database.ts';
 import type { FakePlatform } from './platform/fake.ts';
 import { makeEpub, makeM4b, makeMp3, makeWav } from './testing/fixtures.ts';
@@ -273,6 +276,49 @@ describe('one audiobook from many files', () => {
       .send({ itemId: book!.id, fileIds: [files[1]!.id], ownerData: 'stay' });
     expect(split.status).toBe(200);
     // Long after: the undo list has moved on (it keeps 20), and a new rule re-reads the names.
+    db.prepare('DELETE FROM operations').run();
+    db.prepare(`UPDATE files SET stages = json_set(stages, '$.parse', 7)`).run();
+    await scan();
+    expect(await items()).toHaveLength(2);
+  });
+
+  it('leaves parts split apart in Needs review apart after a rescan', async () => {
+    writeFiles(drive, under('The Glass Orchard', chapters('The Glass Orchard', 2, 60)));
+    await api.post('/api/audiobook-folders', { path: drive });
+    await scan();
+    const [book] = await items();
+    const files = (await api.get(`/api/items/${book!.id}`)).body.files as { id: string }[];
+    addReview(db, {
+      kind: 'group_conflict',
+      tier: 1,
+      key: 'group_conflict:invented',
+      itemIds: [book!.id],
+      fileIds: files.map((f) => f.id),
+      detail: { why: 'Different languages (en and fr).' },
+    });
+    const review = db.prepare('SELECT id FROM review_items').pluck().get() as string;
+    actOnReview(db, review, 'split', files[1]!.id);
+    expect(await items()).toHaveLength(2);
+    db.prepare(`UPDATE files SET stages = json_set(stages, '$.parse', 7)`).run();
+    await scan();
+    expect(await items()).toHaveLength(2);
+  });
+
+  it('keeps splits made before owner_splits existed, once upgraded', async () => {
+    writeFiles(drive, under('The Glass Orchard', chapters('The Glass Orchard', 2, 60)));
+    await api.post('/api/audiobook-folders', { path: drive });
+    await scan();
+    const [book] = await items();
+    const files = (await api.get(`/api/items/${book!.id}`)).body.files as { id: string }[];
+    await api
+      .post('/api/split')
+      .send({ itemId: book!.id, fileIds: [files[1]!.id], ownerData: 'stay' });
+    // As an older version left it: the split only in the undo list.
+    db.prepare('DELETE FROM owner_splits').run();
+    db.exec(loadMigrations().find((m) => m.version === 24)!.sql);
+    expect(db.prepare('SELECT moved_file_ids FROM owner_splits').pluck().all()).toEqual([
+      JSON.stringify([files[1]!.id]),
+    ]);
     db.prepare('DELETE FROM operations').run();
     db.prepare(`UPDATE files SET stages = json_set(stages, '$.parse', 7)`).run();
     await scan();

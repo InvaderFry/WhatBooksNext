@@ -215,6 +215,10 @@ Second review of PR #31 (all three reproduced, all fixed):
 - `PARSER_VERSION` is now really 8 (the earlier commit's bump hadn't applied; audio names are
   re-read on every scan anyway, so grouping wasn't affected).
 
+Third review (both reproduced, both fixed): migration 024 copies splits still in the undo list
+into `owner_splits`, so an upgraded library keeps them; a split from Needs review (a group
+conflict) is recorded too (`rememberOwnerSplit` in `lib/operations.ts`, used by both).
+
 Every pattern in the table above now groups into one book per book (invented copies in
 `audiobook.test.ts`, plus a full scan of nested disc folders in `app.audiobooks.test.ts`). Still
 open: the same book in two differently named folders stays two entries until matched; a book whose
