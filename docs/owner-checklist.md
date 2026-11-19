@@ -14,7 +14,8 @@ this public repository. Only a title-free summary goes into `docs/quality-summar
 
 Do this whenever new work has been merged (most recently
 [pull request 30](https://github.com/InvaderFry/WhatBooksNext/pull/30), audiobooks), so you're
-checking the newest version. Your version is new enough if **Settings → Library folders** has an
+checking the newest version. From version 0.6.0, **Settings → Diagnostics → App** shows the
+version and the date it's from. Before that, your version is new enough if **Settings → Library folders** has an
 **Add a folder of audiobooks** box.
 
 1. **Settings → Download a backup**, just in case.

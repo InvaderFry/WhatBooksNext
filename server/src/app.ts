@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { MAX_JSON_BODY, SCAN_REMINDER_DAYS, SCAN_REMINDER_SNOOZE_DAYS } from './config.ts';
 import { schemaVersion, type DB } from './db/database.ts';
+import { appVersion } from './lib/appVersion.ts';
 import { audiobookDiagnostics } from './lib/audiobookDiagnostics.ts';
 import { listSnapshots } from './db/snapshots.ts';
 import { refreshFactsOfItems, refreshPrimary, removeOrphanItems } from './identify/items.ts';
@@ -908,6 +909,7 @@ export function createApp(ctx: AppContext) {
       );
       return {
         app: {
+          ...appVersion(),
           schemaVersion: schemaVersion(db),
           node: process.version,
           platform: `${process.platform} (${platform.name} adapter)`,

@@ -16,7 +16,16 @@ interface DiagFolder {
 }
 
 interface Diag {
-  app: { schemaVersion: number; node: string; platform: string; demo: boolean };
+  app: {
+    version: string | null;
+    commit: string | null;
+    commitDate: string | null;
+    source: 'zip' | 'git' | 'unknown';
+    schemaVersion: number;
+    node: string;
+    platform: string;
+    demo: boolean;
+  };
   lastSnapshot: { kind: string; createdAt: string } | null;
   snapshots: { preMigration: number; preRestore: number; full: number };
   dataFolder: string | null;
@@ -264,6 +273,21 @@ export function Diagnostics() {
           <section className="section" aria-labelledby="app-h">
             <h2 id="app-h">App</h2>
             <ul className="plain">
+              <li>
+                <strong>{versionText(diag.app)}</strong>
+                {diag.app.commit && (
+                  <>
+                    {' '}
+                    <a
+                      href={`https://github.com/InvaderFry/WhatBooksNext/commit/${diag.app.commit}`}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      What’s in it ↗
+                    </a>
+                  </>
+                )}
+              </li>
               <li>Online-only detection: {diag.placeholderDetection}</li>
               <li>Database version {diag.app.schemaVersion}</li>
               <li>
@@ -437,9 +461,24 @@ const RATING_TIERS: Record<string, string> = {
   5: 'unconfirmed match',
 };
 
+/** "Version 0.6.0, from 17 Nov 2026 (commit aeb3ee4)": what's running, so updates can be checked. */
+export function versionText(a: Diag['app']): string {
+  const v = a.version ? `Version ${a.version}` : 'Version unknown';
+  if (!a.commit) return `${v} (commit and date unknown)`;
+  const date = a.commitDate
+    ? new Date(a.commitDate).toLocaleDateString(undefined, {
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+      })
+    : 'unknown date';
+  return `${v}, from ${date} (commit ${a.commit.slice(0, 7)}${a.source === 'git' ? ', git copy' : ''})`;
+}
+
 function toReport(d: Diag): string {
   const lines = [
     'whatBooksNext diagnostics',
+    `${versionText(d.app)}${d.app.commitDate ? ` [${d.app.commitDate}]` : ''}`,
     `Database version ${d.app.schemaVersion}; Node ${d.app.node}; ${d.app.platform}${d.app.demo ? '; DEMO' : ''}`,
     `Last snapshot: ${d.lastSnapshot ? `${d.lastSnapshot.kind} ${d.lastSnapshot.createdAt}` : 'none'}`,
     `Online-only detection: ${d.placeholderDetection}`,

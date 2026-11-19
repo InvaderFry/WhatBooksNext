@@ -137,6 +137,10 @@ owner has already made. Don't reopen those decisions. Then read the latest
 - `.npmrc` sets `ignore-scripts=true`: better-sqlite3 ships prebuilt binaries, and npm's
   automatic compile step breaks on PCs without Visual Studio. Check before adding a dependency
   that needs an install script.
+- **Version:** raise `version` in package.json (and package-lock.json, via `npm version <x>
+--no-git-tag-version`) in each change the owner will download: minor for features, patch for
+  fixes. Diagnostics shows it with the commit and date, which GitHub's Download ZIP writes into
+  `server/src/build-info.txt` (`export-subst`; `lib/appVersion.ts`). Leave that file's placeholder.
 - `.bat` files are stored with CRLF (`.gitattributes`). Everything else is LF.
 
 ## The owner
