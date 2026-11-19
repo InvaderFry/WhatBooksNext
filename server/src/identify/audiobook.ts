@@ -63,6 +63,8 @@ const GENERIC_DIR = /^(?:audio\s*books?|audio|mp3s?|files|tracks|unabridged|cds?
 const AUDIBLE_SUFFIX =
   /_(?:mp332|mp364|mp3|acelp16|acelp85|ep6|aax|lc_\d+_\d+(?:_[a-z]+)?)(?:_[^_]*)?$/i;
 const PADDED_TRACK = /^0\d{1,2}$/;
+/** A short leading track number followed by a named chapter, not a numeric book title. */
+const LEADING_NUMBER = /^\s*(?:\(\d{1,3}\)|\d{1,3}(?:[-.]\d{1,3})?)[\s._–—-]+(?=\p{L})/u;
 
 function baseName(name: string): string {
   const dot = name.lastIndexOf('.');
@@ -163,6 +165,9 @@ export function audioBooksInDirectory(
     } else if (sharing > 1) {
       // "Title Part 1" and "Title Part 2": one book, named by what they share.
       out.set(n, { bookName: stem, bookDir: folderBook.bookDir });
+    } else if (!whole && LEADING_NUMBER.test(baseName(n)) && chapterLike.length > 1) {
+      // "01 - Dawn" beside files of other kinds: still a chapter of the folder's book.
+      out.set(n, folderBook);
     } else {
       out.set(n, { bookName: cleanAudibleName(baseName(n)), bookDir: relDir });
     }
@@ -231,6 +236,15 @@ export function tidyBookName(name: string): string {
   return t || name;
 }
 
+/** A part word and its number ("Chapter 3", "Disc 2"), tested one name at a time. */
+const NAMED_PART_ONE = new RegExp(NAMED_PART.source, 'i');
+
+/** Does the name say it's a chapter: a leading number, a part word with a number, or "05"? */
+function chapterMarked(n: string): boolean {
+  const b = baseName(n);
+  return /^\s*[([]?[a-z]?\d/i.test(b) || NAMED_PART_ONE.test(b) || PADDED_TRACK.test(b);
+}
+
 const lettersOf = (n: string) =>
   baseName(n)
     .toLowerCase()
@@ -243,7 +257,8 @@ const lettersOf = (n: string) =>
 function isChapterFolder(names: string[]): boolean {
   const numbered = names.filter((n) => /\d/.test(cleanAudibleName(baseName(n))));
   if (numbered.length < 2) return false;
-  if (numbered.every((n) => /^\s*[([]?[a-z]?\d/i.test(baseName(n)))) return true;
+  // Each one marked as a chapter, in whatever style: "01 - Dawn", "Chapter 3", "Track 4", "05".
+  if (numbered.every(chapterMarked)) return true;
   const letters = numbered.map(lettersOf);
   if (letters.every((l) => l === letters[0]) && letters[0] !== '') return true;
   let shared = letters[0]!.length;

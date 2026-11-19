@@ -23,6 +23,7 @@ const api = {
   get: (url: string) => request(made.app).get(url).set('Host', HOST),
   post: (url: string, body: object = {}) =>
     request(made.app).post(url).set('Host', HOST).send(body),
+  patch: (url: string) => request(made.app).patch(url).set('Host', HOST),
   delete: (url: string) => request(made.app).delete(url).set('Host', HOST).send({}),
 };
 
@@ -200,6 +201,80 @@ describe('one audiobook from many files', () => {
     const all = await items();
     expect(all).toHaveLength(1);
     expect(all[0]).toMatchObject({ title: 'Ember', audioParts: 4, listenMinutes: 4 });
+  });
+
+  /** Rewinds a scanned library to how parser version 7 left it: each chapter its own book. */
+  function asScannedByOldRules() {
+    const files = db.prepare("SELECT id FROM files WHERE format = 'audio' ORDER BY name").all() as {
+      id: string;
+    }[];
+    db.prepare('DELETE FROM item_files').run();
+    db.prepare('DELETE FROM items').run();
+    files.forEach((f, i) => {
+      db.prepare(
+        `UPDATE files SET compare_key = ?, stages = json_set(stages, '$.parse', 7) WHERE id = ?`,
+      ).run(`old-key-${i}`, f.id);
+      const item = `old-item-${i}`;
+      db.prepare(`INSERT INTO items (id, title, created_at, updated_at) VALUES (?, ?, ?, ?)`).run(
+        item,
+        `Old ${i}`,
+        `2026-11-0${i + 1}T00:00:00Z`,
+        '2026-11-10T00:00:00Z',
+      );
+      db.prepare(`INSERT INTO item_files (item_id, file_id, is_primary) VALUES (?, ?, 1)`).run(
+        item,
+        f.id,
+      );
+    });
+  }
+
+  it('joins chapters a past scan kept apart, keeping the book that holds the owner’s data', async () => {
+    writeFiles(drive, {
+      'Glass Orchard/Glass Orchard 01.mp3': makeMp3(60),
+      'Glass Orchard/Glass Orchard 02.mp3': makeMp3(60),
+    });
+    await api.post('/api/audiobook-folders', { path: drive });
+    await scan();
+    asScannedByOldRules();
+    await api.patch('/api/items/old-item-1').send({ rating: 4 });
+    expect(await items()).toHaveLength(2);
+    await scan();
+    const all = await items();
+    expect(all).toHaveLength(1);
+    expect(all[0]).toMatchObject({ id: 'old-item-1', audioParts: 2 });
+  });
+
+  it('only suggests joining when both past books hold the owner’s data', async () => {
+    writeFiles(drive, {
+      'Glass Orchard/Glass Orchard 01.mp3': makeMp3(60),
+      'Glass Orchard/Glass Orchard 02.mp3': makeMp3(60),
+    });
+    await api.post('/api/audiobook-folders', { path: drive });
+    await scan();
+    asScannedByOldRules();
+    await api.patch('/api/items/old-item-0').send({ rating: 4 });
+    await api.patch('/api/items/old-item-1').send({ rating: 5 });
+    await scan();
+    expect(await items()).toHaveLength(2);
+    const review = db
+      .prepare(`SELECT item_ids, tier FROM review_items WHERE kind = 'cross_folder'`)
+      .all();
+    expect(review).toEqual([{ item_ids: '["old-item-0","old-item-1"]', tier: 2 }]);
+  });
+
+  it('leaves alone parts the owner split apart', async () => {
+    writeFiles(drive, under('The Glass Orchard', chapters('The Glass Orchard', 2, 60)));
+    await api.post('/api/audiobook-folders', { path: drive });
+    await scan();
+    const [book] = await items();
+    const files = (await api.get(`/api/items/${book!.id}`)).body.files as { id: string }[];
+    const split = await api
+      .post('/api/split')
+      .send({ itemId: book!.id, fileIds: [files[1]!.id], ownerData: 'stay' });
+    expect(split.status).toBe(200);
+    db.prepare(`UPDATE files SET stages = json_set(stages, '$.parse', 7)`).run();
+    await scan();
+    expect(await items()).toHaveLength(2);
   });
 
   it('keeps the playing time unknown when one part can’t be read', async () => {

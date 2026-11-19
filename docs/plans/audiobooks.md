@@ -195,6 +195,17 @@ The owner chose the folder-first rule, replacing the 2026-11-17 rule that kept "
   (`cleanAudibleName`: "TitleUnabridgedPart1_mp332_account" → "Title", Part 1 and 2 joined).
   Run-together lower-case words stay joined ("Whatthe"); the online lookup and tags cover it.
 
+Review of PR #31 (both reproduced, both fixed):
+
+- **Books already scanned regroup.** `regroupAudiobookParts` (`identify/reconcile.ts`) runs after
+  each light pass on the re-read audio files: parts that now share a book key but sit in separate
+  items are merged into the one holding the owner's data (else the one with most parts, else the
+  oldest). Owner corrections win: items from an owner's split are left alone, and when two items
+  both hold owner data they're suggested in Needs review (tier 2) instead.
+- **Mixed chapter styles** ("01 - Dawn", "02 - Dusk", "Chapter 3") count as chapters: each name
+  only needs a chapter mark of some kind. Leading-number chapters beside an unrelated numbered
+  file still join the folder's book.
+
 Every pattern in the table above now groups into one book per book (invented copies in
 `audiobook.test.ts`, plus a full scan of nested disc folders in `app.audiobooks.test.ts`). Still
 open: the same book in two differently named folders stays two entries until matched; a book whose

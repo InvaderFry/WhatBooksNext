@@ -173,6 +173,22 @@ describe('the layouts seen on the owner’s drive (invented names)', () => {
     ).toEqual(['Ann Author - The Salt Road|The Salt Road']);
   });
 
+  it('joins chapters named in mixed styles', () => {
+    expect(one('The Glass Orchard', ['01 - Dawn.mp3', '02 - Dusk.mp3', 'Chapter 3.mp3'])).toEqual([
+      'The Glass Orchard|The Glass Orchard',
+    ]);
+  });
+
+  it('still joins leading-number chapters beside a differently numbered file', () => {
+    expect(
+      books('The Glass Orchard', ['01 - Dawn.mp3', '02 - Dusk.mp3', 'Salt Road Sampler 3.mp3']),
+    ).toEqual([
+      'The Glass Orchard|The Glass Orchard',
+      'The Glass Orchard|The Glass Orchard',
+      'The Glass Orchard|Salt Road Sampler 3',
+    ]);
+  });
+
   it('reads Audible download names without codec or account, joining their parts', () => {
     expect(
       books('Audible', [

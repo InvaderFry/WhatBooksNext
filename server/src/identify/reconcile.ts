@@ -129,6 +129,77 @@ function splitItem(db: DB, itemId: string): string[] {
   return [...new Set(files.map((f) => itemOf.get(f.id) as string).filter(Boolean))];
 }
 
+/**
+ * Audio parts that a rescan gave one book key (a new grouping rule, or a renamed file) but that
+ * still sit in separate items are joined (docs/plans/audiobooks.md, folder first). Owner
+ * corrections win: an item the owner split off is left alone, and when two of the items both
+ * hold owner data they're only suggested in Needs review. Returns the items that changed.
+ */
+export function regroupAudiobookParts(db: DB, fileIds: string[]): string[] {
+  if (fileIds.length === 0) return [];
+  const fileOf = db.prepare(
+    `SELECT folder_id, book_dir, compare_key FROM files
+      WHERE id = ? AND format = 'audio' AND excluded = 0 AND book_dir IS NOT NULL`,
+  );
+  const partsOf = db.prepare(
+    `SELECT f.id, x.item_id FROM files f JOIN item_files x ON x.file_id = f.id
+      WHERE f.folder_id = ? AND f.book_dir = ? AND f.compare_key = ? AND f.format = 'audio'
+        AND f.excluded = 0`,
+  );
+  const ownerSplit = new Set(
+    (
+      db
+        .prepare(`SELECT item_ids FROM operations WHERE kind = 'split' AND undone_at IS NULL`)
+        .pluck()
+        .all() as string[]
+    ).flatMap((ids) => parseJson<string[]>(ids, [])),
+  );
+  const firstSeen = db.prepare('SELECT created_at FROM items WHERE id = ?').pluck();
+  const done = new Set<string>();
+  const touched = new Set<string>();
+  for (const id of fileIds) {
+    const f = fileOf.get(id) as
+      { folder_id: string; book_dir: string; compare_key: string } | undefined;
+    if (!f) continue;
+    const key = `${f.folder_id}\0${f.book_dir}\0${f.compare_key}`;
+    if (done.has(key)) continue;
+    done.add(key);
+    const parts = partsOf.all(f.folder_id, f.book_dir, f.compare_key) as {
+      id: string;
+      item_id: string;
+    }[];
+    const items = [...new Set(parts.map((p) => p.item_id))].filter((i) => !ownerSplit.has(i));
+    if (items.length < 2) continue;
+    const count = (i: string) => parts.filter((p) => p.item_id === i).length;
+    const owned = items.filter((i) => hasOwnerData(db, i));
+    // Into the one holding the owner's data, else the one with most parts, else the oldest.
+    const ranked = [...items].sort(
+      (a, b) =>
+        Number(owned.includes(b)) - Number(owned.includes(a)) ||
+        count(b) - count(a) ||
+        String(firstSeen.get(a)).localeCompare(String(firstSeen.get(b))),
+    );
+    const into = ranked[0]!;
+    for (const other of ranked.slice(1)) {
+      if (owned.includes(other)) {
+        addReview(db, {
+          kind: 'cross_folder',
+          tier: 2,
+          key: `cross_folder:${pairKey(into, other)}`,
+          itemIds: [into, other].sort(),
+          fileIds: parts.filter((p) => p.item_id === into || p.item_id === other).map((p) => p.id),
+          detail: { why: 'Parts of the same audiobook, in the same folder.' },
+        });
+        continue;
+      }
+      mergeInto(db, other, into);
+      touched.add(into);
+    }
+    if (touched.has(into)) refreshPrimary(db, into);
+  }
+  return [...touched];
+}
+
 export function reconcileIdentity(db: DB, changedFileIds: string[]): ReconcileResult {
   const result: ReconcileResult = {
     excluded: 0,
