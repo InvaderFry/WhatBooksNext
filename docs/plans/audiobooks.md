@@ -146,3 +146,34 @@ Tests use invented titles and generated files, and cover grouping on both the in
 later scans, complete/incomplete local audio with Audible, atomic validation, clearing versus
 omitting lengths, cover cleanup, and the page's error/retry path. The browser script exercises
 changing, clearing and restoring an Audible length in both themes at desktop and phone sizes.
+
+## The owner's real layouts (listing shared 2026-11-19)
+
+The owner shared folder and file names from their audiobook folder; they stay out of the repo.
+Title-free summary: about 2,800 MP3s, 9 old Audible `.aa` files, plus a few
+playlists, covers and text files. Two top-level areas: an Audible download folder and a folder of
+Humble audio comics. The owner's copy of the app was older than Stage 1, so nothing was scanned
+yet (the scan listed the MP3s under "Other files ignored").
+
+Running invented copies of each pattern through `audioBooksInDirectory` (Stage 1 rules):
+
+| Pattern (invented example)                                                        | Stage 1 result                        |
+| --------------------------------------------------------------------------------- | ------------------------------------- |
+| `00 - Prologue.mp3`, `1-01 Chapter.mp3`, `Title CD1-01.mp3`, `Title - Disc 1.mp3` | one book ✓                            |
+| `Disc 2/01 - Chapter.mp3`                                                         | one book ✓                            |
+| `Series - Book 1 - Title - 00 - Prologue.mp3`                                     | one book per file ✗                   |
+| `TitleTMUnabridgedPart1_mp332[_user].mp3/.aa` (Audible download names)            | one per file, raw name as title ✗     |
+| `Author - Title - 1 of 4.mp3`, `Title - Author (01 of 08).mp3`                    | one per file ✗                        |
+| `0.00.1 Credits.mp3`, `01 0301.mp3`, `01(4) Title.mp3`, `B02-01-12 - Title.mp3`   | one per file ✗                        |
+| `Title (Author) [01] -- Chapter.mp3`, `Chapter 01 - Name.mp3`                     | one per file ✗                        |
+| `Title 01.mp3`, `Title 02.mp3` in a folder named Title                            | one per file ✗ (owner rule: kept)     |
+| `001_ 01_(1 51) Title (Unabridged) Part 1_Author.mp3`                             | one per file ✗                        |
+| `CODE521P01.mp3` (Humble audio comics)                                            | one per file ✗                        |
+| `Title Disc 3/…` (title before "Disc N")                                          | one book per disc ✗                   |
+| `Title Disc 1/Title/1 - Track.mp3` (book folder inside the disc folder)           | one book per disc ✗                   |
+| The same book twice in two folders with different names                           | two entries until matched (by design) |
+
+Only about a third of the patterns group correctly. A folder-first rule (a folder of audio files
+whose names differ only by numbers, tracks, chapters, discs or parts is one book named after the
+folder) would fix most, but it changes the owner's 2026-11-17 rule on bare trailing numbers, so it
+needs the owner's say before it's built.
