@@ -4,6 +4,7 @@ import { execSync, spawn } from 'node:child_process';
 import fs from 'node:fs';
 import net from 'node:net';
 import path from 'node:path';
+import { appVersion } from '../server/src/lib/appVersion.ts';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 const PORT = Number(process.env.PORT ?? 4818);
@@ -49,14 +50,49 @@ function openBrowser(url: string) {
 
 const url = `http://localhost:${PORT}`;
 
+/** Is the running app the one in this folder? Unknown on either side counts as different. */
+function sameVersion(
+  running: { version?: unknown; commit?: unknown },
+  disk: { version: string | null; commit: string | null },
+): boolean {
+  if (typeof running.version !== 'string' || running.version !== disk.version) return false;
+  // Same number: also compare commits when both are known.
+  return !(typeof running.commit === 'string' && disk.commit && running.commit !== disk.commit);
+}
+
+function describe(v: { version?: unknown; commit?: unknown }): string {
+  if (typeof v.version !== 'string') return 'an older version';
+  return typeof v.commit === 'string' ? `${v.version}, ${v.commit.slice(0, 7)}` : v.version;
+}
+
 if (!(await portFree(PORT))) {
   // Double-clicking the start file again while the app runs just opens it.
   let alreadyRunning = false;
+  let running: { version?: unknown; commit?: unknown } = {};
   try {
-    const state = (await (await fetch(`${url}/api/state`)).json()) as { demo?: unknown };
+    const state = (await (await fetch(`${url}/api/state`)).json()) as {
+      demo?: unknown;
+      version?: unknown;
+      commit?: unknown;
+    };
     alreadyRunning = typeof state.demo === 'boolean';
+    running = state;
   } catch {
     /* something else is on the port */
+  }
+  const onDisk = appVersion(ROOT);
+  if (alreadyRunning && !sameVersion(running, onDisk)) {
+    // After an update, the old copy keeps serving the old pages until its window is closed.
+    console.error(
+      [
+        '',
+        'An older copy of whatBooksNext is still running in another window, so this update',
+        `isn't in use yet (running: ${describe(running)}; this folder: ${describe(onDisk)}).`,
+        'Close the other black whatBooksNext window (or press Ctrl+C in it), then start again.',
+        '',
+      ].join('\n'),
+    );
+    process.exit(1);
   }
   if (alreadyRunning) {
     console.log(`\nwhatBooksNext is already running in another window. Opening ${url} ...\n`);

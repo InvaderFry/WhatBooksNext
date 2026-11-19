@@ -146,3 +146,90 @@ Tests use invented titles and generated files, and cover grouping on both the in
 later scans, complete/incomplete local audio with Audible, atomic validation, clearing versus
 omitting lengths, cover cleanup, and the page's error/retry path. The browser script exercises
 changing, clearing and restoring an Audible length in both themes at desktop and phone sizes.
+
+## The owner's real layouts (listing shared 2026-11-19)
+
+The owner shared folder and file names from their audiobook folder; they stay out of the repo.
+Title-free summary: about 2,800 MP3s, 9 old Audible `.aa` files, plus a few
+playlists, covers and text files. Two top-level areas: an Audible download folder and a folder of
+Humble audio comics. The owner's copy of the app was older than Stage 1, so nothing was scanned
+yet (the scan listed the MP3s under "Other files ignored").
+
+Running invented copies of each pattern through `audioBooksInDirectory` (Stage 1 rules):
+
+| Pattern (invented example)                                                        | Stage 1 result                        |
+| --------------------------------------------------------------------------------- | ------------------------------------- |
+| `00 - Prologue.mp3`, `1-01 Chapter.mp3`, `Title CD1-01.mp3`, `Title - Disc 1.mp3` | one book ✓                            |
+| `Disc 2/01 - Chapter.mp3`                                                         | one book ✓                            |
+| `Series - Book 1 - Title - 00 - Prologue.mp3`                                     | one book per file ✗                   |
+| `TitleTMUnabridgedPart1_mp332[_user].mp3/.aa` (Audible download names)            | one per file, raw name as title ✗     |
+| `Author - Title - 1 of 4.mp3`, `Title - Author (01 of 08).mp3`                    | one per file ✗                        |
+| `0.00.1 Credits.mp3`, `01 0301.mp3`, `01(4) Title.mp3`, `B02-01-12 - Title.mp3`   | one per file ✗                        |
+| `Title (Author) [01] -- Chapter.mp3`, `Chapter 01 - Name.mp3`                     | one per file ✗                        |
+| `Title 01.mp3`, `Title 02.mp3` in a folder named Title                            | one per file ✗ (owner rule: kept)     |
+| `001_ 01_(1 51) Title (Unabridged) Part 1_Author.mp3`                             | one per file ✗                        |
+| `CODE521P01.mp3` (Humble audio comics)                                            | one per file ✗                        |
+| `Title Disc 3/…` (title before "Disc N")                                          | one book per disc ✗                   |
+| `Title Disc 1/Title/1 - Track.mp3` (book folder inside the disc folder)           | one book per disc ✗                   |
+| The same book twice in two folders with different names                           | two entries until matched (by design) |
+
+Only about a third of the patterns grouped correctly.
+
+### Folder first (owner decision 2026-11-19, built; parser version 8)
+
+The owner chose the folder-first rule, replacing the 2026-11-17 rule that kept "Title 3" and
+"Title 4" apart. In `identify/audiobook.ts`:
+
+- A folder holding two or more numbered audio files that start with a number, or share at least
+  `AUDIO_CHAPTER_SHARED_LETTERS` (4) opening letters, is one book named after the folder;
+  unnumbered files beside them ("Credits") join it. Separate books keep their own folders, and
+  whole-book files (.m4b/.aa/.aax) stay apart unless a named part joins them. In the library
+  folder itself only files starting with a number are chapters (its name rarely names a book).
+- Files whose only difference is a named part ("Title Part 1/2"), with nothing else beside them,
+  keep their shared name rather than the folder's.
+- "Title Disc 3" folders, a title folder inside a disc folder ("Ember Disc 1/Ember") and generic
+  folders ("Audiobook", "MP3") give way to the folder above; a titled disc folder names the book.
+- Folder names lose a leading list number ("02 - Author - Title") and "unabridged"/"audiobook"
+  (`tidyBookName`). "Book 01 - Title" keeps its number for the parser's series number.
+- Audible download names lose the codec and account suffix and get their spaces back
+  (`cleanAudibleName`: "TitleUnabridgedPart1_mp332_account" → "Title", Part 1 and 2 joined).
+  Run-together lower-case words stay joined ("Whatthe"); the online lookup and tags cover it.
+
+Review of PR #31 (both reproduced, both fixed):
+
+- **Books already scanned regroup.** `regroupAudiobookParts` (`identify/reconcile.ts`) runs after
+  each light pass on the re-read audio files: parts that now share a book key but sit in separate
+  items are merged into the one holding the owner's data (else the one with most parts, else the
+  oldest). Owner corrections win: items from an owner's split are left alone, and when two items
+  both hold owner data they're suggested in Needs review (tier 2) instead.
+- **Mixed chapter styles** ("01 - Dawn", "02 - Dusk", "Chapter 3") count as chapters: each name
+  only needs a chapter mark of some kind. Leading-number chapters beside an unrelated numbered
+  file still join the folder's book.
+
+Second review of PR #31 (all three reproduced, all fixed):
+
+- Regrouping never joins items whose files have a known language or edition conflict.
+- A merge suggestion stores one file from each book, so it isn't marked obsolete at once.
+- The owner's splits are kept in `owner_splits` (migration 023, backed up), not only in the
+  20-entry undo history: regrouping never joins files split apart. Undoing the split removes it.
+- `PARSER_VERSION` is now really 8 (the earlier commit's bump hadn't applied; audio names are
+  re-read on every scan anyway, so grouping wasn't affected).
+
+Third review (both reproduced, both fixed): migration 024 copies splits still in the undo list
+into `owner_splits`, so an upgraded library keeps them; a split from Needs review (a group
+conflict) is recorded too (`rememberOwnerSplit` in `lib/operations.ts`, used by both).
+
+Fourth review (both reproduced, both fixed): migration 025 rebuilds the undo-list backfill from
+each split's saved "before" files, following retired item ids through `id_aliases` (a split-off
+book later merged into a third book still counts), and adds Needs review splits made before 023
+(accepted group conflicts, whose files now sit in different books). Empty sides record nothing.
+
+Fifth review (reproduced, fixed): 025 rebuilds a 024 row only while its split is still in the
+undo list; rows whose undo record is gone (pruned, or cleared by a restore) are kept as they were.
+
+Every pattern in the table above now groups into one book per book (invented copies in
+`audiobook.test.ts`, plus a full scan of nested disc folders in `app.audiobooks.test.ts`). Still
+open: the same book in two differently named folders stays two entries until matched; a book whose
+discs sit in folders with different names ("Title" and "Other Title Disc 3") can split; titles from
+"Author - Title" vs "Title - Author" folder names can't be told apart by name (album tags win when
+present). Needs checking on the owner's drive (B1).

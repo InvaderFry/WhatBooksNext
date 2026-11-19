@@ -4,3 +4,5 @@
 # CRLF: cmd.exe can misread LF-only batch files.
 *.bat -text
 *.cmd -text
+# GitHub's "Download ZIP" writes the commit and its date into this file (see lib/appVersion.ts).
+server/src/build-info.txt export-subst

@@ -2,7 +2,11 @@ import type { DB } from '../db/database.ts';
 import { groupUnassignedFiles, type GroupingResult } from '../identify/grouping.ts';
 import { refreshAllPrimaries, refreshFactsOfItems } from '../identify/items.ts';
 import { refreshDerivedFacts } from '../identify/lookups.ts';
-import { reconcileIdentity, type ReconcileResult } from '../identify/reconcile.ts';
+import {
+  reconcileIdentity,
+  regroupAudiobookParts,
+  type ReconcileResult,
+} from '../identify/reconcile.ts';
 import { syncSeries } from '../identify/series.ts';
 import type { Platform } from '../platform/types.ts';
 import { HttpError, newId, nowIso } from '../util.ts';
@@ -148,6 +152,8 @@ export class ScanManager {
       }
       status.currentFolderId = null;
       status.grouping = this.db.transaction(() => {
+        // Audio parts a new rule (or a rename) puts in one book join their book's item.
+        regroupAudiobookParts(this.db, reparsed);
         const g = groupUnassignedFiles(this.db);
         refreshAllPrimaries(this.db);
         return g;

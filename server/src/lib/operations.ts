@@ -510,6 +510,22 @@ export function previewSplit(db: DB, itemId: string, fileIds: string[]): SplitPr
 }
 
 /**
+ * Remembers that the owner split these files apart, beyond the 20-entry undo list: automatic
+ * regrouping (`regroupAudiobookParts`) never joins them again. Undoing the split removes it.
+ */
+export function rememberOwnerSplit(
+  db: DB,
+  keptFileIds: string[],
+  movedFileIds: string[],
+  operationId: string | null,
+): void {
+  db.prepare(
+    `INSERT INTO owner_splits (id, operation_id, kept_file_ids, moved_file_ids, created_at)
+     VALUES (?, ?, ?, ?, ?)`,
+  ).run(newId(), operationId, JSON.stringify(keptFileIds), JSON.stringify(movedFileIds), nowIso());
+}
+
+/**
  * Splits files off into a new item. The owner's data stays with the original, or moves to the
  * new one as a whole — never copied, so a finished reading isn't counted twice.
  */
@@ -556,6 +572,12 @@ export function splitItem(
     db.prepare('UPDATE items SET updated_at = ? WHERE id = ?').run(nowIso(), itemId);
     const summary = `Split ${moving.length === 1 ? moving[0]!.name : `${moving.length} files`} off “${title}”`;
     const operationId = record(db, 'split', summary, before, [itemId, newItemId]);
+    rememberOwnerSplit(
+      db,
+      files.filter((f) => !fileIds.includes(f.id)).map((f) => f.id),
+      moving.map((f) => f.id),
+      operationId,
+    );
     settle(db, [itemId, newItemId]);
     db.prepare('UPDATE operations SET stamps = ? WHERE id = ?').run(
       JSON.stringify(Object.fromEntries([itemId, newItemId].map((id) => [id, stampOf(db, id)]))),
@@ -665,6 +687,7 @@ export function undoOperation(db: DB, id: string): void {
     const after = parseJson<string[]>(op.item_ids, []);
     restore(db, snap, after);
     db.prepare('UPDATE operations SET undone_at = ? WHERE id = ?').run(nowIso(), id);
+    db.prepare('DELETE FROM owner_splits WHERE operation_id = ?').run(id);
     markObsoleteReviews(db);
     syncSeries(db);
   })();

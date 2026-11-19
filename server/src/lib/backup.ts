@@ -38,6 +38,7 @@ export const BACKUP_TABLES = [
   'collection_coverage',
   'import_keys',
   'store_purchases',
+  'owner_splits',
 ] as const;
 
 /**
@@ -58,6 +59,7 @@ const ADDED_IN: Record<string, number> = {
   import_keys: 8,
   store_purchases: 15,
   file_opening_text: 20,
+  owner_splits: 23,
 };
 
 /**

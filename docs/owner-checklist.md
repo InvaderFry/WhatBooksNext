@@ -12,8 +12,11 @@ this public repository. Only a title-free summary goes into `docs/quality-summar
 
 ## Before you start: update the app
 
-Do this once [pull request 23](https://github.com/InvaderFry/WhatBooksNext/pull/23) is merged, so
-you're checking the newest version.
+Do this whenever new work has been merged (most recently
+[pull request 30](https://github.com/InvaderFry/WhatBooksNext/pull/30), audiobooks), so you're
+checking the newest version. From version 0.6.0, **Settings → Diagnostics → App** shows the
+version and the date it's from. Before that, your version is new enough if **Settings → Library folders** has an
+**Add a folder of audiobooks** box.
 
 1. **Settings → Download a backup**, just in case.
 2. Close the black window.
@@ -127,6 +130,9 @@ the letter back at the end.
 ### Audiobooks (new, 2026-11-17)
 
 Do these after updating the app. They are also action B1 in `docs/plans/audiobooks.md`.
+Audio files are listed **only** inside a folder added with **Add a folder of audiobooks**: a
+plain **Scan now** skips them everywhere else, so music is never listed. If none showed up, that
+step is the likely reason.
 
 24. **Settings → Library folders → Add a folder of audiobooks**: paste the path of the folder
     your audiobooks are in (in File Explorer, right-click the folder → **Copy as path**). It can be
@@ -148,13 +154,28 @@ On **Stats**, audiobook-only entries should count in **Waiting**, but their play
 should not add to **Estimated reading time**. On an existing book’s page, **Also in → Audible**
 now has optional **Hours** and **Minutes**. Check one length you know from Audible. The Audible
 entry also has **Change length** and **Remove length**; removing it should show “unknown” unless
-a complete local recording supplies a playing time. Numbered MP3 book titles should keep their
-numbers; ambiguous trailing numbers are now kept as separate books.
+a complete local recording supplies a playing time. Since 2026-11-19 a folder of numbered audio files is one book named after its folder, and "Disc"
+folders join up; separate books need their own folders (as yours already are).
 
 **Audible (5 minutes, action B2).** In Edge or Chrome, sign in at audible.com. In the app, open
 **Settings → Import store purchases**, pick **Audible**, and follow the look-around steps shown
 there. Paste the report into chat. It has no titles or account details; I need it to build the
 Audible import.
+
+### Pages added since the last check (new, 2026-11-19)
+
+30. **Series** (in the menu): does it list your series with owned / read / missing counts and the
+    one to read next? Try **With gaps**. Open one series: does it match that series on a book's page?
+31. **What next → Save these choices…**: save a view (e.g. "30-minute comics"), change the choices,
+    then tap the saved view. Do your choices come back?
+32. Pick a book you expected on **What next** but don't see. At the foot of the page (or on the
+    book's page), press **Why isn't this book shown?** Does the reason make sense, and does its fix
+    button work?
+33. On your **iPhone**: do the first picks on What next and the first books in Library appear
+    without much scrolling? Does the menu scroll sideways?
+34. On a Humble book that isn't matched yet, open **Identify using bundle details and opening
+    pages** on its page. Fill in the full title (and the ISBN from its copyright page, if
+    you can see one), then press **Use these details in search**. Is the right book offered?
 
 ## You can skip these
 
@@ -165,6 +186,6 @@ Audible import.
 ## What to send back
 
 - Part 1: your yes/no for each of the 5 situations, plus anything you had to correct.
-- Part 2: worked / didn't work / skipped for checks 1–29, and what happened for any that didn't
+- Part 2: worked / didn't work / skipped for checks 1–34, and what happened for any that didn't
   work.
 - **Settings → Diagnostics → Copy report** (it leaves out folder names unless you tick the box).

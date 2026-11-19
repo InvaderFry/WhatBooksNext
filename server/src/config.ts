@@ -32,6 +32,14 @@ export const MAX_SCAN_DEPTH = 64;
 /** Formats read in the deep pass (§9.1). */
 export const DEEP_FORMATS = ['epub', 'pdf', 'cbz', 'cbr', 'audio'] as const;
 
+/**
+ * Audiobook folders: numbered audio files whose names share at least this many letters at the
+ * start ("Chapter 01 - …", "Series - Book 1 - Title - 00 - …") are chapters of the folder's book.
+ * Four letters is longer than "the"/"a" openings of different books, and shorter than the
+ * shortest shared chapter word seen on the owner's drive ("Track"). Owner decision 2026-11-19.
+ */
+export const AUDIO_CHAPTER_SHARED_LETTERS = 4;
+
 /** Formats listed and parsed by filename only (§9.1). */
 export const LIGHT_FORMATS = ['mobi', 'azw3', 'cb7'] as const;
 
